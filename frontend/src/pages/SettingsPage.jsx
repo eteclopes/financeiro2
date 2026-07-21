@@ -7,6 +7,8 @@ import { extractErrorMessage } from '../lib/api';
 import { Card, CardHeader, Badge, Button } from '../components/ui/index';
 import { Modal, FormGroup, Input, Select } from '../components/ui/Modal';
 import { useUIStore } from '../store/uiStore';
+import { useThemeStore } from '../store/themeStore';
+import { ChoiceCards, SegmentedControl } from '../components/ui/Motion';
 
 export default function SettingsPage() {
   const user  = useAuthStore((s) => s.user);
@@ -14,6 +16,8 @@ export default function SettingsPage() {
   const toast = useUIStore((s) => s);
   const navigate = useNavigate();
   const startTutorial = useTutorialStore((s) => s.start);
+  const theme = useThemeStore((s) => s.theme);
+  const setTheme = useThemeStore((s) => s.setTheme);
   const [catType, setCatType]     = useState('expense');
   const [categories, setCategories] = useState([]);
   const [catName, setCatName]     = useState('');
@@ -106,6 +110,16 @@ export default function SettingsPage() {
         </div>
       </Card>
 
+
+      {/* Aparência */}
+      <Card>
+        <CardHeader title="Aparência" subtitle="Escolha o tema que combina melhor com o ambiente." />
+        <ChoiceCards columns={2} value={theme} onChange={setTheme} options={[
+          { value:'light', label:'Modo claro', description:'Limpo, leve e com bastante contraste.', icon:'☀', tone:'choice-card-icon-warning' },
+          { value:'dark', label:'Modo escuro', description:'Profundo, confortável e com brilho neon.', icon:'◐', tone:'choice-card-icon-primary' },
+        ]} />
+      </Card>
+
       {/* Editar nome */}
       <Modal open={editNameModal} onClose={() => setEditNameModal(false)} title="Editar Nome" size="sm">
         <div className="space-y-4">
@@ -144,14 +158,10 @@ export default function SettingsPage() {
       <Card>
         <CardHeader title="Categorias Personalizadas" />
 
-        <div className="flex gap-1 bg-subtle dark:bg-white/5 p-1 rounded-xl w-fit mb-5">
-          {[['expense','Despesas'],['income','Receitas']].map(([t,l]) => (
-            <button key={t} onClick={() => setCatType(t)}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${catType===t?'bg-white dark:bg-panel-dark shadow text-slate-900 dark:text-zinc-50':'text-muted hover:text-slate-700 dark:hover:text-zinc-200'}`}>
-              {l}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl className="mb-5" value={catType} onChange={setCatType} options={[
+          { value:'expense', label:'Despesas', icon:'↘' },
+          { value:'income', label:'Receitas', icon:'↗' },
+        ]} />
 
         {/* Nova categoria */}
         <div className="flex gap-2 mb-5">

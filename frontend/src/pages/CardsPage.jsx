@@ -7,10 +7,17 @@ import { Card, CardHeader, Badge, Button, EmptyState, ProgressBar } from '../com
 import { Modal, ConfirmDialog, FormGroup, Input, Select } from '../components/ui/Modal';
 import { CategorySelect } from '../components/ui/CategorySelect';
 import { useUIStore } from '../store/uiStore';
+import { ChoiceCards, AnimatedNumber } from '../components/ui/Motion';
 
 const COLORS = ['#7C3AED','#2563EB','#16A34A','#F59E0B','#DC2626','#A855F7','#06B6D4'];
 const STATUS_V = { open:'info', closed:'warning', paid:'success' };
 const STATUS_L = { open:'Aberta', closed:'Fechada', paid:'Paga' };
+const PAYMENT_OPTIONS = [
+  { value:'pix', label:'PIX', icon:'⚡', tone:'choice-card-icon-primary' },
+  { value:'debit', label:'Débito', icon:'▣', tone:'choice-card-icon-info' },
+  { value:'transfer', label:'Transferência', icon:'⇄', tone:'choice-card-icon-primary' },
+  { value:'cash', label:'Dinheiro', icon:'●', tone:'choice-card-icon-success' },
+];
 
 export default function CardsPage() {
   const [cards, setCards]     = useState([]);
@@ -183,14 +190,14 @@ export default function CardsPage() {
               const isSelected = String(selected?.id) === String(card.id);
               const isInactive = card.active === false;
               return (
-                <button key={card.id} onClick={() => setSelected(card)} className={`group relative overflow-hidden text-left rounded-[24px] border border-white/20 p-5 text-white transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] active:translate-y-0 active:scale-[0.985] ${isSelected ? 'ring-2 ring-primary-light/70 ring-offset-2 ring-offset-bg shadow-floating dark:ring-offset-canvas-dark' : 'shadow-[0_22px_46px_-26px_rgb(15_23_42_/_0.55)]'} ${isInactive ? 'grayscale opacity-60' : ''}`}
+                <button key={card.id} onClick={() => setSelected(card)} className={`credit-card-visual group relative overflow-hidden text-left rounded-[24px] border border-white/20 p-5 text-white transition-all duration-300 active:translate-y-0 active:scale-[0.985] ${isSelected ? 'ring-2 ring-primary-light/70 ring-offset-2 ring-offset-bg shadow-floating dark:ring-offset-canvas-dark' : 'shadow-[0_22px_46px_-26px_rgb(15_23_42_/_0.55)]'} ${isInactive ? 'grayscale opacity-60' : ''}`}
                   style={{ background: `linear-gradient(135deg, ${card.color ?? '#7C3AED'}, ${card.color ?? '#7C3AED'}99)` }}>
                   {isInactive && (
                     <span className="absolute top-3 right-3 text-[10px] font-semibold uppercase tracking-wider bg-black/30 px-2 py-1 rounded-lg">
                       Desativado
                     </span>
                   )}
-                  <span className="pointer-events-none absolute -right-10 -top-16 h-36 w-36 rounded-full bg-white/15 blur-2xl transition-transform duration-500 group-hover:scale-125" /><span className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/10" /><div className="relative flex justify-between items-start mb-4">
+                  <span className="pointer-events-none absolute -right-10 -top-16 h-36 w-36 rounded-full bg-white/15 blur-2xl transition-transform duration-500 group-hover:scale-125" /><span className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/10" /><div className="relative mb-4 flex items-center justify-between"><span className="credit-card-chip" aria-hidden="true" /><span className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/55">FinanceHub</span></div><div className="relative flex justify-between items-start mb-4">
                     <p className="font-bold text-lg">{card.name}</p>
                     {!isInactive && (
                       <span className="text-white/60 text-xs bg-white/10 px-2 py-1 rounded-lg">
@@ -198,7 +205,7 @@ export default function CardsPage() {
                       </span>
                     )}
                   </div>
-                  <p className="relative font-mono text-2xl font-bold mb-1 tracking-tight">{formatCurrency(card.availableLimit)}</p>
+                  <p className="relative font-mono text-2xl font-bold mb-1 tracking-tight"><AnimatedNumber value={card.availableLimit} formatter={formatCurrency} /></p>
                   <p className="relative text-white/65 text-xs mb-3">disponível de {formatCurrency(card.limitValue)}</p>
                   <div className="relative h-1.5 bg-white/20 rounded-full overflow-hidden">
                     <div className="h-full bg-white rounded-full transition-all duration-700" style={{ width: `${pct}%` }} />
@@ -409,9 +416,7 @@ export default function CardsPage() {
               <p className="text-xs text-muted mt-1">{String(payTarget.referenceMonth).padStart(2,'0')}/{payTarget.referenceYear}</p>
             </div>
             <FormGroup label="Forma de pagamento">
-              <Select value={invMethod} onChange={(e) => setInvMethod(e.target.value)}>
-                {[['pix','PIX'],['debit','Débito'],['transfer','Transferência'],['cash','Dinheiro']].map(([v,l])=><option key={v} value={v}>{l}</option>)}
-              </Select>
+              <ChoiceCards compact columns={2} value={invMethod} onChange={setInvMethod} options={PAYMENT_OPTIONS} />
             </FormGroup>
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setPayTarget(null)}>Cancelar</Button>

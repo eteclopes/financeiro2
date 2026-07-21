@@ -77,8 +77,8 @@ function AuthShell({ children }) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#F8FAFC] dark:bg-[#0B0B0F]">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-28 -top-24 h-[420px] w-[420px] rounded-full bg-primary/10 blur-[90px] dark:bg-primary/20" />
-        <div className="absolute -bottom-40 right-[-8rem] h-[520px] w-[520px] rounded-full bg-info/8 blur-[110px] dark:bg-primary-light/10" />
+        <div className="auth-aurora absolute -left-28 -top-24 h-[420px] w-[420px] rounded-full bg-primary/10 blur-[90px] dark:bg-primary/20" />
+        <div className="auth-aurora absolute -bottom-40 right-[-8rem] h-[520px] w-[520px] rounded-full bg-info/8 blur-[110px] dark:bg-primary-light/10" />
         <div className="absolute inset-0 opacity-[0.28] dark:opacity-[0.1]" style={{ backgroundImage: 'radial-gradient(rgb(100 116 139 / 0.28) 0.7px, transparent 0.7px)', backgroundSize: '22px 22px' }} />
       </div>
 
@@ -131,6 +131,14 @@ function AuthShell({ children }) {
           </div>
 
           <div className="relative max-w-lg rounded-3xl border border-slate-200/80 bg-white/80 p-5 shadow-premium backdrop-blur-xl animate-float dark:border-white/[0.07] dark:bg-white/[0.04]">
+            <div className="auth-floating-chip -right-8 -top-8 hidden xl:flex">
+              <span className="grid h-8 w-8 place-items-center rounded-xl bg-success-subtle text-success dark:bg-success/10 dark:text-success-light">✓</span>
+              <span><strong className="block text-xs text-slate-800 dark:text-zinc-100">Conta paga</strong><small className="text-[10px] text-slate-400 dark:text-zinc-500">Internet · hoje</small></span>
+            </div>
+            <div className="auth-floating-chip -bottom-7 -left-10 hidden xl:flex">
+              <span className="grid h-8 w-8 place-items-center rounded-xl bg-primary-subtle text-primary dark:bg-primary/10 dark:text-primary-hover">↗</span>
+              <span><strong className="block text-xs text-slate-800 dark:text-zinc-100">Meta avançou</strong><small className="text-[10px] text-slate-400 dark:text-zinc-500">+R$ 320,00</small></span>
+            </div>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-zinc-500">Saldo disponível</p>
@@ -140,7 +148,7 @@ function AuthShell({ children }) {
             </div>
             <div className="mt-5 flex h-16 items-end gap-1.5">
               {[32, 48, 37, 58, 44, 69, 54, 78, 67, 88, 73, 94].map((height, i) => (
-                <div key={i} className="flex-1 rounded-t-md bg-gradient-to-t from-primary to-primary-light opacity-80" style={{ height: `${height}%` }} />
+                <div key={i} className="flex-1 origin-bottom rounded-t-md bg-gradient-to-t from-primary to-primary-light opacity-80 animate-[barBreath_2.8s_ease-in-out_infinite]" style={{ height: `${height}%`, animationDelay: `${-i * 0.18}s` }} />
               ))}
             </div>
           </div>

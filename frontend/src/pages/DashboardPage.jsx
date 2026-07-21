@@ -8,6 +8,7 @@ import { dashboardApi, projectionsApi } from '../lib/services';
 import { extractErrorMessage } from '../lib/api';
 import { formatCurrency, formatShortDate } from '../lib/format';
 import { Card, CardHeader, Badge, ProgressBar, Skeleton, EmptyState } from '../components/ui/index';
+import { AnimatedNumber, SegmentedControl, Spotlight } from '../components/ui/Motion';
 import { useUIStore } from '../store/uiStore';
 import { useThemeStore } from '../store/themeStore';
 import { QuickActions } from '../components/dashboard/QuickActions';
@@ -41,6 +42,8 @@ export default function DashboardPage() {
   const [error, setError]     = useState(null);
   const errorToast = useUIStore((s) => s.error);
   const theme = useThemeStore((s) => s.theme);
+  const [summaryChart, setSummaryChart] = useState('bars');
+  const [projectionView, setProjectionView] = useState('area');
   // Recharts não lê variáveis CSS/Tailwind diretamente em props como
   // `stroke`/`fill` — por isso as cores de grade e eixo são derivadas do
   // tema aqui e passadas como valor literal para cada gráfico.
@@ -139,14 +142,22 @@ export default function DashboardPage() {
       {/* Saldo em destaque + demais valores */}
       <div data-tutorial="dashboard-summary" className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-4">
         {/* Hero: saldo atual */}
-        <div className={`relative overflow-hidden rounded-3xl p-6 text-white shadow-floating dark:shadow-premium-dark animate-fade-in border border-white/10
-          ${data.currentBalance >= 0 ? 'bg-gradient-to-br from-primary to-primary-dark' : 'bg-gradient-to-br from-danger to-danger-dark'}`}>
+        <div className={`financial-hero relative overflow-hidden rounded-3xl p-6 text-white shadow-floating dark:shadow-premium-dark animate-fade-in border border-white/10
+          ${data.currentBalance >= 0 ? 'bg-gradient-to-br from-primary via-primary-light to-primary-dark' : 'bg-gradient-to-br from-danger via-red-500 to-danger-dark'}`}>
           <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/[0.08]" />
           <div className="absolute -bottom-16 -left-8 w-32 h-32 rounded-full bg-white/[0.06]" />
+          <div className="hero-orbit" aria-hidden="true">
+            <span className="hero-orbit-ring"><i className="hero-orbit-dot" /></span>
+            <span className="hero-orbit-ring"><i className="hero-orbit-dot" /></span>
+            <span className="hero-orbit-ring"><i className="hero-orbit-dot" /></span>
+          </div>
           <div className="relative">
             <p className="text-white/80 text-sm font-medium mb-1">Saldo disponível acumulado</p>
-            <p className="text-4xl font-bold font-mono tabular-nums tracking-tight">{formatCurrency(data.currentBalance)}</p>
+            <p className="text-4xl font-bold font-mono tracking-tight"><AnimatedNumber value={data.currentBalance} formatter={formatCurrency} /></p>
             <p className="text-white/65 text-xs mt-1">O valor restante dos meses anteriores continua no seu caixa.</p>
+            <div className="hero-mini-bars mt-4" aria-hidden="true">
+              {[35, 68, 48, 82, 62, 96, 75].map((height, index) => <span key={index} style={{ height: `${height}%` }} />)}
+            </div>
             <div className="flex items-center gap-4 mt-4 flex-wrap">
               <div>
                 <p className="text-white/65 text-[11px] font-medium uppercase tracking-wide">Saldo trazido</p>
@@ -168,19 +179,19 @@ export default function DashboardPage() {
 
         {/* Grade 2x2: reserva, físico, dívida */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="premium-card premium-card-hover p-4">
+          <Spotlight className="premium-card premium-card-hover p-4">
             <p className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <IconPiggy size={13} /> Reserva
             </p>
             <p className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-zinc-50">{formatCurrency(data.savingsBalance)}</p>
-          </div>
-          <div className="premium-card premium-card-hover p-4">
+          </Spotlight>
+          <Spotlight className="premium-card premium-card-hover p-4">
             <p className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <IconWallet size={13} /> Físico
             </p>
             <p className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-zinc-50">{formatCurrency(data.physicalCash)}</p>
-          </div>
-          <div className="col-span-2 premium-card premium-card-hover p-4 flex items-center justify-between">
+          </Spotlight>
+          <Spotlight className="col-span-2 premium-card premium-card-hover p-4 flex items-center justify-between">
             <div>
               <p className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
                 <IconAlert size={13} /> Dívida ativa
@@ -194,7 +205,7 @@ export default function DashboardPage() {
                 {(data.upcomingDueDates ?? []).filter((e) => e.type === 'priority').length} parcela(s)
               </span>
             )}
-          </div>
+          </Spotlight>
         </div>
       </div>
 
@@ -369,24 +380,40 @@ export default function DashboardPage() {
       {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-1">
-          <CardHeader title="Receitas × Despesas" />
+          <CardHeader title="Receitas × Despesas" subtitle="Alterne a leitura do mês" actions={<SegmentedControl value={summaryChart} onChange={setSummaryChart} options={[{ value:'bars', label:'Barras', icon:'▥' }, { value:'area', label:'Fluxo', icon:'⌁' }]} />} />
           <div className="h-52">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={barData} margin={{ left: -20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 12, fill: axisColor }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: axisColor }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
-                <Tooltip content={<ThemedTooltip />} cursor={{ fill: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }} />
-                <Bar dataKey="valor" radius={[8,8,0,0]} barSize={36}>
-                  {barData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
-                </Bar>
-              </BarChart>
+              {summaryChart === 'bars' ? (
+                <BarChart data={barData} margin={{ left: -20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 12, fill: axisColor }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: axisColor }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
+                  <Tooltip content={<ThemedTooltip />} cursor={{ fill: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }} />
+                  <Bar dataKey="valor" radius={[10,10,4,4]} barSize={36} animationDuration={850}>
+                    {barData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                  </Bar>
+                </BarChart>
+              ) : (
+                <AreaChart data={barData} margin={{ left: -20, right: 8 }}>
+                  <defs>
+                    <linearGradient id="summaryFlow" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#7C3AED" stopOpacity={0.38} />
+                      <stop offset="100%" stopColor="#7C3AED" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 12, fill: axisColor }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: axisColor }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
+                  <Tooltip content={<ThemedTooltip />} />
+                  <Area type="monotone" dataKey="valor" stroke="#7C3AED" strokeWidth={3} fill="url(#summaryFlow)" animationDuration={900} activeDot={{ r: 6, strokeWidth: 3, stroke: '#FFFFFF' }} />
+                </AreaChart>
+              )}
             </ResponsiveContainer>
           </div>
         </Card>
 
         <Card className="lg:col-span-1">
-          <CardHeader title="Projeção 6 meses" subtitle="Líquido mensal e acumulado" />
+          <CardHeader title="Projeção 6 meses" subtitle="Líquido mensal e acumulado" actions={<SegmentedControl value={projectionView} onChange={setProjectionView} options={[{ value:'area', label:'Área' }, { value:'line', label:'Linhas' }]} />} />
           <div className="h-52">
             {projData.length === 0
               ? <EmptyState icon="→" title="Sem dados de projeção" description="Feche o mês para gerar projeções futuras." />
@@ -406,8 +433,13 @@ export default function DashboardPage() {
                     <XAxis dataKey="name" tick={{ fontSize: 10, fill: axisColor }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 11, fill: axisColor }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
                     <Tooltip content={<ThemedTooltip />} />
-                    <Area type="monotone" dataKey="líquido" stroke="#3B82F6" strokeWidth={2} fill="url(#areaLiquido)" />
-                    <Area type="monotone" dataKey="acumulado" stroke="#16A34A" strokeWidth={2} fill="url(#areaAcumulado)" />
+                    {projectionView === 'area' ? (<>
+                      <Area type="monotone" dataKey="líquido" stroke="#3B82F6" strokeWidth={2.5} fill="url(#areaLiquido)" animationDuration={900} />
+                      <Area type="monotone" dataKey="acumulado" stroke="#16A34A" strokeWidth={2.5} fill="url(#areaAcumulado)" animationDuration={1100} />
+                    </>) : (<>
+                      <Line type="monotone" dataKey="líquido" stroke="#3B82F6" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 6 }} animationDuration={900} />
+                      <Line type="monotone" dataKey="acumulado" stroke="#16A34A" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 6 }} animationDuration={1100} />
+                    </>)}
                   </AreaChart>
                 </ResponsiveContainer>}
           </div>

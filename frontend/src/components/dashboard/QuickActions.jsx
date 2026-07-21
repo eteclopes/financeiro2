@@ -6,11 +6,19 @@ import { api, extractErrorMessage } from '../../lib/api';
 import { formatCurrency } from '../../lib/format';
 import { localDateInputValue } from '../../lib/date';
 import { Button } from '../ui/index';
+import { ChoiceCards } from '../ui/Motion';
 import { Modal, FormGroup, Input, Select } from '../ui/Modal';
 import { useUIStore } from '../../store/uiStore';
 import { IconIncome, IconExpense, IconCheck, IconCard, IconGoal, IconAlert } from '../icons';
 
 const PM_LABELS = { cash: 'Dinheiro', pix: 'PIX', debit: 'Débito', credit: 'Crédito', transfer: 'Transferência' };
+const PAYMENT_OPTIONS = [
+  { value: 'pix', label: 'PIX', icon: '⚡', tone: 'choice-card-icon-primary' },
+  { value: 'debit', label: 'Débito', icon: '▣', tone: 'choice-card-icon-info' },
+  { value: 'credit', label: 'Crédito', icon: '◇', tone: 'choice-card-icon-warning' },
+  { value: 'cash', label: 'Dinheiro', icon: '●', tone: 'choice-card-icon-success' },
+  { value: 'transfer', label: 'Transferência', icon: '⇄', tone: 'choice-card-icon-primary' },
+];
 const today = () => localDateInputValue();
 
 export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goals = [], monthStatus }) {
@@ -201,8 +209,8 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
       <div className="flex flex-wrap gap-2">
         {ACTIONS.map(({ Icon, label, iconBg, iconColor, onClick }) => (
           <button key={label} onClick={onClick}
-            className="group flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[0_12px_28px_-20px_rgb(124_58_237_/_0.6)] active:translate-y-0 active:scale-[0.98] dark:border-white/[0.07] dark:bg-white/[0.035] dark:hover:border-primary/30">
-            <span className={`h-8 w-8 rounded-xl flex items-center justify-center transition-transform duration-200 group-hover:scale-105 shrink-0 ${iconBg} ${iconColor}`}>
+            className="quick-action-card group flex items-center gap-2.5 border border-slate-200 bg-white px-3 py-2.5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-[0_18px_34px_-22px_rgb(124_58_237_/_0.65)] active:translate-y-0 active:scale-[0.98] dark:border-white/[0.07] dark:bg-white/[0.035] dark:hover:border-primary/35">
+            <span className={`quick-action-icon h-9 w-9 rounded-xl flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}>
               <Icon size={15} strokeWidth={2} />
             </span>
             <span className="text-xs font-bold text-slate-700 dark:text-zinc-200">{label}</span>
@@ -225,9 +233,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
             </FormGroup>
           </div>
           <FormGroup label="Forma de recebimento">
-            <Select value={incForm.paymentMethod} onChange={(e) => setIncForm({ ...incForm, paymentMethod: e.target.value })}>
-              {Object.entries(PM_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </Select>
+            <ChoiceCards compact value={incForm.paymentMethod} onChange={(paymentMethod) => setIncForm({ ...incForm, paymentMethod })} options={PAYMENT_OPTIONS.filter((option) => option.value !== 'credit')} />
           </FormGroup>
           <p className="text-xs text-muted">
             Categoria padrão "Outros" aplicada.{' '}
@@ -262,9 +268,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
             </Select>
           </FormGroup>
           <FormGroup label="Forma de pagamento">
-            <Select value={expForm.paymentMethod} onChange={(e) => setExpForm({ ...expForm, paymentMethod: e.target.value, cardId: e.target.value === 'credit' ? expForm.cardId : '' })}>
-              {Object.entries(PM_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </Select>
+            <ChoiceCards compact value={expForm.paymentMethod} onChange={(paymentMethod) => setExpForm({ ...expForm, paymentMethod, cardId: paymentMethod === 'credit' ? expForm.cardId : '' })} options={PAYMENT_OPTIONS} />
           </FormGroup>
           {expForm.paymentMethod === 'credit' && (
             <FormGroup label="Cartão" required>
@@ -310,9 +314,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                     <Input type="number" min="0" step="0.01" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
                   </FormGroup>
                   <FormGroup label="Forma">
-                    <Select value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>
-                      {Object.entries(PM_LABELS).filter(([v]) => v !== 'credit').map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                    </Select>
+                    <ChoiceCards compact columns={2} value={payMethod} onChange={setPayMethod} options={PAYMENT_OPTIONS.filter((option) => option.value !== 'credit')} />
                   </FormGroup>
                 </div>
                 <div className="flex gap-2 justify-end">
@@ -347,11 +349,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                   </div>
                 )}
                 <FormGroup label="Forma de pagamento">
-                  <Select value={invMethod} onChange={(e) => setInvMethod(e.target.value)}>
-                    {[['pix','PIX'],['debit','Débito'],['transfer','Transferência'],['cash','Dinheiro']].map(([v,l]) =>
-                      <option key={v} value={v}>{l}</option>
-                    )}
-                  </Select>
+                  <ChoiceCards compact columns={2} value={invMethod} onChange={setInvMethod} options={PAYMENT_OPTIONS.filter((option) => option.value !== 'credit')} />
                 </FormGroup>
                 <div className="flex gap-2 justify-end">
                   <Button variant="outline" size="sm" onClick={() => setModal(null)}>Cancelar</Button>

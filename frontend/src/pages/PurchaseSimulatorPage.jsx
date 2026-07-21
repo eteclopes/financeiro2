@@ -6,6 +6,7 @@ import { formatCurrency } from '../lib/format';
 import { Card, CardHeader, Badge, Button, ProgressBar } from '../components/ui/index';
 import { FormGroup, Input, Select } from '../components/ui/Modal';
 import { useUIStore } from '../store/uiStore';
+import { ChoiceCards, AnimatedNumber } from '../components/ui/Motion';
 
 const BAND_STYLES = {
   saudavel: { bg:'bg-success-subtle border-success/20 dark:bg-success/10', text:'text-success-dark dark:text-success-light', bar:'success', label:'Saudável ✓' },
@@ -67,14 +68,21 @@ export default function PurchaseSimulatorPage() {
               <Input type="number" min="0" step="0.01" value={form.value}
                 onChange={(e) => setForm({...form, value:e.target.value})} placeholder="R$ 0,00" />
             </FormGroup>
-            <FormGroup label="Parcelamento">
-              <Select value={form.installments} onChange={(e) => setForm({...form, installments:e.target.value})}>
-                <option value="1">À vista</option>
-                {[2,3,4,5,6,7,8,9,10,11,12,18,24].map((n) => (
-                  <option key={n} value={n}>{n}x {form.value ? `de ${formatCurrency(parseFloat(form.value||0)/n)}` : ''}</option>
-                ))}
-              </Select>
+            <FormGroup label="Como pretende pagar?">
+              <ChoiceCards columns={2} value={parseInt(form.installments) === 1 ? 'cash' : 'installments'} onChange={(mode) => setForm({ ...form, installments: mode === 'cash' ? '1' : (parseInt(form.installments) > 1 ? form.installments : '6') })} options={[
+                { value:'cash', label:'À vista', description:'Impacto total imediato.', icon:'✓', tone:'choice-card-icon-success' },
+                { value:'installments', label:'Parcelado', description:'Distribui o impacto mensal.', icon:'▤', tone:'choice-card-icon-primary' },
+              ]} />
             </FormGroup>
+            {parseInt(form.installments) > 1 && (
+              <FormGroup label="Quantidade de parcelas">
+                <Select value={form.installments} onChange={(e) => setForm({...form, installments:e.target.value})}>
+                  {[2,3,4,5,6,7,8,9,10,11,12,18,24].map((n) => (
+                    <option key={n} value={n}>{n}x {form.value ? `de ${formatCurrency(parseFloat(form.value||0)/n)}` : ''}</option>
+                  ))}
+                </Select>
+              </FormGroup>
+            )}
             {form.value && parseInt(form.installments) > 1 && (
               <div className="bg-info-subtle border border-info/20 rounded-xl p-3 text-sm">
                 <span className="text-info-dark">{form.installments}x de </span>
@@ -117,11 +125,11 @@ export default function PurchaseSimulatorPage() {
             <div className="grid grid-cols-2 gap-3">
               <Card className="!p-4">
                 <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Impacto Mensal</p>
-                <p className="text-2xl font-bold font-mono tabular-nums text-slate-900 dark:text-zinc-50">{formatCurrency(result.monthlyImpact)}</p>
+                <p className="text-2xl font-bold font-mono text-slate-900 dark:text-zinc-50"><AnimatedNumber value={result.monthlyImpact} formatter={formatCurrency} /></p>
               </Card>
               <Card className="!p-4">
                 <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Impacto Anual</p>
-                <p className="text-2xl font-bold font-mono tabular-nums text-slate-900 dark:text-zinc-50">{formatCurrency(result.annualImpact)}</p>
+                <p className="text-2xl font-bold font-mono text-slate-900 dark:text-zinc-50"><AnimatedNumber value={result.annualImpact} formatter={formatCurrency} /></p>
               </Card>
             </div>
 

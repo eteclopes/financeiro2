@@ -8,8 +8,19 @@ import { Card, Badge, Button, EmptyState, Skeleton } from '../components/ui/inde
 import { Modal, ConfirmDialog, FormGroup, Input, Select } from '../components/ui/Modal';
 import { CategorySelect } from '../components/ui/CategorySelect';
 import { useUIStore } from '../store/uiStore';
+import { ChoiceCards, ToggleSwitch } from '../components/ui/Motion';
 
 const PM_LABELS = { cash:'Dinheiro', pix:'PIX', debit:'Débito', credit:'Crédito', transfer:'Transferência' };
+const RECEIPT_OPTIONS = [
+  { value:'pix', label:'PIX', icon:'⚡', description:'Instantâneo', tone:'choice-card-icon-primary' },
+  { value:'debit', label:'Débito', icon:'▣', description:'Conta bancária', tone:'choice-card-icon-info' },
+  { value:'transfer', label:'Transferência', icon:'⇄', description:'TED ou banco', tone:'choice-card-icon-primary' },
+  { value:'cash', label:'Dinheiro', icon:'●', description:'Valor físico', tone:'choice-card-icon-success' },
+];
+const ORIGIN_OPTIONS = [
+  { value:'digital', label:'Digital', icon:'◉', description:'Disponível na conta', tone:'choice-card-icon-info' },
+  { value:'physical', label:'Físico', icon:'●', description:'Dinheiro em mãos', tone:'choice-card-icon-warning' },
+];
 
 const EMPTY_FORM = {
   description:'', value:'', categoryId:'', paymentMethod:'pix',
@@ -185,30 +196,17 @@ export default function IncomesPage() {
               onCategoryCreated={(cat) => setCategories((prev) => [...prev, cat])}
             />
           </FormGroup>
-          <div className="grid grid-cols-2 gap-3">
-            <FormGroup label="Forma de recebimento">
-              <Select value={form.paymentMethod} onChange={(e) => setForm({...form,paymentMethod:e.target.value})}>
-                {Object.entries(PM_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-              </Select>
-            </FormGroup>
-            <FormGroup label="Origem">
-              <Select value={form.origin} onChange={(e) => setForm({...form,origin:e.target.value})}>
-                <option value="digital">Digital</option>
-                <option value="physical">Físico (dinheiro)</option>
-              </Select>
-            </FormGroup>
-          </div>
+          <FormGroup label="Forma de recebimento">
+            <ChoiceCards compact columns={4} value={form.paymentMethod} onChange={(paymentMethod) => setForm({ ...form, paymentMethod, origin: paymentMethod === 'cash' ? 'physical' : form.origin })} options={RECEIPT_OPTIONS} />
+          </FormGroup>
+          <FormGroup label="Origem do dinheiro">
+            <ChoiceCards compact columns={2} value={form.origin} onChange={(origin) => setForm({ ...form, origin })} options={ORIGIN_OPTIONS} />
+          </FormGroup>
           <FormGroup label="Observação">
             <Input value={form.observation} onChange={(e) => setForm({...form,observation:e.target.value})} placeholder="Opcional" />
           </FormGroup>
           {!editing && (
-            <label className="flex items-center gap-2.5 text-sm cursor-pointer select-none">
-              <input type="checkbox" checked={form.recurring} onChange={(e) => setForm({...form,recurring:e.target.checked})} className="w-4 h-4 rounded accent-primary" />
-              <div>
-                <span className="font-medium text-slate-700 dark:text-zinc-300">Receita recorrente</span>
-                <p className="text-xs text-muted">Será gerada automaticamente todo mês ao fechar o período</p>
-              </div>
-            </label>
+            <ToggleSwitch checked={form.recurring} onChange={(recurring) => setForm({ ...form, recurring })} label="Receita recorrente" description="Será gerada automaticamente todo mês ao fechar o período." />
           )}
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>

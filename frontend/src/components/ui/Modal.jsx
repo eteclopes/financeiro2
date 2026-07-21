@@ -82,7 +82,9 @@ export function Modal({ open, onClose, title, children, size = 'md' }) {
         aria-labelledby={titleId}
         tabIndex={-1}
         className={`relative bg-white/95 dark:bg-[#1B1B26]/95 backdrop-blur-xl border border-white/70 dark:border-white/[0.08] w-full ${sizes[size]} rounded-t-[26px] sm:rounded-[22px] shadow-modal flex flex-col max-h-[90vh] animate-slide-up overflow-hidden`}>
-        <div className="flex items-center justify-between px-6 py-4.5 border-b border-slate-200/80 dark:border-white/[0.07] shrink-0">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary-light/70 to-transparent" />
+        <div className="pointer-events-none absolute -right-16 -top-20 h-36 w-36 rounded-full bg-primary/10 blur-3xl dark:bg-primary/15" />
+        <div className="relative flex items-center justify-between px-6 py-4.5 border-b border-slate-200/80 dark:border-white/[0.07] shrink-0">
           <h2 id={titleId} className="font-bold tracking-tight text-slate-950 dark:text-white">{title}</h2>
           <button onClick={onClose} aria-label="Fechar"
             className="h-9 w-9 flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-900 hover:bg-slate-100 dark:text-zinc-500 dark:hover:bg-white/[0.06] dark:hover:text-white transition-colors text-xl leading-none">

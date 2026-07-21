@@ -94,10 +94,11 @@ export function Skeleton({ className = '' }) {
 
 export function EmptyState({ icon, title, description, action }) {
   return (
-    <div className="flex flex-col items-center justify-center py-14 text-center animate-fade-in px-4">
+    <div className="group flex flex-col items-center justify-center py-14 text-center animate-fade-in px-4">
       {icon && (
-        <div className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-primary-subtle text-2xl text-primary dark:bg-primary/10 dark:text-primary-hover">
-          {icon}
+        <div className="relative mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-primary-subtle text-2xl text-primary dark:bg-primary/10 dark:text-primary-hover">
+          <span className="absolute -inset-2 -z-10 rounded-3xl border border-primary/10 animate-pulse-soft" />
+          <span className="transition-transform duration-300 group-hover:scale-110">{icon}</span>
         </div>
       )}
       <p className="font-bold text-slate-800 dark:text-zinc-200">{title}</p>
@@ -224,9 +225,11 @@ export function TabGroup({ tabs, value, onChange }) {
           <button
             key={tab.value}
             onClick={() => onChange(tab.value)}
-            className={`relative whitespace-nowrap px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${active ? 'bg-white text-primary-dark shadow-sm dark:bg-primary/18 dark:text-primary-hover' : 'text-slate-500 hover:text-slate-900 dark:text-zinc-500 dark:hover:text-zinc-200'}`}
+            className={`relative inline-flex items-center gap-2 whitespace-nowrap px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 ${active ? 'bg-white text-primary-dark shadow-sm -translate-y-px dark:bg-primary/18 dark:text-primary-hover' : 'text-slate-500 hover:text-slate-900 dark:text-zinc-500 dark:hover:text-zinc-200'}`}
           >
+            {tab.icon && <span className={`transition-transform duration-300 ${active ? 'scale-110 -rotate-3' : ''}`}>{tab.icon}</span>}
             {tab.label}
+            {active && <span className="absolute inset-x-3 -bottom-1 h-0.5 rounded-full bg-gradient-to-r from-primary to-primary-light shadow-[0_0_9px_rgb(124_58_237_/_0.45)]" />}
             {tab.count !== undefined && (
               <span className={`ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full ${active ? 'bg-primary-subtle text-primary-dark dark:bg-primary/20 dark:text-primary-hover' : 'bg-slate-200/80 dark:bg-white/10 text-slate-500 dark:text-zinc-500'}`}>
                 {tab.count}

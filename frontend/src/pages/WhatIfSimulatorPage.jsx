@@ -8,13 +8,14 @@ import { Card, CardHeader, Badge, Button, EmptyState } from '../components/ui/in
 import { FormGroup, Input, Select } from '../components/ui/Modal';
 import { useUIStore } from '../store/uiStore';
 import { useThemeStore } from '../store/themeStore';
+import { ChoiceCards, AnimatedNumber } from '../components/ui/Motion';
 
 const SCENARIO_TYPES = [
-  { value:'pay_debt',            label:'🏦 Quitar dívida' },
-  { value:'anticipate_installments', label:'⚡ Antecipar parcelas' },
-  { value:'save_monthly',        label:'💰 Guardar valor mensal' },
-  { value:'reduce_category',     label:'✂️ Reduzir gastos' },
-  { value:'increase_income',     label:'📈 Aumentar receita' },
+  { value:'pay_debt', label:'Quitar dívida', icon:'⌁', description:'Simule a quitação total.', tone:'choice-card-icon-danger' },
+  { value:'anticipate_installments', label:'Antecipar', icon:'⚡', description:'Reduza parcelas futuras.', tone:'choice-card-icon-warning' },
+  { value:'save_monthly', label:'Guardar por mês', icon:'＋', description:'Crie uma rotina de economia.', tone:'choice-card-icon-success' },
+  { value:'reduce_category', label:'Reduzir gastos', icon:'↘', description:'Teste cortes mensais.', tone:'choice-card-icon-primary' },
+  { value:'increase_income', label:'Aumentar renda', icon:'↗', description:'Projete uma renda maior.', tone:'choice-card-icon-info' },
 ];
 
 function CustomTooltip({ active, payload, label }) {
@@ -157,9 +158,7 @@ export default function WhatIfSimulatorPage() {
           <CardHeader title="Configure o cenário" />
           <div className="space-y-4">
             <FormGroup label="Tipo de cenário">
-              <Select value={type} onChange={(e) => { setType(e.target.value); setInput({}); }}>
-                {SCENARIO_TYPES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-              </Select>
+              <ChoiceCards columns={2} value={type} onChange={(nextType) => { setType(nextType); setInput({}); setResult(null); }} options={SCENARIO_TYPES} />
             </FormGroup>
             <ScenarioInputFields type={type} input={input} setInput={setInput} activeDebts={activeDebts} />
             <Button onClick={runPreview} loading={loading} className="w-full justify-center py-3">
@@ -175,8 +174,8 @@ export default function WhatIfSimulatorPage() {
             <div className="grid grid-cols-2 gap-3">
               <Card className={`!p-4 ${totalGain >= 0 ? 'bg-primary-subtle border-primary/20' : 'bg-danger-subtle border-danger/20'}`}>
                 <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Ganho acumulado</p>
-                <p className={`text-2xl font-bold font-mono tabular-nums ${totalGain >= 0 ? 'text-primary-dark' : 'text-danger-dark'}`}>
-                  {totalGain >= 0 ? '+' : ''}{formatCurrency(totalGain)}
+                <p className={`text-2xl font-bold font-mono ${totalGain >= 0 ? 'text-primary-dark' : 'text-danger-dark'}`}>
+                  {totalGain >= 0 ? '+' : ''}<AnimatedNumber value={totalGain} formatter={formatCurrency} />
                 </p>
               </Card>
               <Card className="!p-4">

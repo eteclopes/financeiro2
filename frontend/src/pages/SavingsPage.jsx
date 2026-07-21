@@ -8,6 +8,7 @@ import { Card, CardHeader, Badge, Button, EmptyState } from '../components/ui/in
 import { Modal, ConfirmDialog, FormGroup, Input } from '../components/ui/Modal';
 import { useUIStore } from '../store/uiStore';
 import { useThemeStore } from '../store/themeStore';
+import { ChoiceCards, AnimatedNumber } from '../components/ui/Motion';
 
 // No nível do módulo (não dentro de SavingsPage) — mesmo motivo do ajuste
 // em WhatIfSimulatorPage.jsx/GoalsPage.jsx: uma função-componente definida
@@ -116,7 +117,7 @@ export default function SavingsPage() {
         </div>
         <div className="relative">
           <p className="text-white/70 text-sm font-medium mb-1">Saldo Guardado</p>
-          <p className="text-5xl font-bold font-mono tabular-nums mb-4">{formatCurrency(data.balance)}</p>
+          <p className="text-5xl font-bold font-mono mb-4"><AnimatedNumber value={data.balance} formatter={formatCurrency} /></p>
           <p className="text-white/60 text-xs mb-6">Reserva financeira separada do fluxo mensal</p>
           <div data-tutorial="savings-actions" className="flex gap-3">
             <Button variant="outline" onClick={() => openModal('withdraw')}
@@ -221,24 +222,10 @@ export default function SavingsPage() {
           {modal === 'deposit' && (
             <>
               <FormGroup label="De onde vem esse valor?" required>
-                <div className="space-y-2">
-                  <label className="flex items-start gap-2.5 p-3 rounded-xl border border-border dark:border-white/10 cursor-pointer hover:bg-subtle dark:hover:bg-white/5 has-[:checked]:border-primary has-[:checked]:bg-primary-subtle transition-colors">
-                    <input type="radio" name="origin" className="mt-0.5" checked={form.origin === 'balance'}
-                      onChange={() => setForm({...form, origin: 'balance'})} />
-                    <div>
-                      <p className="text-sm font-medium text-slate-800 dark:text-zinc-200">Retirar do saldo disponível</p>
-                      <p className="text-xs text-muted mt-0.5">Vai sair do seu saldo do mês agora.</p>
-                    </div>
-                  </label>
-                  <label className="flex items-start gap-2.5 p-3 rounded-xl border border-border dark:border-white/10 cursor-pointer hover:bg-subtle dark:hover:bg-white/5 has-[:checked]:border-primary has-[:checked]:bg-primary-subtle transition-colors">
-                    <input type="radio" name="origin" className="mt-0.5" checked={form.origin === 'external'}
-                      onChange={() => setForm({...form, origin: 'external'})} />
-                    <div>
-                      <p className="text-sm font-medium text-slate-800 dark:text-zinc-200">Valor já guardado fora da conta</p>
-                      <p className="text-xs text-muted mt-0.5">Só registra — não desconta nada do seu saldo.</p>
-                    </div>
-                  </label>
-                </div>
+                <ChoiceCards columns={2} value={form.origin} onChange={(origin) => setForm({ ...form, origin })} options={[
+                  { value:'balance', label:'Saldo disponível', description:'Desconta do seu caixa agora.', icon:'↘', tone:'choice-card-icon-primary' },
+                  { value:'external', label:'Valor externo', description:'Apenas registra o que já estava guardado.', icon:'＋', tone:'choice-card-icon-success' },
+                ]} />
               </FormGroup>
               <div className="bg-success-subtle border border-success/20 rounded-xl p-3 text-xs text-success-dark dark:bg-success/10 dark:text-success-light">
                 {form.origin === 'balance'

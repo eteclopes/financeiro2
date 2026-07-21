@@ -8,8 +8,16 @@ import { Modal, ConfirmDialog, FormGroup, Input, Select } from '../components/ui
 import { CategorySelect } from '../components/ui/CategorySelect';
 import { useUIStore } from '../store/uiStore';
 import { localDateInputValue, apiDateToInput } from '../lib/date';
+import { ChoiceCards, ToggleSwitch } from '../components/ui/Motion';
 
 const PM_LABELS = { cash:'Dinheiro', pix:'PIX', debit:'Débito', credit:'Crédito', transfer:'Transferência' };
+const PAYMENT_OPTIONS = [
+  { value:'pix', label:'PIX', icon:'⚡', description:'Instantâneo', tone:'choice-card-icon-primary' },
+  { value:'debit', label:'Débito', icon:'▣', description:'Sai da conta', tone:'choice-card-icon-info' },
+  { value:'credit', label:'Crédito', icon:'◇', description:'Vai para a fatura', tone:'choice-card-icon-warning' },
+  { value:'cash', label:'Dinheiro', icon:'●', description:'Pagamento físico', tone:'choice-card-icon-success' },
+  { value:'transfer', label:'Transferência', icon:'⇄', description:'TED ou banco', tone:'choice-card-icon-primary' },
+];
 const STATUS_V  = { pending:'warning', partial:'info', paid:'success', late:'danger', settled:'success' };
 const STATUS_L  = { pending:'Pendente', partial:'Parcial', paid:'Pago', late:'Atrasado', settled:'Quitado' };
 
@@ -443,9 +451,7 @@ export default function ExpensesPage() {
               <Input type="number" min="0" step="0.01" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
             </FormGroup>
             <FormGroup label="Forma de pagamento">
-              <Select value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>
-                {Object.entries(PM_LABELS).filter(([v]) => v !== 'credit').map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-              </Select>
+              <ChoiceCards compact columns={2} value={payMethod} onChange={setPayMethod} options={PAYMENT_OPTIONS.filter((option) => option.value !== 'credit')} />
             </FormGroup>
             {payModal.type === 'priority' && (
               <p className="text-xs text-info bg-info-subtle p-3 rounded-xl border border-info/20">
@@ -484,9 +490,7 @@ export default function ExpensesPage() {
             />
           </FormGroup>
           <FormGroup label="Forma de pagamento">
-            <Select value={varForm.paymentMethod} onChange={(e) => setVarForm({ ...varForm, paymentMethod:e.target.value, cardId: e.target.value === 'credit' ? varForm.cardId : '', paid: e.target.value === 'credit' ? true : varForm.paid })}>
-              {Object.entries(PM_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-            </Select>
+            <ChoiceCards value={varForm.paymentMethod} onChange={(paymentMethod) => setVarForm({ ...varForm, paymentMethod, cardId: paymentMethod === 'credit' ? varForm.cardId : '', paid: paymentMethod === 'credit' ? true : varForm.paid })} options={PAYMENT_OPTIONS} />
           </FormGroup>
           {varForm.paymentMethod === 'credit' && (
             <FormGroup label="Cartão" required>
@@ -497,10 +501,7 @@ export default function ExpensesPage() {
               <p className="text-xs text-muted mt-1.5">A compra entra na fatura e reduz o limite disponível imediatamente.</p>
             </FormGroup>
           )}
-          {varForm.paymentMethod !== 'credit' && <label className="flex items-center gap-2.5 text-sm cursor-pointer select-none">
-            <input type="checkbox" checked={varForm.paid} onChange={(e) => setVarForm({...varForm,paid:e.target.checked})} className="w-4 h-4 rounded accent-primary" />
-            <span className="text-slate-700 dark:text-zinc-300">Já foi pago</span>
-          </label>}
+          {varForm.paymentMethod !== 'credit' && <ToggleSwitch checked={varForm.paid} onChange={(paid) => setVarForm({ ...varForm, paid })} label="Já foi pago" description="Desative para deixar a despesa pendente neste mês." />}
           <div className="flex gap-3 justify-end pt-1">
             <Button variant="outline" onClick={() => setVarModal(false)}>Cancelar</Button>
             <Button onClick={saveVariable} loading={saving}>Salvar</Button>
@@ -535,9 +536,7 @@ export default function ExpensesPage() {
             />
           </FormGroup>
           <FormGroup label="Forma de pagamento" required>
-            <Select value={fixForm.paymentMethod} onChange={(e) => setFixForm({...fixForm, paymentMethod:e.target.value, cardId: e.target.value === 'credit' ? fixForm.cardId : ''})}>
-              {Object.entries(PM_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-            </Select>
+            <ChoiceCards value={fixForm.paymentMethod} onChange={(paymentMethod) => setFixForm({ ...fixForm, paymentMethod, cardId: paymentMethod === 'credit' ? fixForm.cardId : '' })} options={PAYMENT_OPTIONS} />
           </FormGroup>
           {fixForm.paymentMethod === 'credit' && (
             <FormGroup label="Cartão" required>
@@ -581,9 +580,7 @@ export default function ExpensesPage() {
             </FormGroup>
           </div>
           <FormGroup label="Forma de pagamento" required>
-            <Select value={editFixForm.paymentMethod} onChange={(e) => setEditFixForm({...editFixForm, paymentMethod:e.target.value, cardId: e.target.value === 'credit' ? editFixForm.cardId : ''})}>
-              {Object.entries(PM_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-            </Select>
+            <ChoiceCards compact value={editFixForm.paymentMethod} onChange={(paymentMethod) => setEditFixForm({ ...editFixForm, paymentMethod, cardId: paymentMethod === 'credit' ? editFixForm.cardId : '' })} options={PAYMENT_OPTIONS} />
           </FormGroup>
           {editFixForm.paymentMethod === 'credit' && (
             <FormGroup label="Cartão" required>
@@ -676,13 +673,7 @@ export default function ExpensesPage() {
               o sistema já desconta o que foi pago antes e cria só a partir dela.
             </p>
           </FormGroup>
-          <label className="flex items-center gap-2.5 text-sm cursor-pointer select-none">
-            <input type="checkbox" checked={debtForm.flexiblePayment} onChange={(e) => setDebtForm({...debtForm,flexiblePayment:e.target.checked})} className="w-4 h-4 rounded accent-primary" />
-            <div>
-              <span className="text-slate-700 dark:text-zinc-300 font-medium">Aceitar pagamento parcial</span>
-              <p className="text-xs text-muted">O valor não pago será somado à próxima parcela</p>
-            </div>
-          </label>
+          <ToggleSwitch checked={debtForm.flexiblePayment} onChange={(flexiblePayment) => setDebtForm({ ...debtForm, flexiblePayment })} label="Aceitar pagamento parcial" description="O valor não pago será somado à próxima parcela." />
           <div className="flex gap-3 justify-end pt-1">
             <Button variant="outline" onClick={() => setDebtModal(false)}>Cancelar</Button>
             <Button onClick={saveDebt} loading={saving}>Criar Dívida</Button>
@@ -711,13 +702,7 @@ export default function ExpensesPage() {
           <FormGroup label="Dia de vencimento">
             <Input type="number" min="1" max="31" value={editDebtForm.dueDay} onChange={(e) => setEditDebtForm({...editDebtForm,dueDay:e.target.value})} />
           </FormGroup>
-          <label className="flex items-center gap-2.5 text-sm cursor-pointer select-none">
-            <input type="checkbox" checked={editDebtForm.flexiblePayment} onChange={(e) => setEditDebtForm({...editDebtForm,flexiblePayment:e.target.checked})} className="w-4 h-4 rounded accent-primary" />
-            <div>
-              <span className="text-slate-700 dark:text-zinc-300 font-medium">Aceitar pagamento parcial</span>
-              <p className="text-xs text-muted">O valor não pago será somado à próxima parcela</p>
-            </div>
-          </label>
+          <ToggleSwitch checked={editDebtForm.flexiblePayment} onChange={(flexiblePayment) => setEditDebtForm({ ...editDebtForm, flexiblePayment })} label="Aceitar pagamento parcial" description="O valor não pago será somado à próxima parcela." />
           <div className="flex gap-3 justify-end pt-1">
             <Button variant="outline" onClick={() => setEditDebtModal(null)}>Cancelar</Button>
             <Button onClick={saveEditDebt} loading={saving}>Salvar Alteração</Button>

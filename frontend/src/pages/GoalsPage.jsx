@@ -8,6 +8,7 @@ import { Card, Badge, Button, EmptyState, ProgressBar } from '../components/ui/i
 import { Modal, FormGroup, Input } from '../components/ui/Modal';
 import { useUIStore } from '../store/uiStore';
 import { useThemeStore } from '../store/themeStore';
+import { ToggleSwitch, AnimatedNumber } from '../components/ui/Motion';
 
 const SCORE_COLOR = (pct) => pct >= 75 ? '#16A34A' : pct >= 40 ? '#F59E0B' : '#3B82F6';
 
@@ -21,7 +22,7 @@ const SCORE_COLOR = (pct) => pct >= 75 ? '#16A34A' : pct >= 40 ? '#F59E0B' : '#3
 function GoalCard({ goal, theme, onContribute, onEdit, onCancel }) {
   const pct = Math.min(Math.round(goal.percentage), 100);
   return (
-    <Card className="animate-fade-in overflow-hidden" hover>
+    <Card className="goal-card-v2 animate-fade-in overflow-hidden" hover>
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1 min-w-0 mr-3">
           <p className="font-bold text-slate-900 dark:text-zinc-50 text-base">{goal.name}</p>
@@ -35,7 +36,7 @@ function GoalCard({ goal, theme, onContribute, onEdit, onCancel }) {
       {/* Progress ring + bar */}
       <div className="flex items-center gap-4 mb-4">
         <div className="relative h-16 w-16 shrink-0">
-          <svg viewBox="0 0 36 36" className="h-16 w-16 -rotate-90">
+          <svg viewBox="0 0 36 36" className="goal-progress-ring h-16 w-16 -rotate-90">
             <circle cx="18" cy="18" r="15.9" fill="none" stroke={theme === 'dark' ? '#27272A' : '#F1F5F9'} strokeWidth="3" />
             <circle cx="18" cy="18" r="15.9" fill="none" stroke={SCORE_COLOR(pct)} strokeWidth="3"
               strokeDasharray={`${pct} ${100-pct}`} strokeLinecap="round"
@@ -52,7 +53,7 @@ function GoalCard({ goal, theme, onContribute, onEdit, onCancel }) {
           <ProgressBar value={goal.progress} max={Number(goal.targetValue)} height="h-3"
             color={pct >= 75 ? 'success' : pct >= 40 ? 'warning' : 'info'} />
           <div className="flex justify-between mt-1">
-            <span className="text-sm font-bold text-success-dark dark:text-success-light">{formatCurrency(goal.progress)}</span>
+            <span className="text-sm font-bold text-success-dark dark:text-success-light"><AnimatedNumber value={goal.progress} formatter={formatCurrency} /></span>
             <span className="text-sm font-bold text-slate-700 dark:text-zinc-300">{formatCurrency(goal.targetValue)}</span>
           </div>
         </div>
@@ -281,13 +282,7 @@ export default function GoalsPage() {
       <Modal open={!!cancelTarget} onClose={() => setCancelTarget(null)} title={`Cancelar "${cancelTarget?.name}"`} size="sm">
         <div className="space-y-4">
           <p className="text-sm text-muted">A meta será arquivada. Esta ação não pode ser desfeita.</p>
-          <label className="flex items-start gap-2.5 text-sm cursor-pointer select-none">
-            <input type="checkbox" checked={refundContributions} onChange={(e) => setRefundContributions(e.target.checked)} className="w-4 h-4 rounded accent-primary mt-0.5" />
-            <div>
-              <span className="font-medium text-slate-700 dark:text-zinc-300">Devolver aportes ao saldo</span>
-              <p className="text-xs text-muted">{formatCurrency(cancelTarget?.progress ?? 0)} serão devolvidos ao mês atual</p>
-            </div>
-          </label>
+          <ToggleSwitch checked={refundContributions} onChange={setRefundContributions} label="Devolver aportes ao saldo" description={`${formatCurrency(cancelTarget?.progress ?? 0)} serão devolvidos ao mês atual.`} />
           <div className="flex gap-3 justify-end">
             <Button variant="outline" onClick={() => setCancelTarget(null)}>Voltar</Button>
             <Button variant="danger" onClick={handleCancel} loading={cancelling}>Cancelar Meta</Button>
