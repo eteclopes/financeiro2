@@ -174,7 +174,7 @@ export default function IncomesPage() {
         )}
       </Card>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Editar Receita' : 'Nova Receita'} size="lg">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Editar Receita' : 'Nova Receita'} size="md">
         <div className="space-y-4">
           <FormGroup label="Descrição" required>
             <Input value={form.description} onChange={(e) => setForm({...form,description:e.target.value})} placeholder="Ex: Salário, Freelance..." />

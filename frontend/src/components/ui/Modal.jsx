@@ -86,10 +86,10 @@ export function Modal({ open, onClose, title, children, size = 'md' }) {
   if (!open) return null;
 
   const sizes = {
-    sm: 'sm:max-w-[520px]',
-    md: 'sm:max-w-[640px]',
-    lg: 'sm:max-w-[760px]',
-    xl: 'sm:max-w-[960px]',
+    sm: 'sm:max-w-[460px]',
+    md: 'sm:max-w-[560px]',
+    lg: 'sm:max-w-[680px]',
+    xl: 'sm:max-w-[820px]',
   };
 
   return createPortal(
@@ -107,7 +107,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }) {
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`modal-panel ${sizes[size] ?? sizes.md}`}
+        className={`modal-panel modal-size-${size} ${sizes[size] ?? sizes.md}`}
       >
         <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary-light/70 to-transparent" />
         <div className="pointer-events-none absolute -right-16 -top-20 h-36 w-36 rounded-full bg-primary/10 blur-3xl dark:bg-primary/15" />

@@ -222,7 +222,7 @@ export default function SavingsPage() {
           {modal === 'deposit' && (
             <>
               <FormGroup label="De onde vem esse valor?" required>
-                <ChoiceCards columns={2} value={form.origin} onChange={(origin) => setForm({ ...form, origin })} options={[
+                <ChoiceCards compact columns={2} value={form.origin} onChange={(origin) => setForm({ ...form, origin })} options={[
                   { value:'balance', label:'Saldo disponível', description:'Desconta do seu caixa agora.', icon:'↘', tone:'choice-card-icon-primary' },
                   { value:'external', label:'Valor externo', description:'Apenas registra o que já estava guardado.', icon:'＋', tone:'choice-card-icon-success' },
                 ]} />

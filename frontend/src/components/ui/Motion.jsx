@@ -60,6 +60,7 @@ export function ChoiceCards({
       className={`choice-grid ${className}`}
       style={{ '--choice-min-width': `${minCardWidth}px` }}
       data-choice-columns={columns}
+      data-compact={compact ? 'true' : undefined}
       role="radiogroup"
     >
       {options.map((option) => {

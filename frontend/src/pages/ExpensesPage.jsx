@@ -517,7 +517,7 @@ export default function ExpensesPage() {
             />
           </FormGroup>
           <FormGroup label="Forma de pagamento">
-            <ChoiceCards value={varForm.paymentMethod} onChange={(paymentMethod) => setVarForm({ ...varForm, paymentMethod, cardId: paymentMethod === 'credit' ? varForm.cardId : '', paid: paymentMethod === 'credit' ? true : varForm.paid })} options={PAYMENT_OPTIONS} />
+            <ChoiceCards compact value={varForm.paymentMethod} onChange={(paymentMethod) => setVarForm({ ...varForm, paymentMethod, cardId: paymentMethod === 'credit' ? varForm.cardId : '', paid: paymentMethod === 'credit' ? true : varForm.paid })} options={PAYMENT_OPTIONS} />
           </FormGroup>
           {varForm.paymentMethod === 'credit' && (
             <FormGroup label="Cartão" required>
@@ -563,7 +563,7 @@ export default function ExpensesPage() {
             />
           </FormGroup>
           <FormGroup label="Forma de pagamento" required>
-            <ChoiceCards value={fixForm.paymentMethod} onChange={(paymentMethod) => setFixForm({ ...fixForm, paymentMethod, cardId: paymentMethod === 'credit' ? fixForm.cardId : '' })} options={PAYMENT_OPTIONS} />
+            <ChoiceCards compact value={fixForm.paymentMethod} onChange={(paymentMethod) => setFixForm({ ...fixForm, paymentMethod, cardId: paymentMethod === 'credit' ? fixForm.cardId : '' })} options={PAYMENT_OPTIONS} />
           </FormGroup>
           {fixForm.paymentMethod === 'credit' && (
             <FormGroup label="Cartão" required>
@@ -661,7 +661,7 @@ export default function ExpensesPage() {
       </Modal>
 
       {/* ── Modal Nova Dívida ── */}
-      <Modal open={debtModal} onClose={() => setDebtModal(false)} title="Nova Dívida / Parcelamento" size="xl">
+      <Modal open={debtModal} onClose={() => setDebtModal(false)} title="Nova Dívida / Parcelamento" size="lg">
         <div className="space-y-4">
           <FormGroup label="Descrição" required>
             <Input value={debtForm.description} onChange={(e) => setDebtForm({...debtForm,description:e.target.value})} placeholder="Ex: Empréstimo, Financiamento..." />
@@ -675,7 +675,7 @@ export default function ExpensesPage() {
               onCategoryCreated={(cat) => setCategories((prev) => [...prev, cat])}
             />
           </FormGroup>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <FormGroup label="Valor total" required>
               <Input type="number" min="0" step="0.01" value={debtForm.totalValue} onChange={(e) => setDebtForm({...debtForm,totalValue:e.target.value})} />
             </FormGroup>
