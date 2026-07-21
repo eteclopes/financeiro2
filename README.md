@@ -114,3 +114,16 @@ Nesta entrega, a suíte possui **21 arquivos de teste e 173 testes aprovados**, 
 - Receitas futuras não ficam disponíveis antes da data configurada.
 - Meses fechados preservam o histórico; pagamentos de pendências antigas continuam possíveis e são contabilizados na data real do pagamento.
 - Aportes em metas e depósitos na reserva com origem no saldo reduzem o caixa disponível.
+
+### URL da API no frontend
+
+No ambiente de produção do frontend, configure:
+
+```env
+VITE_API_URL=https://SEU-BACKEND.onrender.com/api
+```
+
+Depois de alterar uma variável `VITE_*`, faça um novo deploy/build do frontend,
+pois o Vite incorpora esse valor durante a compilação. A aplicação também
+normaliza a URL e adiciona `/api` automaticamente caso o domínio seja informado
+sem esse sufixo.

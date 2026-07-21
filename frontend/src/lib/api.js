@@ -1,7 +1,17 @@
 import axios from 'axios';
 import { getAccessToken, setAccessToken } from './tokenStore';
 
-const baseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:3333/api';
+const DEFAULT_API_URL = 'http://localhost:3333/api';
+
+// Aceita tanto `https://backend.exemplo.com` quanto
+// `https://backend.exemplo.com/api`. Isso evita 404 em produção quando a
+// variável VITE_API_URL é cadastrada no provedor apenas com o domínio.
+export function normalizeApiBaseURL(rawURL) {
+  const normalized = String(rawURL || DEFAULT_API_URL).trim().replace(/\/+$/, '');
+  return /\/api$/i.test(normalized) ? normalized : `${normalized}/api`;
+}
+
+const baseURL = normalizeApiBaseURL(import.meta.env.VITE_API_URL);
 
 export const api = axios.create({
   baseURL,
