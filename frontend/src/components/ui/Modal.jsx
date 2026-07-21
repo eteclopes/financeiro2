@@ -102,7 +102,7 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, description, co
   return (
     <Modal open={open} onClose={onClose} title={title} size="sm">
       <p className="text-sm text-muted mb-6">{description}</p>
-      <div className="flex gap-3 justify-end">
+      <div className="flex flex-wrap gap-3 justify-end">
         <Button variant="outline" onClick={onClose} disabled={loading}>Cancelar</Button>
         <Button variant={variant} onClick={onConfirm} loading={loading}>{confirmLabel}</Button>
       </div>

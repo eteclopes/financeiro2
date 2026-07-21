@@ -19,7 +19,10 @@ function decoratePopover(popover, index) {
 
   const { wrapper, title, description, progress, previousButton, nextButton, closeButton } = popover;
   wrapper.dataset.tourStep = step.id;
+  wrapper.classList.toggle('financehub-tour-welcome', index === 0);
   wrapper.style.setProperty('--tour-progress', `${((index + 1) / TOTAL_STEPS) * 100}%`);
+
+  wrapper.querySelectorAll('.financehub-tour-progress-line, .financehub-tour-heading, .financehub-tour-features').forEach((node) => node.remove());
 
   closeButton.setAttribute('aria-label', 'Pular tutorial');
   closeButton.setAttribute('title', 'Pular tutorial');
@@ -50,7 +53,6 @@ function decoratePopover(popover, index) {
     : '<span>Próximo</span><span aria-hidden="true">→</span>';
 
   if (index === 0) {
-    wrapper.classList.add('financehub-tour-welcome');
     const features = document.createElement('div');
     features.className = 'financehub-tour-features';
     features.innerHTML = `

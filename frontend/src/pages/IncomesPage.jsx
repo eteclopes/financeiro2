@@ -117,8 +117,8 @@ export default function IncomesPage() {
   const total = incomes.reduce((s, i) => s + Number(i.value), 0);
 
   return (
-    <div className="space-y-5 animate-page-enter">
-      <div className="flex items-center justify-between">
+    <div data-tutorial-page-ready={!loading ? 'incomes' : undefined} className="space-y-5 animate-page-enter">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Receitas</h2>
           <p className="text-sm text-muted mt-0.5">Total: <span className="font-mono font-bold text-primary-dark dark:text-primary-light">{formatCurrency(total)}</span></p>
@@ -134,7 +134,7 @@ export default function IncomesPage() {
             description="Adicione sua primeira receita para começar a acompanhar suas finanças."
             action={<Button onClick={openCreate}>Adicionar receita</Button>} />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="data-table-scroll">
             <table className="w-full text-sm">
               <thead className="bg-subtle/60 dark:bg-white/[0.03]">
                 <tr>{['Descrição','Categoria','Valor','Data','Forma','Origem','Recorrente',''].map(h=>(
@@ -179,7 +179,7 @@ export default function IncomesPage() {
           <FormGroup label="Descrição" required>
             <Input value={form.description} onChange={(e) => setForm({...form,description:e.target.value})} placeholder="Ex: Salário, Freelance..." autoFocus />
           </FormGroup>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor" required>
               <Input type="number" min="0" step="0.01" value={form.value} onChange={(e) => setForm({...form,value:e.target.value})} placeholder="0,00" />
             </FormGroup>
@@ -208,7 +208,7 @@ export default function IncomesPage() {
           {!editing && (
             <ToggleSwitch checked={form.recurring} onChange={(recurring) => setForm({ ...form, recurring })} label="Receita recorrente" description="Será gerada automaticamente todo mês ao fechar o período." />
           )}
-          <div className="flex gap-3 justify-end pt-2">
+          <div className="flex flex-wrap gap-3 justify-end pt-2">
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
             <Button onClick={handleSave} loading={saving}>Salvar</Button>
           </div>

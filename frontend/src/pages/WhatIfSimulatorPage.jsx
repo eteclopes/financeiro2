@@ -55,7 +55,7 @@ function ScenarioInputFields({ type, input, setInput, activeDebts }) {
     </FormGroup>
   );
   if (type === 'anticipate_installments') return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <FormGroup label="Dívida">
         <Select value={input.debtId ?? ''} onChange={(e) => setInput({...input, debtId: e.target.value})}>
           <option value="">Selecione...</option>
@@ -171,7 +171,7 @@ export default function WhatIfSimulatorPage() {
         {result ? (
           <div className="space-y-4 animate-slide-up">
             {/* Resumo */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Card className={`!p-4 ${totalGain >= 0 ? 'bg-primary-subtle border-primary/20' : 'bg-danger-subtle border-danger/20'}`}>
                 <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Ganho acumulado</p>
                 <p className={`text-2xl font-bold font-mono ${totalGain >= 0 ? 'text-primary-dark' : 'text-danger-dark'}`}>

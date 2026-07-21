@@ -47,7 +47,7 @@ export default function CloseMonthDialog({ preview, loading, onConfirm, onCancel
 
 function Row({ label, value }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex flex-wrap items-center justify-between gap-3">
       <span className="text-muted">{label}</span>
       <span className="font-mono tabular-nums text-ink">{value}</span>
     </div>

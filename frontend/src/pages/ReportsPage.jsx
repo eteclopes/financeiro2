@@ -39,7 +39,7 @@ export default function ReportsPage() {
   const SCORE_COLOR = (s) => s >= 75 ? '#16A34A' : s >= 50 ? '#F59E0B' : '#EF4444';
 
   return (
-    <div className="space-y-6 animate-page-enter" id="report-content">
+    <div data-tutorial-page-ready="reports" className="space-y-6 animate-page-enter" id="report-content">
       <div className="flex items-center justify-between flex-wrap gap-3 print:hidden">
         <div>
           <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white print:text-slate-900">Relatórios</h2>
@@ -51,7 +51,7 @@ export default function ReportsPage() {
       {/* ── Relatório Mensal ── */}
       <Card>
         <CardHeader title="Resumo Financeiro Mensal" subtitle={month ? formatMonthLabel(month) : ''} />
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="auto-grid-comfortable">
           {[
             { label:'Receita Total',      value: data.incomeTotal,      color:'text-primary-dark dark:text-primary-light' },
             { label:'Despesas Previstas', value: data.expensesPlanned,  color:'text-danger-dark dark:text-danger-light'  },
@@ -173,7 +173,7 @@ export default function ReportsPage() {
           <div className="px-5 py-4 border-b border-border dark:border-white/[0.06]">
             <h3 className="font-semibold text-slate-900 dark:text-zinc-50">Relatório de Metas Ativas</h3>
           </div>
-          <div className="overflow-x-auto">
+          <div className="data-table-scroll">
             <table className="w-full text-sm">
               <thead className="bg-subtle/60 dark:bg-white/[0.03]"><tr>
                 {['Meta','Valor Alvo','Acumulado','Progresso','Prazo estimado'].map(h => (
@@ -211,7 +211,7 @@ export default function ReportsPage() {
           <div className="px-5 py-4 border-b border-border dark:border-white/[0.06]">
             <h3 className="font-semibold text-slate-900 dark:text-zinc-50">Relatório de Cartões</h3>
           </div>
-          <div className="overflow-x-auto">
+          <div className="data-table-scroll">
             <table className="w-full text-sm">
               <thead className="bg-subtle/60 dark:bg-white/[0.03]"><tr>
                 {['Cartão','Limite Total','Utilizado','Disponível','Utilização'].map(h => (

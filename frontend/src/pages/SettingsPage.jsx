@@ -20,6 +20,7 @@ export default function SettingsPage() {
   const setTheme = useThemeStore((s) => s.setTheme);
   const [catType, setCatType]     = useState('expense');
   const [categories, setCategories] = useState([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
   const [catName, setCatName]     = useState('');
   const [savingCat, setSavingCat] = useState(false);
   const [editingCatId, setEditingCatId]     = useState(null);
@@ -47,8 +48,10 @@ export default function SettingsPage() {
   }
 
   async function loadCats() {
+    setLoadingCategories(true);
     try { const r = await categoriesApi.list(catType); setCategories(r.data.categories ?? []); }
     catch { toast.error('Erro ao carregar categorias.'); }
+    finally { setLoadingCategories(false); }
   }
 
   useEffect(() => { loadCats(); }, [catType]);
@@ -87,7 +90,7 @@ export default function SettingsPage() {
   const defaultCats = categories.filter((c) => c.userId == null);
 
   return (
-    <div className="space-y-5 max-w-2xl animate-fade-in">
+    <div data-tutorial-page-ready={!loadingCategories ? 'settings' : undefined} className="space-y-5 max-w-3xl animate-fade-in">
       <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Configurações</h2>
 
       {/* Perfil */}
@@ -128,7 +131,7 @@ export default function SettingsPage() {
               onKeyDown={(e) => { if (e.key === 'Enter') saveEditName(); }} />
           </FormGroup>
           <p className="text-xs text-muted">O e-mail não pode ser alterado por aqui.</p>
-          <div className="flex gap-3 justify-end">
+          <div className="flex flex-wrap gap-3 justify-end">
             <Button variant="outline" onClick={() => setEditNameModal(false)}>Cancelar</Button>
             <Button onClick={saveEditName} loading={savingName}>Salvar</Button>
           </div>

@@ -3,7 +3,7 @@ import { useMonthStore } from '../store/monthStore';
 import { expensesApi, debtsApi, categoriesApi, cardsApi } from '../lib/services';
 import { extractErrorMessage } from '../lib/api';
 import { formatCurrency, formatShortDate } from '../lib/format';
-import { Card, Badge, Button, EmptyState, Skeleton, TabGroup } from '../components/ui/index';
+import { Card, Badge, Button, EmptyState, Skeleton, TabGroup, ProgressBar } from '../components/ui/index';
 import { Modal, ConfirmDialog, FormGroup, Input, Select } from '../components/ui/Modal';
 import { CategorySelect } from '../components/ui/CategorySelect';
 import { useUIStore } from '../store/uiStore';
@@ -261,7 +261,7 @@ export default function ExpensesPage() {
   );
 
   return (
-    <div className="space-y-5 animate-page-enter">
+    <div data-tutorial-page-ready={!loading ? 'expenses' : undefined} className="space-y-5 animate-page-enter">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Despesas</h2>
         {addButton}
@@ -277,73 +277,100 @@ export default function ExpensesPage() {
             description="Adicione uma nova despesa clicando no botão acima."
             action={addButton} />
         ) : tab === 'priority' ? (
-          /* ── Tabela Prioridade ── */
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-subtle/60 dark:bg-white/[0.03]">
-                <tr>
-                  {['Descrição','Parcela','Pago','Saldo Devedor','Vencimento','Status','Ações'].map(h=>(
-                    <th key={h} className="table-header">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/60 dark:divide-white/[0.06]">
-                {filtered.map((e) => {
-                  const debt = debts.find((d) => String(d.id) === String(e.debtId));
-                  // 'partial' só é possível em parcelas de dívida (fixa/variável
-                  // sempre exigem valor exato) — e agora que pagar menos/mais
-                  // ajusta a PRÓXIMA parcela automaticamente, a diferença já foi
-                  // propagada, então esta parcela específica fica encerrada.
-                  const alreadyPaid = ['paid','settled','partial'].includes(e.status);
-                  return (
-                    <tr key={e.id} className="hover:bg-subtle/40 dark:hover:bg-white/[0.03] transition-colors">
-                      <td className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{e.description}</td>
-                      <td className="table-cell font-mono tabular-nums">{formatCurrency(e.value)}</td>
-                      <td className="table-cell font-mono tabular-nums text-primary-dark">{formatCurrency(e.paidAmount)}</td>
-                      <td className="table-cell font-mono tabular-nums text-danger-dark font-semibold">
-                        {debt ? formatCurrency(debt.remainingBalance) : '—'}
-                      </td>
-                      <td className="table-cell text-muted">{formatShortDate(e.dueDate)}</td>
-                      <td className="table-cell">
-                        <Badge variant={STATUS_V[e.status] ?? 'default'}>{STATUS_L[e.status] ?? e.status}</Badge>
-                      </td>
-                      <td className="table-cell">
-                        <div className="flex items-center gap-2">
-                          {!alreadyPaid && (
-                            <Button size="sm" onClick={() => openPay(e)}>Pagar</Button>
-                          )}
-                          {alreadyPaid && (
-                            <span className="text-xs text-primary-dark font-medium flex items-center gap-1" title={e.status === 'partial' ? 'O ajuste da diferença já foi aplicado à próxima parcela.' : undefined}>
-                              ✓ {e.status === 'partial' ? 'Pago (parcial)' : 'Pago'}
-                            </span>
-                          )}
-                          {debt && (
-                            <>
-                              <Button size="sm" variant="ghost" onClick={() => {
-                                setEditDebtModal(debt);
-                                setEditDebtForm({
-                                  description: debt.description,
-                                  categoryId: String(debt.categoryId),
-                                  dueDay: String(debt.dueDay),
-                                  flexiblePayment: !!debt.flexiblePayment,
-                                });
-                              }}>Editar</Button>
-                              <Button size="sm" variant="ghost" className="text-danger hover:text-danger-dark" onClick={() => setDeleteTarget({ ...debt, _type:'debt' })}>
-                                Remover
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          /* ── Dívidas em cards responsivos ── */
+          <div className="auto-grid-wide p-4 sm:p-5">
+            {filtered.map((e) => {
+              const debt = debts.find((d) => String(d.id) === String(e.debtId));
+              const alreadyPaid = ['paid','settled','partial'].includes(e.status);
+              const match = String(e.description ?? '').match(/\((\d+)\/(\d+)\)$/);
+              const installmentLabel = match
+                ? `${match[1]}/${match[2]}`
+                : debt ? `${Math.max(Number(debt.installmentsGenerated ?? 1), 1)}/${debt.installmentsCount}` : '—';
+              const displayDescription = debt?.description
+                ?? String(e.description ?? '').replace(/\s*\(\d+\/\d+\)$/, '');
+              const totalValue = Number(debt?.totalValue ?? e.value ?? 0);
+              const paidValue = Number(debt?.valuePaid ?? e.paidAmount ?? 0);
+              const remainingValue = Number(debt?.remainingBalance ?? Math.max(totalValue - paidValue, 0));
+              const progress = totalValue > 0 ? Math.min(Math.round((paidValue / totalValue) * 100), 100) : 0;
+              const progressColor = e.status === 'late' ? 'danger' : progress >= 75 ? 'success' : progress >= 40 ? 'warning' : 'primary';
+
+              return (
+                <Card key={e.id} padding={false} hover className="debt-card">
+                  <div className="flex items-start justify-between gap-4 border-b border-slate-200/70 px-5 py-4 dark:border-white/[0.07]">
+                    <div className="min-w-0">
+                      <p className="debt-card-title">{displayDescription}</p>
+                      <p className="mt-1 text-xs text-muted">{debt?.category?.name ?? e.category?.name ?? 'Dívida parcelada'}</p>
+                    </div>
+                    <Badge variant={STATUS_V[e.status] ?? 'default'} className="shrink-0">{STATUS_L[e.status] ?? e.status}</Badge>
+                  </div>
+
+                  <div className="space-y-4 p-5">
+                    <div>
+                      <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                        <span className="font-semibold text-slate-600 dark:text-zinc-400">Progresso da dívida</span>
+                        <span className="shrink-0 font-mono font-bold tabular-nums text-primary-dark dark:text-primary-light">{progress}%</span>
+                      </div>
+                      <ProgressBar value={progress} color={progressColor} height="h-2.5" />
+                    </div>
+
+                    <div className="debt-metrics-grid">
+                      <div className="debt-metric">
+                        <span>Parcela atual</span>
+                        <strong>{installmentLabel}</strong>
+                      </div>
+                      <div className="debt-metric">
+                        <span>Valor da parcela</span>
+                        <strong>{formatCurrency(e.value)}</strong>
+                      </div>
+                      <div className="debt-metric">
+                        <span>Total pago</span>
+                        <strong className="text-success-dark dark:text-success-light">{formatCurrency(paidValue)}</strong>
+                      </div>
+                      <div className="debt-metric">
+                        <span>Saldo devedor</span>
+                        <strong className="text-danger-dark dark:text-danger-light">{formatCurrency(remainingValue)}</strong>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-3.5 py-3 dark:bg-white/[0.035]">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted">Vencimento</p>
+                        <p className="mt-0.5 text-sm font-semibold text-slate-800 dark:text-zinc-200">{formatShortDate(e.dueDate)}</p>
+                      </div>
+                      {alreadyPaid && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-success-subtle px-3 py-1.5 text-xs font-bold text-success-dark dark:bg-success/10 dark:text-success-light">
+                          ✓ {e.status === 'partial' ? 'Pago com ajuste' : 'Pagamento concluído'}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 border-t border-slate-200/70 pt-4 dark:border-white/[0.07]">
+                      {!alreadyPaid && <Button size="sm" onClick={() => openPay(e)}>Pagar parcela</Button>}
+                      {debt && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => {
+                            setEditDebtModal(debt);
+                            setEditDebtForm({
+                              description: debt.description,
+                              categoryId: String(debt.categoryId),
+                              dueDay: String(debt.dueDay),
+                              flexiblePayment: !!debt.flexiblePayment,
+                            });
+                          }}>Editar dívida</Button>
+                          <Button size="sm" variant="ghost" className="text-danger hover:text-danger-dark" onClick={() => setDeleteTarget({ ...debt, _type:'debt' })}>
+                            Remover
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
           </div>
         ) : tab === 'fixed' ? (
           /* ── Tabela Fixas ── */
-          <div className="overflow-x-auto">
+          <div className="data-table-scroll">
             <table className="w-full text-sm">
               <thead className="bg-subtle/60 dark:bg-white/[0.03]">
                 <tr>
@@ -393,7 +420,7 @@ export default function ExpensesPage() {
           </div>
         ) : (
           /* ── Tabela Variáveis ── */
-          <div className="overflow-x-auto">
+          <div className="data-table-scroll">
             <table className="w-full text-sm">
               <thead className="bg-subtle/60 dark:bg-white/[0.03]">
                 <tr>
@@ -458,7 +485,7 @@ export default function ExpensesPage() {
                 💡 Se pagar menos que a parcela e a dívida tiver pagamento flexível, o saldo restante será acumulado para a próxima parcela.
               </p>
             )}
-            <div className="flex gap-3 justify-end pt-1">
+            <div className="flex flex-wrap gap-3 justify-end pt-1">
               <Button variant="outline" onClick={() => setPayModal(null)}>Cancelar</Button>
               <Button onClick={handlePay} loading={paying}>Confirmar Pagamento</Button>
             </div>
@@ -472,7 +499,7 @@ export default function ExpensesPage() {
           <FormGroup label="Descrição" required>
             <Input value={varForm.description} onChange={(e) => setVarForm({...varForm,description:e.target.value})} placeholder="Ex: Mercado, Lanche..." autoFocus />
           </FormGroup>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor" required>
               <Input type="number" min="0" step="0.01" value={varForm.value} onChange={(e) => setVarForm({...varForm,value:e.target.value})} />
             </FormGroup>
@@ -502,7 +529,7 @@ export default function ExpensesPage() {
             </FormGroup>
           )}
           {varForm.paymentMethod !== 'credit' && <ToggleSwitch checked={varForm.paid} onChange={(paid) => setVarForm({ ...varForm, paid })} label="Já foi pago" description="Desative para deixar a despesa pendente neste mês." />}
-          <div className="flex gap-3 justify-end pt-1">
+          <div className="flex flex-wrap gap-3 justify-end pt-1">
             <Button variant="outline" onClick={() => setVarModal(false)}>Cancelar</Button>
             <Button onClick={saveVariable} loading={saving}>Salvar</Button>
           </div>
@@ -518,7 +545,7 @@ export default function ExpensesPage() {
           <FormGroup label="Descrição" required>
             <Input value={fixForm.description} onChange={(e) => setFixForm({...fixForm,description:e.target.value})} placeholder="Ex: Netflix, Academia, Internet..." autoFocus />
           </FormGroup>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor mensal" required>
               <Input type="number" min="0" step="0.01" value={fixForm.value} onChange={(e) => setFixForm({...fixForm,value:e.target.value})} />
             </FormGroup>
@@ -555,7 +582,7 @@ export default function ExpensesPage() {
               </p>
             </FormGroup>
           )}
-          <div className="flex gap-3 justify-end pt-1">
+          <div className="flex flex-wrap gap-3 justify-end pt-1">
             <Button variant="outline" onClick={() => setFixModal(false)}>Cancelar</Button>
             <Button onClick={saveFixed} loading={saving}>Criar Despesa Fixa</Button>
           </div>
@@ -571,7 +598,7 @@ export default function ExpensesPage() {
           <FormGroup label="Descrição" required>
             <Input value={editFixForm.description} onChange={(e) => setEditFixForm({...editFixForm,description:e.target.value})} />
           </FormGroup>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Novo valor" required>
               <Input type="number" min="0" step="0.01" value={editFixForm.value} onChange={(e) => setEditFixForm({...editFixForm,value:e.target.value})} />
             </FormGroup>
@@ -590,7 +617,7 @@ export default function ExpensesPage() {
               </Select>
             </FormGroup>
           )}
-          <div className="flex gap-3 justify-end pt-1">
+          <div className="flex flex-wrap gap-3 justify-end pt-1">
             <Button variant="outline" onClick={() => setEditFixModal(null)}>Cancelar</Button>
             <Button onClick={saveEditFixed} loading={saving}>Salvar Alteração</Button>
           </div>
@@ -603,7 +630,7 @@ export default function ExpensesPage() {
           <FormGroup label="Descrição" required>
             <Input value={editVarForm.description} onChange={(e) => setEditVarForm({...editVarForm,description:e.target.value})} autoFocus />
           </FormGroup>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor" required>
               <Input type="number" min="0" step="0.01" value={editVarForm.value} onChange={(e) => setEditVarForm({...editVarForm,value:e.target.value})} />
             </FormGroup>
@@ -626,7 +653,7 @@ export default function ExpensesPage() {
           <p className="text-xs text-muted">
             Forma de pagamento e status (pago/pendente) não são alterados aqui — use "Pagar" na listagem para isso.
           </p>
-          <div className="flex gap-3 justify-end pt-1">
+          <div className="flex flex-wrap gap-3 justify-end pt-1">
             <Button variant="outline" onClick={() => setEditVarModal(null)}>Cancelar</Button>
             <Button onClick={saveEditVariable} loading={saving}>Salvar Alteração</Button>
           </div>
@@ -634,7 +661,7 @@ export default function ExpensesPage() {
       </Modal>
 
       {/* ── Modal Nova Dívida ── */}
-      <Modal open={debtModal} onClose={() => setDebtModal(false)} title="Nova Dívida / Parcelamento">
+      <Modal open={debtModal} onClose={() => setDebtModal(false)} title="Nova Dívida / Parcelamento" size="xl">
         <div className="space-y-4">
           <FormGroup label="Descrição" required>
             <Input value={debtForm.description} onChange={(e) => setDebtForm({...debtForm,description:e.target.value})} placeholder="Ex: Empréstimo, Financiamento..." autoFocus />
@@ -648,7 +675,7 @@ export default function ExpensesPage() {
               onCategoryCreated={(cat) => setCategories((prev) => [...prev, cat])}
             />
           </FormGroup>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor total" required>
               <Input type="number" min="0" step="0.01" value={debtForm.totalValue} onChange={(e) => setDebtForm({...debtForm,totalValue:e.target.value})} />
             </FormGroup>
@@ -674,7 +701,7 @@ export default function ExpensesPage() {
             </p>
           </FormGroup>
           <ToggleSwitch checked={debtForm.flexiblePayment} onChange={(flexiblePayment) => setDebtForm({ ...debtForm, flexiblePayment })} label="Aceitar pagamento parcial" description="O valor não pago será somado à próxima parcela." />
-          <div className="flex gap-3 justify-end pt-1">
+          <div className="flex flex-wrap gap-3 justify-end pt-1">
             <Button variant="outline" onClick={() => setDebtModal(false)}>Cancelar</Button>
             <Button onClick={saveDebt} loading={saving}>Criar Dívida</Button>
           </div>
@@ -703,7 +730,7 @@ export default function ExpensesPage() {
             <Input type="number" min="1" max="31" value={editDebtForm.dueDay} onChange={(e) => setEditDebtForm({...editDebtForm,dueDay:e.target.value})} />
           </FormGroup>
           <ToggleSwitch checked={editDebtForm.flexiblePayment} onChange={(flexiblePayment) => setEditDebtForm({ ...editDebtForm, flexiblePayment })} label="Aceitar pagamento parcial" description="O valor não pago será somado à próxima parcela." />
-          <div className="flex gap-3 justify-end pt-1">
+          <div className="flex flex-wrap gap-3 justify-end pt-1">
             <Button variant="outline" onClick={() => setEditDebtModal(null)}>Cancelar</Button>
             <Button onClick={saveEditDebt} loading={saving}>Salvar Alteração</Button>
           </div>

@@ -49,14 +49,16 @@ export function ChoiceCards({
 }) {
   const generatedName = useId();
   const radioName = name ?? generatedName;
-  const colClass = columns === 2
-    ? 'grid-cols-1 sm:grid-cols-2'
-    : columns === 4
-      ? 'grid-cols-2 sm:grid-cols-4'
-      : 'grid-cols-2 sm:grid-cols-3';
+  const minCardWidth = compact
+    ? (columns >= 4 ? 132 : 150)
+    : (columns === 2 ? 210 : columns >= 4 ? 150 : 174);
 
   return (
-    <div className={`grid ${colClass} gap-2 ${className}`} role="radiogroup">
+    <div
+      className={`grid gap-2 ${className}`}
+      style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${minCardWidth}px), 1fr))` }}
+      role="radiogroup"
+    >
       {options.map((option) => {
         const selected = String(value) === String(option.value);
         return (

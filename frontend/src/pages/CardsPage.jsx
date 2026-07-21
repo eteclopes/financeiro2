@@ -164,13 +164,13 @@ export default function CardsPage() {
 
   if (loading) return (
     <div className="space-y-4 animate-pulse">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">{Array.from({length:3}).map((_,i)=><div key={i} className="h-44 shimmer-bg rounded-3xl" />)}</div>
+      <div className="auto-grid-comfortable">{Array.from({length:3}).map((_,i)=><div key={i} className="h-44 shimmer-bg rounded-3xl" />)}</div>
     </div>
   );
 
   return (
-    <div className="space-y-6 animate-page-enter">
-      <div className="flex items-center justify-between">
+    <div data-tutorial-page-ready="cards" className="space-y-6 animate-page-enter">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Cartões de Crédito</h2>
           <p className="text-sm text-muted mt-0.5">{cards.length} cartão(ões) cadastrado(s)</p>
@@ -185,7 +185,7 @@ export default function CardsPage() {
       ) : (
         <>
           {/* Cards visuais */}
-          <div data-tutorial="cards-list" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div data-tutorial="cards-list" className="auto-grid-wide">
             {cards.map((card) => {
               const pct = Math.min(Math.round((card.usedLimit / Number(card.limitValue)) * 100), 100);
               const isSelected = String(selected?.id) === String(card.id);
@@ -261,7 +261,7 @@ export default function CardsPage() {
               ) : invoices.length === 0 ? (
                 <EmptyState icon="🧾" title="Sem faturas" description="As faturas serão geradas automaticamente conforme você registrar compras." />
               ) : (
-                <div className="overflow-x-auto">
+                <div className="data-table-scroll">
                   <table className="w-full text-sm">
                     <thead className="bg-subtle/60 dark:bg-white/[0.03]"><tr>
                       {['Referência','Fechamento','Vencimento','Total','Status',''].map(h=><th key={h} className="table-header">{h}</th>)}
@@ -296,7 +296,7 @@ export default function CardsPage() {
         <div className="space-y-4">
           <FormGroup label="Nome do cartão" required><Input value={cardForm.name} onChange={(e) => setCardForm({...cardForm,name:e.target.value})} placeholder="Ex: Nubank, Inter..." autoFocus /></FormGroup>
           <FormGroup label="Limite de crédito" required><Input type="number" min="0" step="0.01" value={cardForm.limitValue} onChange={(e) => setCardForm({...cardForm,limitValue:e.target.value})} /></FormGroup>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Dia de fechamento"><Input type="number" min="1" max="31" value={cardForm.closingDay} onChange={(e) => setCardForm({...cardForm,closingDay:e.target.value})} /></FormGroup>
             <FormGroup label="Dia de vencimento"><Input type="number" min="1" max="31" value={cardForm.dueDay} onChange={(e) => setCardForm({...cardForm,dueDay:e.target.value})} /></FormGroup>
           </div>
@@ -309,7 +309,7 @@ export default function CardsPage() {
               ))}
             </div>
           </FormGroup>
-          <div className="flex gap-3 justify-end pt-1">
+          <div className="flex flex-wrap gap-3 justify-end pt-1">
             <Button variant="outline" onClick={() => setCardModal(false)}>Cancelar</Button>
             <Button onClick={saveCard} loading={saving}>Criar Cartão</Button>
           </div>
@@ -323,7 +323,7 @@ export default function CardsPage() {
           <FormGroup label="Limite de crédito" required hint="pode ser alterado a qualquer momento">
             <Input type="number" min="0" step="0.01" value={editCardForm.limitValue} onChange={(e) => setEditCardForm({...editCardForm,limitValue:e.target.value})} />
           </FormGroup>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Dia de fechamento"><Input type="number" min="1" max="31" value={editCardForm.closingDay} onChange={(e) => setEditCardForm({...editCardForm,closingDay:e.target.value})} /></FormGroup>
             <FormGroup label="Dia de vencimento"><Input type="number" min="1" max="31" value={editCardForm.dueDay} onChange={(e) => setEditCardForm({...editCardForm,dueDay:e.target.value})} /></FormGroup>
           </div>
@@ -336,7 +336,7 @@ export default function CardsPage() {
               ))}
             </div>
           </FormGroup>
-          <div className="flex gap-3 justify-end pt-1">
+          <div className="flex flex-wrap gap-3 justify-end pt-1">
             <Button variant="outline" onClick={() => setEditCardModal(null)}>Cancelar</Button>
             <Button onClick={saveEditCard} loading={saving}>Salvar Alterações</Button>
           </div>
@@ -371,7 +371,7 @@ export default function CardsPage() {
 
 
       {/* Modal Nova Compra */}
-      <Modal open={purchaseModal} onClose={() => setPurchaseModal(false)} title={`Nova Compra — ${selected?.name}`}>
+      <Modal open={purchaseModal} onClose={() => setPurchaseModal(false)} title={`Nova Compra — ${selected?.name}`} size="lg">
         <div className="space-y-4">
           <FormGroup label="Descrição" required><Input value={purchaseForm.description} onChange={(e) => setPurchaseForm({...purchaseForm,description:e.target.value})} placeholder="Ex: Tênis, Notebook..." autoFocus /></FormGroup>
           <FormGroup label="Categoria">
@@ -383,7 +383,7 @@ export default function CardsPage() {
               onCategoryCreated={(cat) => setCategories((prev) => [...prev, cat])}
             />
           </FormGroup>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor total" required><Input type="number" min="0" step="0.01" value={purchaseForm.totalValue} onChange={(e) => setPurchaseForm({...purchaseForm,totalValue:e.target.value})} /></FormGroup>
             <FormGroup label="Parcelas"><Input type="number" min="1" max="48" value={purchaseForm.installmentsCount} onChange={(e) => setPurchaseForm({...purchaseForm,installmentsCount:e.target.value})} /></FormGroup>
             <FormGroup label="Data"><Input type="date" value={purchaseForm.purchaseDate} onChange={(e) => setPurchaseForm({...purchaseForm,purchaseDate:e.target.value})} /></FormGroup>
@@ -401,7 +401,7 @@ export default function CardsPage() {
               <p className="text-xs text-muted mt-1.5">Deixe em 1 se a compra é nova. Lança fatura só a partir da parcela informada.</p>
             </FormGroup>
           )}
-          <div className="flex gap-3 justify-end pt-1">
+          <div className="flex flex-wrap gap-3 justify-end pt-1">
             <Button variant="outline" onClick={() => setPurchaseModal(false)}>Cancelar</Button>
             <Button onClick={savePurchase} loading={saving}>Registrar Compra</Button>
           </div>
@@ -420,7 +420,7 @@ export default function CardsPage() {
             <FormGroup label="Forma de pagamento">
               <ChoiceCards compact columns={2} value={invMethod} onChange={setInvMethod} options={PAYMENT_OPTIONS} />
             </FormGroup>
-            <div className="flex gap-3 justify-end">
+            <div className="flex flex-wrap gap-3 justify-end">
               <Button variant="outline" onClick={() => setPayTarget(null)}>Cancelar</Button>
               <Button onClick={payInvoice} loading={paying}>Confirmar Pagamento</Button>
             </div>

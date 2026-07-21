@@ -88,14 +88,14 @@ export default function DashboardPage() {
       <div className="space-y-5 animate-pulse">
         <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-4">
           <Skeleton className="h-40 rounded-3xl" />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Skeleton className="h-20 rounded-2xl" />
             <Skeleton className="h-20 rounded-2xl" />
             <Skeleton className="h-20 rounded-2xl col-span-2" />
           </div>
         </div>
         <Skeleton className="h-14 rounded-2xl" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="auto-grid-comfortable">
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-60" />)}
         </div>
       </div>
@@ -138,7 +138,7 @@ export default function DashboardPage() {
     .sort((a, b) => b.value - a.value);
 
   return (
-    <div className="space-y-6 animate-page-enter">
+    <div data-tutorial-page-ready="dashboard" className="space-y-6 animate-page-enter">
       {/* Saldo em destaque + demais valores */}
       <div data-tutorial="dashboard-summary" className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-4">
         {/* Hero: saldo atual */}
@@ -178,7 +178,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Grade 2x2: reserva, físico, dívida */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Spotlight className="premium-card premium-card-hover p-4">
             <p className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <IconPiggy size={13} /> Reserva
@@ -222,7 +222,7 @@ export default function DashboardPage() {
       </Card>
 
       {/* Linha: Saúde + Alertas + Recomendações */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="auto-grid-comfortable">
         {/* Saúde Financeira */}
         <Card data-tutorial="financial-health">
           <CardHeader title="Saúde Financeira" />
@@ -301,7 +301,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Comprometimento + Cartões + Vencimentos */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="auto-grid-comfortable">
         {data.commitment && (
           <Card>
             <CardHeader title="Comprometimento da Renda" />
@@ -378,7 +378,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Gráficos */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="auto-grid-comfortable">
         <Card className="lg:col-span-1">
           <CardHeader title="Receitas × Despesas" subtitle="Alterne a leitura do mês" actions={<SegmentedControl value={summaryChart} onChange={setSummaryChart} options={[{ value:'bars', label:'Barras', icon:'▥' }, { value:'area', label:'Fluxo', icon:'⌁' }]} />} />
           <div className="h-52">
@@ -478,7 +478,7 @@ export default function DashboardPage() {
       {(data.goals ?? []).length > 0 && (
         <Card>
           <CardHeader title="Metas Ativas" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="auto-grid-comfortable">
             {data.goals.map((g) => (
               <div key={g.id} className="bg-subtle dark:bg-white/[0.04] rounded-2xl p-4 transition-all duration-200 hover:bg-subtle/70 dark:hover:bg-white/[0.06]">
                 <p className="text-sm font-semibold text-slate-800 dark:text-zinc-200 mb-3">{g.name}</p>

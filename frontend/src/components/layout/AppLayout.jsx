@@ -7,6 +7,7 @@ import { useMonthStore } from '../../store/monthStore';
 import { useUIStore } from '../../store/uiStore';
 import { useTutorialStore } from '../../store/tutorialStore';
 import { TutorialRunner } from '../tutorial/TutorialRunner';
+import { waitForTutorialPage } from '../../lib/tutorialDom';
 
 const ROUTE_TITLES = {
   '/dashboard': 'Visão geral',
@@ -34,31 +35,50 @@ export function AppLayout() {
   const hasSeenTutorial = useTutorialStore((s) => s.hasSeenTutorial);
   const startTutorial = useTutorialStore((s) => s.start);
   const shellRef = useRef(null);
+  const tutorialLaunchAttemptedRef = useRef(false);
 
   useEffect(() => { initialize(); }, [initialize]);
 
   useEffect(() => {
-    if (monthStatus !== 'ready' || hasSeenTutorial()) return undefined;
+    if (monthStatus !== 'ready' || hasSeenTutorial() || location.pathname !== '/dashboard') return undefined;
+    if (tutorialLaunchAttemptedRef.current) return undefined;
 
-    let cancelled = false;
-    const launch = () => {
-      if (!cancelled) startTutorial();
-    };
+    tutorialLaunchAttemptedRef.current = true;
+    const controller = new AbortController();
 
-    // O Runner ainda confirma o carregamento da página e dos dados. Aqui,
-    // requestIdleCallback apenas evita abrir o tour durante o primeiro pico
-    // de renderização/hidratação do shell.
-    const usingIdleCallback = typeof window.requestIdleCallback === 'function';
-    const idleId = usingIdleCallback
-      ? window.requestIdleCallback(launch, { timeout: 1_500 })
-      : window.setTimeout(launch, 250);
+    (async () => {
+      try {
+        // O tutorial automático só é liberado quando o dashboard publica o
+        // marcador explícito de página pronta. Cabeçalho e botões que montam
+        // antes das consultas não são mais suficientes para iniciar o tour.
+        const ready = await waitForTutorialPage('[data-tutorial-page-ready="dashboard"]', {
+          signal: controller.signal,
+          timeout: 22_000,
+        });
+        if (!ready || controller.signal.aborted || hasSeenTutorial()) {
+          tutorialLaunchAttemptedRef.current = false;
+          return;
+        }
 
-    return () => {
-      cancelled = true;
-      if (usingIdleCallback) window.cancelIdleCallback?.(idleId);
-      else window.clearTimeout(idleId);
-    };
-  }, [monthStatus, hasSeenTutorial, startTutorial]);
+        // Dá ao usuário um instante para enxergar a tela completa antes da
+        // sobreposição. Este intervalo acontece somente após a prontidão real.
+        await new Promise((resolve, reject) => {
+          const timer = window.setTimeout(resolve, 650);
+          controller.signal.addEventListener('abort', () => {
+            window.clearTimeout(timer);
+            reject(new DOMException('Tutorial cancelado', 'AbortError'));
+          }, { once: true });
+        });
+
+        if (!controller.signal.aborted && window.location.pathname === '/dashboard') startTutorial();
+      } catch (error) {
+        if (error?.name !== 'AbortError') console.warn('[Tutorial] Falha ao aguardar o dashboard.', error);
+        tutorialLaunchAttemptedRef.current = false;
+      }
+    })();
+
+    return () => controller.abort();
+  }, [monthStatus, hasSeenTutorial, startTutorial, location.pathname]);
 
   useEffect(() => {
     const shell = shellRef.current;

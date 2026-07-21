@@ -5,6 +5,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 'welcome',
     route: '/dashboard',
+    pageReady: '[data-tutorial-page-ready="dashboard"]',
     element: null,
     readyElement: '[data-tutorial="dashboard-summary"]',
     eyebrow: 'Primeiros passos',
@@ -17,6 +18,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 'month',
     route: '/dashboard',
+    pageReady: '[data-tutorial-page-ready="dashboard"]',
     element: '[data-tutorial="month-selector"]',
     readyElement: '[data-tutorial="dashboard-summary"]',
     skipIfHidden: true,
@@ -30,6 +32,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 'summary',
     route: '/dashboard',
+    pageReady: '[data-tutorial-page-ready="dashboard"]',
     element: '[data-tutorial="dashboard-summary"]',
     readyElement: '[data-tutorial="dashboard-summary"]',
     eyebrow: 'Visão geral',
@@ -42,6 +45,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 'health',
     route: '/dashboard',
+    pageReady: '[data-tutorial-page-ready="dashboard"]',
     element: '[data-tutorial="financial-health"]',
     readyElement: '[data-tutorial="dashboard-summary"]',
     eyebrow: 'Diagnóstico',
@@ -54,6 +58,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 'quick-actions',
     route: '/dashboard',
+    pageReady: '[data-tutorial-page-ready="dashboard"]',
     element: '[data-tutorial="quick-actions"]',
     readyElement: '[data-tutorial="dashboard-summary"]',
     eyebrow: 'Atalhos',
@@ -66,6 +71,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 'incomes',
     route: '/incomes',
+    pageReady: '[data-tutorial-page-ready="incomes"]',
     element: '[data-tutorial="new-income"]',
     readyElement: '[data-tutorial="new-income"]',
     eyebrow: 'Entradas',
@@ -78,6 +84,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 'expense-types',
     route: '/expenses',
+    pageReady: '[data-tutorial-page-ready="expenses"]',
     element: '[data-tutorial="expense-tabs"]',
     readyElement: '[data-tutorial="expense-tabs"]',
     eyebrow: 'Organização',
@@ -90,6 +97,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 'new-expense',
     route: '/expenses',
+    pageReady: '[data-tutorial-page-ready="expenses"]',
     element: '[data-tutorial="new-expense-button"]',
     readyElement: '[data-tutorial="expense-tabs"]',
     eyebrow: 'Novo lançamento',
@@ -102,6 +110,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 'cards',
     route: '/cards',
+    pageReady: '[data-tutorial-page-ready="cards"]',
     element: ['[data-tutorial="cards-list"]', '[data-tutorial="cards-empty"]'],
     readyElement: '[data-tutorial="cards-area"]',
     eyebrow: 'Crédito',
@@ -114,6 +123,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 'savings',
     route: '/savings',
+    pageReady: '[data-tutorial-page-ready="savings"]',
     element: '[data-tutorial="savings-actions"]',
     readyElement: '[data-tutorial="savings-actions"]',
     eyebrow: 'Proteção',
@@ -126,6 +136,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 'goals',
     route: '/goals',
+    pageReady: '[data-tutorial-page-ready="goals"]',
     element: '[data-tutorial="new-goal-button"]',
     readyElement: '[data-tutorial="new-goal-button"]',
     eyebrow: 'Objetivos',
@@ -138,6 +149,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 'reports',
     route: '/reports',
+    pageReady: '[data-tutorial-page-ready="reports"]',
     element: '#report-content',
     readyElement: '#report-content',
     eyebrow: 'Análise',
@@ -150,6 +162,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 'settings',
     route: '/settings',
+    pageReady: '[data-tutorial-page-ready="settings"]',
     element: '[data-tutorial="tutorial-replay-button"]',
     readyElement: '[data-tutorial="tutorial-replay-button"]',
     eyebrow: 'Personalização',

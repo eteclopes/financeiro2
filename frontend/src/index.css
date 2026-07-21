@@ -555,3 +555,101 @@ tbody tr:hover .table-cell:first-child { transform: translateX(3px); }
 .dark .goal-card-v2::after { border-color: rgb(168 85 247 / 0.16); }
 .goal-progress-ring { filter: drop-shadow(0 5px 10px rgb(124 58 237 / 0.12)); transition: filter 220ms ease, transform 220ms ease; }
 .goal-card-v2:hover .goal-progress-ring { filter: drop-shadow(0 7px 14px rgb(124 58 237 / 0.25)); transform: scale(1.04) rotate(2deg); }
+
+/* ──────────────────────────────────────────────────────────
+   Responsive density guardrails — evita cards/tabelas espremidos
+   ────────────────────────────────────────────────────────── */
+.auto-grid-wide {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 1rem;
+}
+
+.auto-grid-comfortable {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+  gap: 1rem;
+}
+
+.debt-card {
+  min-width: 0;
+  height: 100%;
+}
+
+.debt-card-title {
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.dark .debt-card-title { color: #fff; }
+
+.debt-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.debt-metric {
+  min-width: 0;
+  padding: 0.78rem 0.85rem;
+  border: 1px solid rgb(226 232 240 / 0.85);
+  border-radius: 0.9rem;
+  background: rgb(248 250 252 / 0.82);
+}
+.dark .debt-metric {
+  border-color: rgb(255 255 255 / 0.065);
+  background: rgb(255 255 255 / 0.025);
+}
+.debt-metric > span {
+  display: block;
+  margin-bottom: 0.28rem;
+  color: #64748b;
+  font-size: 0.66rem;
+  font-weight: 750;
+  letter-spacing: 0.055em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+.dark .debt-metric > span { color: #7f7f91; }
+.debt-metric > strong {
+  display: block;
+  min-width: 0;
+  color: #0f172a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.dark .debt-metric > strong { color: #f4f4f5; }
+
+.data-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(124 58 237 / 0.28) transparent;
+}
+.data-table-scroll::-webkit-scrollbar { height: 8px; }
+.data-table-scroll::-webkit-scrollbar-track { background: transparent; }
+.data-table-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: rgb(124 58 237 / 0.28);
+}
+.data-table-scroll table { min-width: 820px; }
+.data-table-scroll .table-cell:first-child {
+  min-width: 190px;
+  max-width: 340px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.data-table-scroll .table-cell:last-child { min-width: 150px; }
+
+@media (max-width: 520px) {
+  .debt-metrics-grid { grid-template-columns: 1fr; }
+  .auto-grid-wide, .auto-grid-comfortable { gap: 0.8rem; }
+}

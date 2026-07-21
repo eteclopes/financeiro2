@@ -108,7 +108,7 @@ export default function SavingsPage() {
   }));
 
   return (
-    <div className="space-y-6 animate-page-enter">
+    <div data-tutorial-page-ready={!loading ? 'savings' : undefined} className="space-y-6 animate-page-enter">
       {/* Hero card */}
       <div className="bg-gradient-to-br from-success to-success-dark rounded-3xl p-6 text-white relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
@@ -135,7 +135,7 @@ export default function SavingsPage() {
       {/* Resumo por origem — pedido explícito da reforma: sempre mostrar
           quanto do total realmente saiu do saldo vs. só foi informado */}
       {data.breakdown && (data.breakdown.movedFromBalance > 0 || data.breakdown.externalReported > 0) && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Card className="!p-4">
             <p className="text-xs text-muted mb-1">Saiu do saldo disponível</p>
             <p className="text-lg font-bold font-mono text-slate-900 dark:text-zinc-50">{formatCurrency(data.breakdown.movedFromBalance)}</p>
@@ -181,7 +181,7 @@ export default function SavingsPage() {
           : data.transactions.length === 0
             ? <EmptyState icon="🏦" title="Sem movimentações" description="Faça o primeiro depósito para começar sua reserva de emergência." />
             : (
-              <div className="overflow-x-auto">
+              <div className="data-table-scroll">
                 <table className="w-full text-sm">
                   <thead className="bg-subtle/60 dark:bg-white/[0.03]"><tr>
                     {['Tipo','Valor','Saldo após','Data','Observação',''].map(h=>(
@@ -234,12 +234,12 @@ export default function SavingsPage() {
               </div>
             </>
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor" required><Input type="number" min="0" step="0.01" value={form.value} onChange={(e) => setForm({...form,value:e.target.value})} autoFocus /></FormGroup>
             <FormGroup label="Data"><Input type="date" value={form.date} onChange={(e) => setForm({...form,date:e.target.value})} /></FormGroup>
           </div>
           <FormGroup label="Observação"><Input value={form.observation} onChange={(e) => setForm({...form,observation:e.target.value})} placeholder="Opcional" /></FormGroup>
-          <div className="flex gap-3 justify-end">
+          <div className="flex flex-wrap gap-3 justify-end">
             <Button variant="outline" onClick={() => setModal(null)}>Cancelar</Button>
             <Button variant={modal==='deposit'?'primary':'danger'} onClick={handle} loading={saving}>
               {modal==='deposit'?'Depositar':'Retirar'}
@@ -251,12 +251,12 @@ export default function SavingsPage() {
       {/* Editar último lançamento */}
       <Modal open={!!editTxModal} onClose={() => setEditTxModal(null)} title={`Editar ${editTxModal?.type==='deposit'?'Depósito':'Retirada'}`} size="sm">
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor" required><Input type="number" min="0" step="0.01" value={editTxForm.value} onChange={(e) => setEditTxForm({...editTxForm,value:e.target.value})} autoFocus /></FormGroup>
             <FormGroup label="Data"><Input type="date" value={editTxForm.date} onChange={(e) => setEditTxForm({...editTxForm,date:e.target.value})} /></FormGroup>
           </div>
           <FormGroup label="Observação"><Input value={editTxForm.observation} onChange={(e) => setEditTxForm({...editTxForm,observation:e.target.value})} placeholder="Opcional" /></FormGroup>
-          <div className="flex gap-3 justify-end">
+          <div className="flex flex-wrap gap-3 justify-end">
             <Button variant="outline" onClick={() => setEditTxModal(null)}>Cancelar</Button>
             <Button onClick={saveEditTx} loading={saving}>Salvar Alteração</Button>
           </div>

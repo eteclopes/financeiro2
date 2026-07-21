@@ -154,7 +154,7 @@ export default function TrendsPage() {
           <h3 className="font-semibold text-slate-900 dark:text-zinc-50">Tendência por categoria de despesa</h3>
           <p className="text-xs text-muted mt-0.5">Ordenado do maior para o menor crescimento no período</p>
         </div>
-        <div className="overflow-x-auto">
+        <div className="data-table-scroll">
           <table className="w-full text-sm">
             <thead className="bg-subtle/60 dark:bg-white/[0.03]">
               <tr>{['Categoria', 'Último mês', 'Variação', 'Tendência'].map((h) => (

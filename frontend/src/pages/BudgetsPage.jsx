@@ -151,7 +151,7 @@ export default function BudgetsPage() {
             <Input type="number" min="0.01" step="0.01" value={limitValue}
               onChange={(e) => setLimitValue(e.target.value)} placeholder="Ex: 800,00" autoFocus />
           </FormGroup>
-          <div className="flex gap-3 justify-end pt-2">
+          <div className="flex flex-wrap gap-3 justify-end pt-2">
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
             <Button onClick={handleSave} loading={saving}>Salvar</Button>
           </div>

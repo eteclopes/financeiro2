@@ -122,7 +122,7 @@ export default function PurchaseSimulatorPage() {
             </div>
 
             {/* Impacto */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Card className="!p-4">
                 <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Impacto Mensal</p>
                 <p className="text-2xl font-bold font-mono text-slate-900 dark:text-zinc-50"><AnimatedNumber value={result.monthlyImpact} formatter={formatCurrency} /></p>
@@ -151,7 +151,7 @@ export default function PurchaseSimulatorPage() {
             {/* Cartão */}
             {result.cardCheck && (
               <Card className="!p-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="font-semibold text-slate-900 dark:text-zinc-50 text-sm">{result.cardCheck.cardName}</p>
                     <p className="text-xs text-muted mt-0.5">Disponível: <span className="font-mono">{formatCurrency(result.cardCheck.availableLimit)}</span></p>

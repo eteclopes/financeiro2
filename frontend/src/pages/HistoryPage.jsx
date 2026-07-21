@@ -61,7 +61,7 @@ export default function HistoryPage() {
 
   if (loading) return (
     <div className="space-y-4 animate-pulse">
-      <div className="grid grid-cols-3 gap-3">{Array.from({length:3}).map((_,i)=><Skeleton key={i} className="h-24" />)}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">{Array.from({length:3}).map((_,i)=><Skeleton key={i} className="h-24" />)}</div>
       {Array.from({length:3}).map((_,i)=><Skeleton key={i} className="h-56" />)}
     </div>
   );
@@ -82,7 +82,7 @@ export default function HistoryPage() {
         <>
           {/* Resumo */}
           {data.summary && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="auto-grid-comfortable">
               {[
                 { label:'Receita média',    value: data.summary.avgIncome,        color:'text-primary-dark' },
                 { label:'Despesa média',    value: data.summary.avgExpenses,      color:'text-danger-dark' },
@@ -163,7 +163,7 @@ export default function HistoryPage() {
             <div className="px-5 py-4 border-b border-border dark:border-white/[0.06]">
               <h3 className="font-semibold text-slate-900 dark:text-zinc-50">Resumo Mês a Mês</h3>
             </div>
-            <div className="overflow-x-auto">
+            <div className="data-table-scroll">
               <table className="w-full text-sm">
                 <thead className="bg-subtle/60 dark:bg-white/[0.03]"><tr>
                   {['Mês','Receita','Despesas pagas','Dívidas','Saldo do mês','Saldo acumulado','Saúde','Status'].map(h=><th key={h} className="table-header">{h}</th>)}

@@ -12,7 +12,11 @@
   width: min(390px, calc(100vw - 28px));
   min-width: 0;
   max-width: none;
-  overflow: visible;
+  max-height: calc(100dvh - 28px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
   padding: 25px 24px 20px;
   border: 1px solid var(--tour-border);
   border-radius: 24px;
@@ -377,6 +381,19 @@
 
 .tutorial-route-transition .driver-popover.financehub-tour-popover {
   pointer-events: none;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  transform: translateY(8px) scale(0.985) !important;
+}
+
+.driver-popover.financehub-tour-popover {
+  transition: opacity 180ms ease, visibility 180ms ease, transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.driver-popover.financehub-tour-popover::-webkit-scrollbar { width: 6px; }
+.driver-popover.financehub-tour-popover::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgb(124 58 237 / 0.24);
 }
 
 @keyframes financehubTourIconEnter {
@@ -389,6 +406,7 @@
 @media (max-width: 640px) {
   .driver-popover.financehub-tour-popover {
     width: calc(100vw - 20px);
+    max-height: calc(100dvh - 20px);
     padding: 22px 19px 17px;
     border-radius: 20px;
   }

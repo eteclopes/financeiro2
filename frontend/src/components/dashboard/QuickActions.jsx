@@ -224,7 +224,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
           <FormGroup label="Descrição" required>
             <Input value={incForm.description} onChange={(e) => setIncForm({ ...incForm, description: e.target.value })} placeholder="Ex: Salário" autoFocus />
           </FormGroup>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor" required>
               <Input type="number" min="0" step="0.01" value={incForm.value} onChange={(e) => setIncForm({ ...incForm, value: e.target.value })} />
             </FormGroup>
@@ -253,7 +253,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
           <FormGroup label="Descrição" required>
             <Input value={expForm.description} onChange={(e) => setExpForm({ ...expForm, description: e.target.value })} placeholder="Ex: Mercado" autoFocus />
           </FormGroup>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor" required>
               <Input type="number" min="0" step="0.01" value={expForm.value} onChange={(e) => setExpForm({ ...expForm, value: e.target.value })} />
             </FormGroup>
@@ -309,7 +309,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                     ))}
                   </Select>
                 </FormGroup>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <FormGroup label="Valor pago">
                     <Input type="number" min="0" step="0.01" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
                   </FormGroup>
