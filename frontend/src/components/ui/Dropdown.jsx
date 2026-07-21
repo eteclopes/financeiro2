@@ -208,7 +208,7 @@ export function Dropdown({ value, onChange, children, className = '', placeholde
   }, [open, highlightedIndex]);
 
   const triggerClass = variant === 'ghost'
-    ? 'flex items-center justify-between gap-1.5 text-left cursor-pointer text-sm font-semibold text-slate-900 dark:text-zinc-50 bg-transparent px-1 py-0.5 rounded-lg hover:bg-black/[0.03] dark:hover:bg-white/[0.06] transition-colors'
+    ? 'flex items-center justify-between gap-1.5 text-left cursor-pointer text-sm font-bold text-slate-800 dark:text-zinc-100 bg-transparent px-1.5 py-1 rounded-lg hover:bg-primary-subtle dark:hover:bg-primary/10 transition-colors'
     : 'input-base flex items-center justify-between gap-2 text-left cursor-pointer disabled:cursor-not-allowed';
 
   return (
@@ -252,8 +252,8 @@ export function Dropdown({ value, onChange, children, className = '', placeholde
             width: variant === 'ghost' ? undefined : pos.width,
             minWidth: variant === 'ghost' ? 160 : undefined,
           }}
-          className={`z-[100] overflow-y-auto rounded-xl border border-border dark:border-white/10
-                     bg-white dark:bg-panel-dark shadow-modal py-1.5 animate-scale-in
+          className={`z-[100] overflow-y-auto rounded-2xl border border-slate-200 dark:border-white/[0.08]
+                     bg-white/95 dark:bg-[#1B1B26]/95 backdrop-blur-xl shadow-modal py-1.5 animate-scale-in
                      ${pos.placement === 'down' ? 'origin-top' : 'origin-bottom'}`}
         >
           {options.length === 0 && (
@@ -273,10 +273,10 @@ export function Dropdown({ value, onChange, children, className = '', placeholde
                 className={`px-3.5 py-2 text-sm cursor-pointer transition-colors duration-100 truncate
                   ${o.disabled ? 'opacity-40 cursor-not-allowed' : ''}
                   ${isSelected
-                    ? 'bg-primary-subtle dark:bg-primary/15 text-primary-dark dark:text-primary-light font-medium'
+                    ? 'bg-primary-subtle dark:bg-primary/20 text-primary-dark dark:text-primary-hover font-semibold'
                     : isHighlighted
-                      ? 'bg-subtle dark:bg-white/5 text-slate-700 dark:text-zinc-200'
-                      : 'text-slate-700 dark:text-zinc-200 hover:bg-subtle dark:hover:bg-white/5'}`}
+                      ? 'bg-primary-subtle/70 dark:bg-primary/[0.08] text-slate-700 dark:text-zinc-200'
+                      : 'text-slate-700 dark:text-zinc-200 hover:bg-primary-subtle/70 dark:hover:bg-primary/[0.08]'}`}
               >
                 {o.label}
               </li>

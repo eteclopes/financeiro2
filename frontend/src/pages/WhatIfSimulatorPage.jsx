@@ -21,7 +21,7 @@ function CustomTooltip({ active, payload, label }) {
   const theme = useThemeStore((s) => s.theme);
   if (!active || !payload?.length) return null;
   return (
-    <div className={`rounded-xl p-3 shadow-modal text-xs border ${theme === 'dark' ? 'bg-panel-dark border-white/10' : 'bg-white border-border'}`}>
+    <div className="chart-tooltip">
       <p className="font-semibold text-slate-600 dark:text-zinc-300 mb-2">{label}</p>
       {payload.map((p) => (
         <div key={p.dataKey} className="flex items-center gap-2 mb-1">
@@ -145,9 +145,9 @@ export default function WhatIfSimulatorPage() {
   const totalGain = result?.totalGain ?? 0;
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-6 animate-page-enter">
       <div>
-        <h2 className="font-bold text-xl text-slate-900 dark:text-zinc-50">Simulador "E Se?"</h2>
+        <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Simulador "E Se?"</h2>
         <p className="text-sm text-muted mt-0.5">Projete cenários alternativos sem alterar seus dados reais.</p>
       </div>
 
@@ -201,8 +201,8 @@ export default function WhatIfSimulatorPage() {
                         <stop offset="95%" stopColor="#94A3B8" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="scenarioGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                        <stop offset="5%" stopColor="#16A34A" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#16A34A" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
@@ -211,7 +211,7 @@ export default function WhatIfSimulatorPage() {
                     <Tooltip content={<CustomTooltip />} />
                     <Legend wrapperStyle={{ fontSize:'12px' }} />
                     <Area type="monotone" dataKey="atual" stroke="#94A3B8" strokeWidth={2} fill="url(#atualGrad)" strokeDasharray="4 2" dot={false} />
-                    <Area type="monotone" dataKey="com cenário" stroke="#10B981" strokeWidth={2.5} fill="url(#scenarioGrad)" dot={false} />
+                    <Area type="monotone" dataKey="com cenário" stroke="#16A34A" strokeWidth={2.5} fill="url(#scenarioGrad)" dot={false} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>

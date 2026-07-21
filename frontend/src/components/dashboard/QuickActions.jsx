@@ -185,11 +185,11 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   }
 
   const ACTIONS = [
-    { Icon: IconIncome,  label: 'Receita',     iconBg: 'bg-primary-muted dark:bg-primary/15',   iconColor: 'text-primary-dark dark:text-primary-light',    onClick: () => { setIncForm({ description: '', value: '', paymentMethod: 'pix', date: today() }); setModal('income'); } },
-    { Icon: IconExpense, label: 'Despesa',     iconBg: 'bg-danger-muted dark:bg-danger/15',     iconColor: 'text-danger-dark dark:text-danger-light',      onClick: openExpense },
-    { Icon: IconCheck,   label: 'Pagar conta', iconBg: 'bg-info-muted dark:bg-info/15',         iconColor: 'text-info-dark dark:text-info-light',          onClick: () => { setPayTarget(null); setPayAmount(''); setPayMethod('pix'); setModal('pay'); } },
-    { Icon: IconCard,    label: 'Fatura',      iconBg: 'bg-warning-muted dark:bg-warning/15',   iconColor: 'text-warning-dark dark:text-warning-light',    onClick: openFatura },
-    { Icon: IconGoal,    label: 'Meta',        iconBg: 'bg-purple-100 dark:bg-accentpurple/15', iconColor: 'text-purple-700 dark:text-accentpurple-light', onClick: () => { setGoalTarget(null); setContribValue(''); setModal('goal'); } },
+    { Icon: IconIncome,  label: 'Receita',     iconBg: 'bg-primary-muted dark:bg-primary/20',   iconColor: 'text-primary-dark dark:text-primary-light',    onClick: () => { setIncForm({ description: '', value: '', paymentMethod: 'pix', date: today() }); setModal('income'); } },
+    { Icon: IconExpense, label: 'Despesa',     iconBg: 'bg-danger-muted dark:bg-danger/20',     iconColor: 'text-danger-dark dark:text-danger-light',      onClick: openExpense },
+    { Icon: IconCheck,   label: 'Pagar conta', iconBg: 'bg-info-muted dark:bg-info/20',         iconColor: 'text-info-dark dark:text-info-light',          onClick: () => { setPayTarget(null); setPayAmount(''); setPayMethod('pix'); setModal('pay'); } },
+    { Icon: IconCard,    label: 'Fatura',      iconBg: 'bg-warning-muted dark:bg-warning/20',   iconColor: 'text-warning-dark dark:text-warning-light',    onClick: openFatura },
+    { Icon: IconGoal,    label: 'Meta',        iconBg: 'bg-purple-100 dark:bg-accentpurple/20', iconColor: 'text-purple-700 dark:text-accentpurple-light', onClick: () => { setGoalTarget(null); setContribValue(''); setModal('goal'); } },
     ...(monthStatus === 'open'
       ? [{ Icon: IconAlert, label: 'Fechar mês', iconBg: 'bg-gray-100 dark:bg-white/10', iconColor: 'text-gray-600 dark:text-zinc-300', onClick: openClose }]
       : []
@@ -201,13 +201,11 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
       <div className="flex flex-wrap gap-2">
         {ACTIONS.map(({ Icon, label, iconBg, iconColor, onClick }) => (
           <button key={label} onClick={onClick}
-            className="flex items-center gap-2 bg-white dark:bg-panel-dark border border-border dark:border-white/10
-                       rounded-full pl-2 pr-3.5 py-2 transition-all duration-150 hover:border-slate-300 dark:hover:border-white/20
-                       hover:shadow-sm active:scale-[0.97]">
-            <span className={`h-7 w-7 rounded-full flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}>
+            className="group flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[0_12px_28px_-20px_rgb(124_58_237_/_0.6)] active:translate-y-0 active:scale-[0.98] dark:border-white/[0.07] dark:bg-white/[0.035] dark:hover:border-primary/30">
+            <span className={`h-8 w-8 rounded-xl flex items-center justify-center transition-transform duration-200 group-hover:scale-105 shrink-0 ${iconBg} ${iconColor}`}>
               <Icon size={15} strokeWidth={2} />
             </span>
-            <span className="text-xs font-semibold text-slate-700 dark:text-zinc-200">{label}</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-zinc-200">{label}</span>
           </button>
         ))}
       </div>

@@ -9,7 +9,7 @@ import { Modal, FormGroup, Input } from '../components/ui/Modal';
 import { useUIStore } from '../store/uiStore';
 import { useThemeStore } from '../store/themeStore';
 
-const SCORE_COLOR = (pct) => pct >= 75 ? '#10B981' : pct >= 40 ? '#F59E0B' : '#3B82F6';
+const SCORE_COLOR = (pct) => pct >= 75 ? '#16A34A' : pct >= 40 ? '#F59E0B' : '#3B82F6';
 
 // Definido no nível do módulo (não dentro de GoalsPage) pelo mesmo motivo
 // explicado em WhatIfSimulatorPage.jsx: uma função-componente recriada a
@@ -21,7 +21,7 @@ const SCORE_COLOR = (pct) => pct >= 75 ? '#10B981' : pct >= 40 ? '#F59E0B' : '#3
 function GoalCard({ goal, theme, onContribute, onEdit, onCancel }) {
   const pct = Math.min(Math.round(goal.percentage), 100);
   return (
-    <Card className="animate-fade-in">
+    <Card className="animate-fade-in overflow-hidden" hover>
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1 min-w-0 mr-3">
           <p className="font-bold text-slate-900 dark:text-zinc-50 text-base">{goal.name}</p>
@@ -50,16 +50,16 @@ function GoalCard({ goal, theme, onContribute, onEdit, onCancel }) {
             <span>Acumulado</span><span>Meta</span>
           </div>
           <ProgressBar value={goal.progress} max={Number(goal.targetValue)} height="h-3"
-            color={pct >= 75 ? 'primary' : pct >= 40 ? 'warning' : 'info'} />
+            color={pct >= 75 ? 'success' : pct >= 40 ? 'warning' : 'info'} />
           <div className="flex justify-between mt-1">
-            <span className="text-sm font-bold text-primary-dark dark:text-primary-light">{formatCurrency(goal.progress)}</span>
+            <span className="text-sm font-bold text-success-dark dark:text-success-light">{formatCurrency(goal.progress)}</span>
             <span className="text-sm font-bold text-slate-700 dark:text-zinc-300">{formatCurrency(goal.targetValue)}</span>
           </div>
         </div>
       </div>
 
       {goal.remaining > 0 && goal.status === 'active' && (
-        <div className="bg-subtle dark:bg-white/[0.04] rounded-xl p-3 mb-4 text-xs">
+        <div className="rounded-xl border border-slate-200/80 bg-slate-50 p-3 mb-4 text-xs dark:border-white/[0.06] dark:bg-white/[0.025]">
           <span className="text-muted">Faltam </span>
           <span className="font-bold text-slate-800 dark:text-zinc-200">{formatCurrency(goal.remaining)}</span>
           {goal.estimatedMonthsAtCurrentPace && (
@@ -180,10 +180,10 @@ export default function GoalsPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-page-enter">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="font-bold text-xl text-slate-900 dark:text-zinc-50">Metas Financeiras</h2>
+          <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Metas Financeiras</h2>
           <p className="text-sm text-muted mt-0.5">{active.length} meta(s) ativa(s)</p>
         </div>
         <Button data-tutorial="new-goal-button" onClick={() => setGoalModal(true)}>+ Nova Meta</Button>

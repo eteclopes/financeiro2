@@ -17,7 +17,7 @@ function CustomTooltip({ active, payload, label }) {
   const theme = useThemeStore((s) => s.theme);
   if (!active || !payload?.length) return null;
   return (
-    <div className={`rounded-xl p-3 shadow-modal text-xs border ${theme === 'dark' ? 'bg-panel-dark border-white/10' : 'bg-white border-border'}`}>
+    <div className="chart-tooltip">
       <p className="font-semibold text-slate-700 dark:text-zinc-300 mb-2">{label}</p>
       {payload.map((p) => (
         <div key={p.dataKey} className="flex items-center gap-2 mb-1">
@@ -67,10 +67,10 @@ export default function HistoryPage() {
   );
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-6 animate-page-enter">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="font-bold text-xl text-slate-900 dark:text-zinc-50">Histórico Financeiro</h2>
+          <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Histórico Financeiro</h2>
           <p className="text-sm text-muted mt-0.5">Comparação e evolução ao longo do tempo</p>
         </div>
         <TabGroup tabs={PERIOD_TABS} value={period} onChange={setPeriod} />
@@ -86,7 +86,7 @@ export default function HistoryPage() {
               {[
                 { label:'Receita média',    value: data.summary.avgIncome,        color:'text-primary-dark' },
                 { label:'Despesa média',    value: data.summary.avgExpenses,      color:'text-danger-dark' },
-                { label:'Saldo disponível', value: data.summary.endingBalance, color: data.summary.endingBalance >= 0 ? 'text-primary-dark' : 'text-danger-dark' },
+                { label:'Saldo disponível', value: data.summary.endingBalance, color: data.summary.endingBalance >= 0 ? 'text-success-dark dark:text-success-light' : 'text-danger-dark' },
                 { label:'Melhor mês',       value: data.summary.bestMonthNet?.netBalance, color:'text-primary-dark',
                   sub: data.summary.bestMonthNet ? `${String(data.summary.bestMonthNet.month).padStart(2,'0')}/${data.summary.bestMonthNet.year}` : '—' },
               ].map((item) => (
@@ -110,7 +110,7 @@ export default function HistoryPage() {
                   <YAxis tick={{ fontSize:11, fill:axisColor }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
                   <Tooltip content={<CustomTooltip />} />
                   <Legend wrapperStyle={{ fontSize: '12px' }} />
-                  <Bar dataKey="receita"  fill="#10B981" radius={[4,4,0,0]} barSize={16} />
+                  <Bar dataKey="receita"  fill="#7C3AED" radius={[4,4,0,0]} barSize={16} />
                   <Bar dataKey="despesas" fill="#EF4444" radius={[4,4,0,0]} barSize={16} />
                 </BarChart>
               </ResponsiveContainer>
@@ -128,8 +128,8 @@ export default function HistoryPage() {
                     <XAxis dataKey="name" tick={{ fontSize:10, fill:axisColor }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize:10, fill:axisColor }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Line type="monotone" dataKey="líquido" stroke="#3B82F6" strokeWidth={2.5} dot={{ r:3, fill:'#3B82F6' }} />
-                    <Line type="monotone" dataKey="acumulado" stroke="#10B981" strokeWidth={2.5} dot={{ r:3, fill:'#10B981' }} />
+                    <Line type="monotone" dataKey="líquido" stroke="#2563EB" strokeWidth={2.5} dot={{ r:3, fill:'#2563EB' }} />
+                    <Line type="monotone" dataKey="acumulado" stroke="#16A34A" strokeWidth={2.5} dot={{ r:3, fill:'#16A34A' }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -145,7 +145,7 @@ export default function HistoryPage() {
                       <XAxis dataKey="name" tick={{ fontSize:10, fill:axisColor }} axisLine={false} tickLine={false} />
                       <YAxis domain={[0,100]} tick={{ fontSize:10, fill:axisColor }} axisLine={false} tickLine={false} />
                       <Tooltip formatter={(v) => `${v} pts`} />
-                      <Line type="monotone" dataKey="saúde" stroke="#10B981" strokeWidth={2.5} dot={{ r:3, fill:'#10B981' }} />
+                      <Line type="monotone" dataKey="saúde" stroke="#16A34A" strokeWidth={2.5} dot={{ r:3, fill:'#16A34A' }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -175,11 +175,11 @@ export default function HistoryPage() {
                       <td className="table-cell font-mono tabular-nums text-primary-dark dark:text-primary-light font-medium">{formatCurrency(m.income)}</td>
                       <td className="table-cell font-mono tabular-nums text-danger-dark dark:text-danger-light">{formatCurrency(m.paidExpenses)}</td>
                       <td className="table-cell font-mono tabular-nums text-warning-dark dark:text-warning-light">{formatCurrency(m.debtInstallments)}</td>
-                      <td className={`table-cell font-mono tabular-nums font-bold ${m.netBalance >= 0 ? 'text-primary-dark dark:text-primary-light' : 'text-danger-dark dark:text-danger-light'}`}>{formatCurrency(m.netBalance)}</td>
-                      <td className={`table-cell font-mono tabular-nums font-bold ${m.cumulativeBalance >= 0 ? 'text-primary-dark dark:text-primary-light' : 'text-danger-dark dark:text-danger-light'}`}>{formatCurrency(m.cumulativeBalance)}</td>
+                      <td className={`table-cell font-mono tabular-nums font-bold ${m.netBalance >= 0 ? 'text-success-dark dark:text-success-light' : 'text-danger-dark dark:text-danger-light'}`}>{formatCurrency(m.netBalance)}</td>
+                      <td className={`table-cell font-mono tabular-nums font-bold ${m.cumulativeBalance >= 0 ? 'text-success-dark dark:text-success-light' : 'text-danger-dark dark:text-danger-light'}`}>{formatCurrency(m.cumulativeBalance)}</td>
                       <td className="table-cell">
                         {m.healthScore != null
-                          ? <span className={`font-mono font-bold text-base ${m.healthScore>=75?'text-primary-dark dark:text-primary-light':m.healthScore>=50?'text-warning-dark dark:text-warning-light':'text-danger-dark dark:text-danger-light'}`}>{m.healthScore}</span>
+                          ? <span className={`font-mono font-bold text-base ${m.healthScore>=75?'text-success-dark dark:text-success-light':m.healthScore>=50?'text-warning-dark dark:text-warning-light':'text-danger-dark dark:text-danger-light'}`}>{m.healthScore}</span>
                           : <span className="text-muted">—</span>}
                       </td>
                       <td className="table-cell">

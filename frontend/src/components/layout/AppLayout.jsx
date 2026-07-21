@@ -9,46 +9,44 @@ import { useTutorialStore } from '../../store/tutorialStore';
 import { TutorialRunner } from '../tutorial/TutorialRunner';
 
 const ROUTE_TITLES = {
-  '/dashboard':          'Dashboard',
-  '/incomes':            'Receitas',
-  '/expenses':           'Despesas',
-  '/cards':              'Cartões de Crédito',
-  '/savings':            'Reserva Financeira',
-  '/goals':              'Metas Financeiras',
-  '/simulator/purchase': 'Simulador de Compras',
-  '/simulator/what-if':  'Simulador E Se?',
-  '/history':            'Histórico Financeiro',
-  '/reports':            'Relatórios',
-  '/settings':           'Configurações',
+  '/dashboard': 'Visão geral',
+  '/incomes': 'Receitas',
+  '/expenses': 'Despesas',
+  '/cards': 'Cartões de crédito',
+  '/savings': 'Reserva financeira',
+  '/goals': 'Metas financeiras',
+  '/budgets': 'Orçamento',
+  '/simulator/purchase': 'Simulador de compras',
+  '/simulator/what-if': 'Simulador E Se?',
+  '/history': 'Histórico financeiro',
+  '/trends': 'Tendências',
+  '/insights': 'Alertas e recomendações',
+  '/reports': 'Relatórios',
+  '/settings': 'Configurações',
 };
 
 export function AppLayout() {
   const initialize = useMonthStore((s) => s.initialize);
-  const open       = useUIStore((s) => s.sidebarOpen);
-  const location   = useLocation();
-  const title      = ROUTE_TITLES[location.pathname] ?? 'FinançasPro';
+  const open = useUIStore((s) => s.sidebarOpen);
+  const location = useLocation();
+  const title = ROUTE_TITLES[location.pathname] ?? 'FinanceHub';
   const hasSeenTutorial = useTutorialStore((s) => s.hasSeenTutorial);
-  const startTutorial   = useTutorialStore((s) => s.start);
+  const startTutorial = useTutorialStore((s) => s.start);
 
   useEffect(() => { initialize(); }, [initialize]);
 
-  // Só dispara sozinho no PRIMEIRO acesso (hasSeenTutorial checa uma flag
-  // por usuário salva no navegador — ver tutorialStore.js). Um pequeno
-  // atraso dá tempo do dashboard terminar de carregar os dados antes do
-  // tour tentar destacar elementos que ainda não renderizaram.
   useEffect(() => {
     if (hasSeenTutorial()) return;
     const timer = setTimeout(() => startTutorial(), 900);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hasSeenTutorial, startTutorial]);
 
   return (
-    <div className="min-h-screen bg-bg dark:bg-canvas-dark theme-transition">
+    <div className="app-shell theme-transition">
       <Sidebar />
-      <div className={`transition-all duration-300 ease-smooth ${open ? 'lg:ml-64' : 'lg:ml-[68px]'}`}>
+      <div className={`min-h-screen transition-[margin] duration-300 ease-smooth ${open ? 'lg:ml-[272px]' : 'lg:ml-[84px]'}`}>
         <Topbar title={title} />
-        <main className="p-4 sm:p-6 animate-fade-in">
+        <main className="page-content px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
           <Outlet />
         </main>
       </div>

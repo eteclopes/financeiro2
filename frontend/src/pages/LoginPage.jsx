@@ -15,24 +15,22 @@ function validatePassword(value) {
   return null;
 }
 
-export default function LoginPage() {
-  const navigate  = useNavigate();
-  const login     = useAuthStore((s) => s.login);
-  const clearError = useAuthStore((s) => s.clearError);
-  const error     = useAuthStore((s) => s.error);
-  const serverFieldErrors = useAuthStore((s) => s.fieldErrors);
-  const status    = useAuthStore((s) => s.status);
-  const [email, setEmail]       = useState('');
-  const [password, setPassword] = useState('');
-  const [touched, setTouched]   = useState({});
+function FieldIcon({ children }) {
+  return <span className="pointer-events-none absolute inset-y-0 left-0 grid w-11 place-items-center text-slate-400 dark:text-zinc-500">{children}</span>;
+}
 
-  // Erros de validação local (antes de enviar) + erros vindos do backend
-  // (ex: formato inválido que passou no front mas não no back) mesclados,
-  // priorizando o que o próprio backend disser sobre aquele campo.
-  const localErrors = {
-    email: validateEmail(email),
-    password: validatePassword(password),
-  };
+export default function LoginPage() {
+  const navigate = useNavigate();
+  const login = useAuthStore((s) => s.login);
+  const clearError = useAuthStore((s) => s.clearError);
+  const error = useAuthStore((s) => s.error);
+  const serverFieldErrors = useAuthStore((s) => s.fieldErrors);
+  const status = useAuthStore((s) => s.status);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [touched, setTouched] = useState({});
+
+  const localErrors = { email: validateEmail(email), password: validatePassword(password) };
   const fieldErrors = {
     email: serverFieldErrors.email ?? (touched.email ? localErrors.email : null),
     password: serverFieldErrors.password ?? (touched.password ? localErrors.password : null),
@@ -47,54 +45,46 @@ export default function LoginPage() {
     if (ok) navigate('/dashboard', { replace: true });
   }
 
-  const inputClass = (hasError) =>
-    `w-full bg-white/10 border ${hasError ? 'border-danger/60 focus:border-danger focus:ring-danger/30' : 'border-white/20 focus:border-primary focus:ring-primary/30'} text-white placeholder:text-slate-500 rounded-xl px-4 py-3 text-sm focus:ring-2 outline-none transition-all`;
+  const inputClass = (hasError) => `input-base w-full py-3 pl-11 ${hasError ? '!border-danger focus:!ring-danger/20' : ''}`;
 
   return (
-    <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-3xl p-8 shadow-modal">
-      <h1 className="text-2xl font-bold text-white mb-1">Bem-vindo de volta</h1>
-      <p className="text-slate-400 text-sm mb-7">Entre na sua conta para continuar</p>
+    <div className="auth-card rounded-[26px] p-6 sm:p-8">
+      <div className="mb-7">
+        <span className="mb-3 inline-flex rounded-full bg-primary-subtle px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-primary-dark dark:bg-primary/10 dark:text-primary-hover">Acesso seguro</span>
+        <h1 className="text-2xl font-extrabold tracking-[-0.03em] text-slate-950 dark:text-white">Bem-vindo de volta</h1>
+        <p className="mt-1.5 text-sm text-slate-500 dark:text-zinc-400">Entre para acompanhar sua vida financeira.</p>
+      </div>
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
-        <FormGroup label={<span className="text-slate-300">E-mail</span>} htmlFor="email" error={fieldErrors.email}>
-          <input id="email" type="email" value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onBlur={() => setTouched((t) => ({ ...t, email: true }))}
-            placeholder="voce@email.com"
-            autoComplete="email"
-            aria-invalid={!!fieldErrors.email}
-            className={inputClass(!!fieldErrors.email)} />
-        </FormGroup>
-
-        <FormGroup label={<span className="text-slate-300">Senha</span>} htmlFor="password" error={fieldErrors.password}>
-          <input id="password" type="password" value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onBlur={() => setTouched((t) => ({ ...t, password: true }))}
-            placeholder="••••••••"
-            autoComplete="current-password"
-            aria-invalid={!!fieldErrors.password}
-            className={inputClass(!!fieldErrors.password)} />
-        </FormGroup>
-
-        {error && (
-          <div role="alert" className="bg-danger/20 border border-danger/30 text-red-300 text-sm px-4 py-3 rounded-xl">
-            {error}
+        <FormGroup label="E-mail" htmlFor="email" error={fieldErrors.email}>
+          <div className="relative">
+            <FieldIcon>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/></svg>
+            </FieldIcon>
+            <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} onBlur={() => setTouched((t) => ({ ...t, email: true }))} placeholder="voce@email.com" autoComplete="email" aria-invalid={!!fieldErrors.email} className={inputClass(!!fieldErrors.email)} />
           </div>
-        )}
+        </FormGroup>
 
-        <Button type="submit" loading={status === 'loading'} className="w-full justify-center py-3 text-base">
-          Entrar
-        </Button>
+        <FormGroup label="Senha" htmlFor="password" error={fieldErrors.password}>
+          <div className="relative">
+            <FieldIcon>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+            </FieldIcon>
+            <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} onBlur={() => setTouched((t) => ({ ...t, password: true }))} placeholder="••••••••" autoComplete="current-password" aria-invalid={!!fieldErrors.password} className={inputClass(!!fieldErrors.password)} />
+          </div>
+        </FormGroup>
+
+        <div className="flex justify-end">
+          <Link to="/forgot-password" className="text-xs font-semibold text-primary-dark hover:text-primary dark:text-primary-hover">Esqueci minha senha</Link>
+        </div>
+
+        {error && <div role="alert" className="rounded-xl border border-danger/20 bg-danger-subtle px-4 py-3 text-sm text-danger-dark dark:bg-danger/10 dark:text-danger-light">{error}</div>}
+
+        <Button type="submit" loading={status === 'loading'} className="w-full py-3 text-base">Entrar no FinanceHub</Button>
       </form>
 
-      <div className="mt-6 flex items-center justify-between text-sm">
-        <Link to="/register" className="text-slate-400 hover:text-primary transition-colors">
-          Criar conta
-        </Link>
-        <Link to="/forgot-password" className="text-slate-400 hover:text-primary transition-colors">
-          Esqueci a senha
-        </Link>
-      </div>
+      <div className="my-6 flex items-center gap-3"><span className="h-px flex-1 bg-slate-200 dark:bg-white/[0.07]"/><span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-600">novo por aqui?</span><span className="h-px flex-1 bg-slate-200 dark:bg-white/[0.07]"/></div>
+      <Link to="/register" className="flex w-full items-center justify-center rounded-xl border border-primary px-4 py-3 text-sm font-bold text-primary-dark transition-all hover:bg-primary-subtle dark:text-primary-hover dark:hover:bg-primary/10">Criar uma conta gratuita</Link>
     </div>
   );
 }

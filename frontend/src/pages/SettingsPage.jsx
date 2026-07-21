@@ -84,7 +84,7 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-5 max-w-2xl animate-fade-in">
-      <h2 className="font-bold text-xl text-slate-900 dark:text-zinc-50">Configurações</h2>
+      <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Configurações</h2>
 
       {/* Perfil */}
       <Card>
@@ -178,11 +178,11 @@ export default function SettingsPage() {
                       className="text-sm font-medium bg-transparent outline-none w-32 text-slate-700 dark:text-zinc-300"
                     />
                     <button onClick={() => saveRename(cat.id)} disabled={renamingCat}
-                      className="h-5 w-5 rounded-lg hover:bg-primary-subtle dark:hover:bg-primary/15 text-muted hover:text-primary-dark flex items-center justify-center text-xs transition-colors">
+                      className="h-5 w-5 rounded-lg hover:bg-primary-subtle dark:hover:bg-primary/20 text-muted hover:text-primary-dark flex items-center justify-center text-xs transition-colors">
                       ✓
                     </button>
                     <button onClick={cancelRename} disabled={renamingCat}
-                      className="h-5 w-5 rounded-lg hover:bg-danger-muted dark:hover:bg-danger/15 text-muted hover:text-danger flex items-center justify-center text-sm transition-colors">
+                      className="h-5 w-5 rounded-lg hover:bg-danger-muted dark:hover:bg-danger/20 text-muted hover:text-danger flex items-center justify-center text-sm transition-colors">
                       ×
                     </button>
                   </div>
@@ -190,11 +190,11 @@ export default function SettingsPage() {
                   <div key={cat.id} className="flex items-center gap-1 bg-subtle dark:bg-white/[0.04] border border-border dark:border-white/10 rounded-xl pl-3 pr-1.5 py-1.5">
                     <span className="text-sm text-slate-700 dark:text-zinc-300 font-medium">{cat.name}</span>
                     <button onClick={() => startRename(cat)} title="Renomear"
-                      className="h-5 w-5 rounded-lg hover:bg-primary-subtle dark:hover:bg-primary/15 text-muted hover:text-primary-dark flex items-center justify-center text-xs transition-colors ml-1">
+                      className="h-5 w-5 rounded-lg hover:bg-primary-subtle dark:hover:bg-primary/20 text-muted hover:text-primary-dark flex items-center justify-center text-xs transition-colors ml-1">
                       ✎
                     </button>
                     <button onClick={() => deleteCategory(cat.id)} title="Excluir"
-                      className="h-5 w-5 rounded-lg hover:bg-danger-muted dark:hover:bg-danger/15 text-muted hover:text-danger flex items-center justify-center text-sm transition-colors">
+                      className="h-5 w-5 rounded-lg hover:bg-danger-muted dark:hover:bg-danger/20 text-muted hover:text-danger flex items-center justify-center text-sm transition-colors">
                       ×
                     </button>
                   </div>

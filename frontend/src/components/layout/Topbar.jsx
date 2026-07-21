@@ -11,22 +11,27 @@ import { IconMenu, IconBell, IconSun, IconMoon, IconChevronL, IconChevronR } fro
 
 const SEVERITY_DOT = { critical: 'bg-danger', warning: 'bg-warning', info: 'bg-info' };
 
+function greeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Bom dia';
+  if (hour < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
 export function Topbar({ title }) {
-  const toggle    = useUIStore((s) => s.toggleSidebar);
-  const months    = useMonthStore((s) => s.months);
+  const toggle = useUIStore((s) => s.toggleSidebar);
+  const months = useMonthStore((s) => s.months);
   const selectedId = useMonthStore((s) => s.selectedMonthId);
   const selectMonth = useMonthStore((s) => s.selectMonth);
   const getSelected = useMonthStore((s) => s.getSelectedMonth);
   const goToAdjacent = useMonthStore((s) => s.goToAdjacent);
-  const theme     = useThemeStore((s) => s.theme);
+  const theme = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
-  const user      = useAuthStore((s) => s.user);
-  const navigate  = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
 
   const month = getSelected();
-  const idx   = months.findIndex((m) => String(m.id) === String(selectedId));
-
-  // ---------- Notificações (sino) ----------
+  const idx = months.findIndex((m) => String(m.id) === String(selectedId));
   const [alerts, setAlerts] = useState([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef(null);
@@ -37,15 +42,10 @@ export function Topbar({ title }) {
       const { data } = await alertsApi.list(selectedId);
       setAlerts(data.alerts ?? []);
     } catch {
-      // Sino não é o lugar de mostrar erro de rede — falha silenciosamente
-      // e mantém o que já tinha; a Central de Alertas (/insights) já avisa
-      // se algo der errado ao carregar de propósito, com toast.
+      // A central de alertas já apresenta falhas de carregamento ao usuário.
     }
   }, [selectedId]);
 
-  // Recarrega ao trocar de mês e também a cada 60s — alertas dependem de
-  // dados que mudam sem o usuário mexer no mês (ex.: uma conta que estava
-  // a "5 dias" de vencer passa a "4 dias" com o simples passar do tempo).
   useEffect(() => {
     loadAlerts();
     const interval = setInterval(loadAlerts, 60_000);
@@ -54,7 +54,6 @@ export function Topbar({ title }) {
 
   const activeAlerts = alerts.filter((a) => !a.resolvedAt);
 
-  // Fecha o dropdown de notificações ao clicar fora ou apertar Esc.
   useEffect(() => {
     function handleOutside(e) {
       if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false);
@@ -71,38 +70,48 @@ export function Topbar({ title }) {
   }, []);
 
   return (
-    <header className="sticky top-0 z-10 glass border-b border-border/60 dark:border-white/[0.06] h-16 flex items-center gap-3 px-4 sm:px-6">
-      <button onClick={toggle} aria-label="Menu"
-        className="h-9 w-9 flex items-center justify-center rounded-xl text-muted hover:text-slate-700 hover:bg-subtle dark:hover:bg-white/5 dark:hover:text-zinc-100 transition-all">
+    <header className="glass sticky top-0 z-20 flex min-h-[76px] items-center gap-3 border-b border-slate-200/80 px-4 dark:border-white/[0.06] sm:px-6 lg:px-8">
+      <button
+        onClick={toggle}
+        aria-label="Abrir ou recolher menu"
+        className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:text-primary dark:border-white/[0.07] dark:bg-white/[0.035] dark:text-zinc-400 dark:hover:border-primary/30 dark:hover:text-primary-hover"
+      >
         <IconMenu size={19} />
       </button>
 
-      <h1 className="font-semibold text-slate-900 dark:text-zinc-50 text-lg truncate">{title}</h1>
+      <div className="min-w-0">
+        <h1 className="truncate text-base font-bold tracking-tight text-slate-950 dark:text-white sm:text-lg">{title}</h1>
+        <p className="hidden text-xs text-slate-400 dark:text-zinc-500 sm:block">{greeting()}, {user?.name?.split(' ')?.[0] ?? 'bem-vindo'}.</p>
+      </div>
 
       <div className="flex-1" />
 
       {month && (
-        <div data-tutorial="month-selector" className="flex items-center gap-1 bg-subtle dark:bg-white/5 border border-border dark:border-white/10 rounded-xl px-2 py-1.5">
-          <button onClick={() => goToAdjacent(-1)} disabled={idx <= 0} aria-label="Mês anterior"
-            className="h-6 w-6 flex items-center justify-center rounded-lg text-muted hover:text-slate-700 hover:bg-white dark:hover:bg-white/10 dark:hover:text-zinc-100 disabled:opacity-30 transition-all">
-            <IconChevronL size={14} />
+        <div data-tutorial="month-selector" className="hidden items-center gap-1 rounded-xl border border-slate-200 bg-white/85 p-1 shadow-sm dark:border-white/[0.07] dark:bg-white/[0.035] sm:flex">
+          <button
+            onClick={() => goToAdjacent(-1)}
+            disabled={idx <= 0}
+            aria-label="Mês anterior"
+            className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-all hover:bg-primary-subtle hover:text-primary-dark disabled:opacity-25 dark:text-zinc-500 dark:hover:bg-primary/10 dark:hover:text-primary-hover"
+          >
+            <IconChevronL size={15} />
           </button>
 
-          <Dropdown variant="ghost" value={selectedId ?? ''} onChange={(e) => selectMonth(e.target.value)} className="max-w-[140px]">
-            {months.map((m) => (
-              <option key={m.id} value={m.id}>{formatMonthLabel(m)}</option>
-            ))}
+          <Dropdown variant="ghost" value={selectedId ?? ''} onChange={(e) => selectMonth(e.target.value)} className="min-w-[138px] max-w-[170px]">
+            {months.map((m) => <option key={m.id} value={m.id}>{formatMonthLabel(m)}</option>)}
           </Dropdown>
 
-          <button onClick={() => goToAdjacent(1)} disabled={idx >= months.length - 1} aria-label="Próximo mês"
-            className="h-6 w-6 flex items-center justify-center rounded-lg text-muted hover:text-slate-700 hover:bg-white dark:hover:bg-white/10 dark:hover:text-zinc-100 disabled:opacity-30 transition-all">
-            <IconChevronR size={14} />
+          <button
+            onClick={() => goToAdjacent(1)}
+            disabled={idx >= months.length - 1}
+            aria-label="Próximo mês"
+            className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-all hover:bg-primary-subtle hover:text-primary-dark disabled:opacity-25 dark:text-zinc-500 dark:hover:bg-primary/10 dark:hover:text-primary-hover"
+          >
+            <IconChevronR size={15} />
           </button>
 
           {month.status === 'closed' && (
-            <span className="ml-1 text-[10px] bg-slate-100 dark:bg-white/10 text-muted px-2 py-0.5 rounded-full font-medium">
-              encerrado
-            </span>
+            <span className="mr-1 rounded-full bg-slate-100 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:bg-white/[0.07] dark:text-zinc-500">encerrado</span>
           )}
         </div>
       )}
@@ -111,52 +120,71 @@ export function Topbar({ title }) {
         <button
           aria-label="Notificações"
           onClick={() => setNotifOpen((o) => !o)}
-          className="relative h-9 w-9 flex items-center justify-center rounded-xl text-muted hover:text-slate-700 hover:bg-subtle dark:hover:bg-white/5 dark:hover:text-zinc-100 transition-all"
+          className="relative grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:text-primary dark:border-white/[0.07] dark:bg-white/[0.035] dark:text-zinc-400 dark:hover:border-primary/30 dark:hover:text-primary-hover"
         >
           <IconBell size={18} />
           {activeAlerts.length > 0 && (
-            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-danger ring-2 ring-white dark:ring-panel-dark" />
+            <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-danger ring-2 ring-white dark:ring-[#15151D]">
+              <span className="absolute inset-0 animate-ping rounded-full bg-danger/70" />
+            </span>
           )}
         </button>
 
         {notifOpen && (
-          <div className="absolute top-full right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl border border-border dark:border-white/10
-                          bg-white dark:bg-panel-dark shadow-modal py-1.5 z-[100] animate-scale-in origin-top-right">
-            <div className="px-3.5 py-2 border-b border-border dark:border-white/10">
-              <p className="text-sm font-semibold text-slate-900 dark:text-zinc-50">Notificações</p>
+          <div className="absolute right-0 top-full z-[100] mt-3 max-h-[430px] w-[min(360px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-slate-200 bg-white/95 py-2 shadow-modal backdrop-blur-xl animate-scale-in origin-top-right dark:border-white/[0.08] dark:bg-[#1B1B26]/95">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-white/[0.07]">
+              <div>
+                <p className="text-sm font-bold text-slate-950 dark:text-white">Notificações</p>
+                <p className="mt-0.5 text-[11px] text-slate-400 dark:text-zinc-500">{activeAlerts.length} alerta(s) ativo(s)</p>
+              </div>
+              <span className="grid h-8 w-8 place-items-center rounded-xl bg-primary-subtle text-primary dark:bg-primary/10 dark:text-primary-hover">
+                <IconBell size={15} />
+              </span>
             </div>
+
             {activeAlerts.length === 0 ? (
-              <p className="px-3.5 py-6 text-sm text-muted text-center">Tudo certo por aqui — nenhum alerta ativo.</p>
+              <div className="px-5 py-9 text-center">
+                <div className="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-2xl bg-success-subtle text-success dark:bg-success/10 dark:text-success-light">✓</div>
+                <p className="text-sm font-bold text-slate-800 dark:text-zinc-200">Tudo em ordem</p>
+                <p className="mt-1 text-xs text-slate-400 dark:text-zinc-500">Nenhum alerta ativo neste mês.</p>
+              </div>
             ) : (
               activeAlerts.slice(0, 6).map((a) => (
-                <div key={a.id} className="flex items-start gap-2.5 px-3.5 py-2.5 border-b border-border/60 dark:border-white/[0.06] last:border-0">
-                  <span className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${SEVERITY_DOT[a.severity] ?? 'bg-info'}`} />
-                  <p className="text-sm text-slate-700 dark:text-zinc-300 leading-snug">{a.message}</p>
+                <div key={a.id} className="flex items-start gap-3 border-b border-slate-100 px-4 py-3.5 last:border-0 hover:bg-slate-50 dark:border-white/[0.055] dark:hover:bg-white/[0.025]">
+                  <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${SEVERITY_DOT[a.severity] ?? 'bg-info'}`} />
+                  <p className="text-sm leading-relaxed text-slate-600 dark:text-zinc-300">{a.message}</p>
                 </div>
               ))
             )}
+
             <button
               onClick={() => { setNotifOpen(false); navigate('/insights'); }}
-              className="w-full text-center text-sm font-medium text-primary-dark dark:text-primary-light py-2.5 hover:bg-subtle dark:hover:bg-white/5 transition-colors"
+              className="mx-2 mt-1 w-[calc(100%-1rem)] rounded-xl py-2.5 text-center text-sm font-bold text-primary-dark transition-colors hover:bg-primary-subtle dark:text-primary-hover dark:hover:bg-primary/10"
             >
-              Ver central de alertas
+              Abrir central de alertas
             </button>
           </div>
         )}
       </div>
 
-      <button onClick={toggleTheme} aria-label="Alternar tema"
-        className="h-9 w-9 flex items-center justify-center rounded-xl text-muted hover:text-slate-700 hover:bg-subtle dark:hover:bg-white/5 dark:hover:text-zinc-100 transition-all duration-300">
-        <span className="transition-transform duration-300" style={{ transform: theme === 'dark' ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+      <button
+        onClick={toggleTheme}
+        aria-label="Alternar tema"
+        className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:text-primary dark:border-white/[0.07] dark:bg-white/[0.035] dark:text-zinc-400 dark:hover:border-primary/30 dark:hover:text-primary-hover"
+      >
+        <span className="transition-transform duration-500" style={{ transform: theme === 'dark' ? 'rotate(180deg)' : 'rotate(0deg)' }}>
           {theme === 'dark' ? <IconMoon size={17} /> : <IconSun size={17} />}
         </span>
       </button>
 
-      <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-border dark:border-white/10">
-        <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-primary to-info flex items-center justify-center text-white font-semibold text-xs shrink-0">
+      <div className="hidden items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-1.5 pr-3 shadow-sm dark:border-white/[0.07] dark:bg-white/[0.035] lg:flex">
+        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-primary to-primary-light text-xs font-bold text-white">
           {user?.name?.[0]?.toUpperCase() ?? 'U'}
         </div>
-        <span className="text-sm font-medium text-slate-700 dark:text-zinc-200 max-w-[120px] truncate">{user?.name}</span>
+        <div className="max-w-[130px]">
+          <p className="truncate text-xs font-bold text-slate-700 dark:text-zinc-200">{user?.name}</p>
+          <p className="truncate text-[10px] text-slate-400 dark:text-zinc-500">Conta pessoal</p>
+        </div>
       </div>
     </header>
   );

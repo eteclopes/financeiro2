@@ -55,9 +55,9 @@ export default function InsightsPage() {
   );
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-6 animate-page-enter">
       <div>
-        <h2 className="font-bold text-xl text-slate-900 dark:text-zinc-50">Central de Alertas e Recomendações</h2>
+        <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Central de Alertas e Recomendações</h2>
         <p className="text-sm text-muted mt-0.5">Tudo que o sistema detectou sobre o mês selecionado, em um só lugar</p>
       </div>
 
@@ -101,7 +101,7 @@ export default function InsightsPage() {
         ) : (
           <ul className="space-y-3">
             {recommendations.map((r, i) => (
-              <li key={i} className="p-4 rounded-xl bg-primary-subtle dark:bg-primary/10 border border-primary/15">
+              <li key={i} className="p-4 rounded-xl bg-primary-subtle dark:bg-primary/10 border border-primary/20">
                 <div className="flex items-start justify-between gap-2 mb-1">
                   <p className="font-semibold text-primary-dark dark:text-primary-light">{r.title}</p>
                   <Badge variant={PRIORITY_VARIANT[r.priority] ?? 'default'}>{PRIORITY_LABEL[r.priority] ?? r.priority}</Badge>

@@ -13,17 +13,17 @@ import { useThemeStore } from '../store/themeStore';
 import { QuickActions } from '../components/dashboard/QuickActions';
 import { IconWallet, IconPiggy, IconAlert } from '../components/icons';
 
-const COMMITMENT_COLOR = { saudavel: 'text-primary-dark dark:text-primary-light', atencao: 'text-warning-dark dark:text-warning-light', risco: 'text-warning-dark dark:text-warning-light', critico: 'text-danger-dark dark:text-danger-light' };
-const COMMITMENT_BG    = { saudavel: 'bg-primary-muted dark:bg-primary/10', atencao: 'bg-warning-muted dark:bg-warning/10', risco: 'bg-warning-muted dark:bg-warning/10', critico: 'bg-danger-muted dark:bg-danger/10' };
+const COMMITMENT_COLOR = { saudavel: 'text-success-dark dark:text-success-light', atencao: 'text-warning-dark dark:text-warning-light', risco: 'text-warning-dark dark:text-warning-light', critico: 'text-danger-dark dark:text-danger-light' };
+const COMMITMENT_BG    = { saudavel: 'bg-success-muted dark:bg-success/10', atencao: 'bg-warning-muted dark:bg-warning/10', risco: 'bg-warning-muted dark:bg-warning/10', critico: 'bg-danger-muted dark:bg-danger/10' };
 const STATUS_MAP       = { pending: { l:'Pendente',v:'warning' }, partial: { l:'Parcial',v:'info' }, late: { l:'Atrasado',v:'danger' }, paid: { l:'Pago',v:'success' } };
-const SCORE_COLOR      = (s) => s >= 75 ? '#10B981' : s >= 50 ? '#F59E0B' : '#EF4444';
-const PIE_COLORS       = ['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899'];
+const SCORE_COLOR      = (s) => s >= 75 ? '#16A34A' : s >= 50 ? '#F59E0B' : '#EF4444';
+const PIE_COLORS       = ['#7C3AED', '#2563EB', '#16A34A', '#F59E0B', '#DC2626', '#A855F7', '#06B6D4'];
 
 function ThemedTooltip({ active, payload, label }) {
   const theme = useThemeStore((s) => s.theme);
   if (!active || !payload?.length) return null;
   return (
-    <div className={`rounded-xl p-3 shadow-modal text-xs border ${theme === 'dark' ? 'bg-panel-dark border-white/10' : 'bg-white border-border'}`}>
+    <div className="chart-tooltip">
       <p className={`font-semibold mb-1 ${theme === 'dark' ? 'text-zinc-200' : 'text-slate-700'}`}>{label}</p>
       {payload.map((p) => (
         <p key={p.dataKey ?? p.name} style={{ color: p.color ?? p.payload?.fill }}>{p.name ?? p.dataKey}: {formatCurrency(p.value)}</p>
@@ -112,9 +112,9 @@ export default function DashboardPage() {
   const health       = data.financialHealthScore;
   const activeAlerts = (data.alerts ?? []).filter((a) => !a.resolvedAt);
   const barData      = [
-    { name: 'Receita',  valor: data.incomeTotal },
-    { name: 'Previsto', valor: data.expensesPlanned },
-    { name: 'Pago',     valor: data.expensesPaid },
+    { name: 'Receita', valor: data.incomeTotal, color: '#7C3AED' },
+    { name: 'Previsto', valor: data.expensesPlanned, color: '#F59E0B' },
+    { name: 'Pago', valor: data.expensesPaid, color: '#DC2626' },
   ];
   const projData = proj.map((p) => ({
     name:      String(p.month).padStart(2,'0') + '/' + String(p.year).slice(-2),
@@ -135,11 +135,11 @@ export default function DashboardPage() {
     .sort((a, b) => b.value - a.value);
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-6 animate-page-enter">
       {/* Saldo em destaque + demais valores */}
       <div data-tutorial="dashboard-summary" className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-4">
         {/* Hero: saldo atual */}
-        <div className={`relative overflow-hidden rounded-3xl p-6 text-white shadow-premium dark:shadow-premium-dark animate-fade-in
+        <div className={`relative overflow-hidden rounded-3xl p-6 text-white shadow-floating dark:shadow-premium-dark animate-fade-in border border-white/10
           ${data.currentBalance >= 0 ? 'bg-gradient-to-br from-primary to-primary-dark' : 'bg-gradient-to-br from-danger to-danger-dark'}`}>
           <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/[0.08]" />
           <div className="absolute -bottom-16 -left-8 w-32 h-32 rounded-full bg-white/[0.06]" />
@@ -152,12 +152,12 @@ export default function DashboardPage() {
                 <p className="text-white/65 text-[11px] font-medium uppercase tracking-wide">Saldo trazido</p>
                 <p className="text-base font-semibold font-mono mt-0.5">{formatCurrency(data.openingBalance)}</p>
               </div>
-              <div className="w-px h-9 bg-white/15" />
+              <div className="w-px h-9 bg-white/20" />
               <div>
                 <p className="text-white/65 text-[11px] font-medium uppercase tracking-wide">Receitas do mês</p>
                 <p className="text-base font-semibold font-mono mt-0.5">{formatCurrency(data.incomeTotal)}</p>
               </div>
-              <div className="w-px h-9 bg-white/15" />
+              <div className="w-px h-9 bg-white/20" />
               <div>
                 <p className="text-white/65 text-[11px] font-medium uppercase tracking-wide">Após pendências</p>
                 <p className="text-base font-semibold font-mono mt-0.5">{formatCurrency(data.projectedBalance)}</p>
@@ -168,19 +168,19 @@ export default function DashboardPage() {
 
         {/* Grade 2x2: reserva, físico, dívida */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-white dark:bg-panel-dark border border-border dark:border-white/[0.06] rounded-2xl p-4 shadow-card dark:shadow-premium-dark">
+          <div className="premium-card premium-card-hover p-4">
             <p className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <IconPiggy size={13} /> Reserva
             </p>
             <p className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-zinc-50">{formatCurrency(data.savingsBalance)}</p>
           </div>
-          <div className="bg-white dark:bg-panel-dark border border-border dark:border-white/[0.06] rounded-2xl p-4 shadow-card dark:shadow-premium-dark">
+          <div className="premium-card premium-card-hover p-4">
             <p className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <IconWallet size={13} /> Físico
             </p>
             <p className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-zinc-50">{formatCurrency(data.physicalCash)}</p>
           </div>
-          <div className="col-span-2 bg-white dark:bg-panel-dark border border-border dark:border-white/[0.06] rounded-2xl p-4 shadow-card dark:shadow-premium-dark flex items-center justify-between">
+          <div className="col-span-2 premium-card premium-card-hover p-4 flex items-center justify-between">
             <div>
               <p className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
                 <IconAlert size={13} /> Dívida ativa
@@ -256,7 +256,7 @@ export default function DashboardPage() {
           {activeAlerts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <div className="text-3xl mb-2">✓</div>
-              <p className="text-sm font-medium text-primary-dark dark:text-primary-light">Tudo em ordem!</p>
+              <p className="text-sm font-medium text-success-dark dark:text-success-light">Tudo em ordem!</p>
               <p className="text-xs text-muted mt-1">Nenhum alerta ativo</p>
             </div>
           ) : (
@@ -279,7 +279,7 @@ export default function DashboardPage() {
           ) : (
             <ul className="space-y-2">
               {(data.recommendations ?? []).slice(0, 4).map((r, i) => (
-                <li key={i} className="p-3 rounded-xl bg-primary-subtle dark:bg-primary/10 border border-primary/15 text-xs">
+                <li key={i} className="p-3 rounded-xl bg-primary-subtle dark:bg-primary/10 border border-primary/20 text-xs">
                   <p className="font-semibold text-primary-dark dark:text-primary-light mb-0.5">{r.title}</p>
                   <p className="text-slate-600 dark:text-zinc-400 leading-relaxed">{r.description}</p>
                 </li>
@@ -303,11 +303,11 @@ export default function DashboardPage() {
               </p>
             </div>
             <ProgressBar value={data.commitment.ratio * 100} max={100} height="h-3"
-              color={data.commitment.band === 'saudavel' ? 'primary' : data.commitment.band === 'critico' ? 'danger' : 'warning'} />
+              color={data.commitment.band === 'saudavel' ? 'success' : data.commitment.band === 'critico' ? 'danger' : 'warning'} />
             <div className="grid grid-cols-2 gap-1 mt-3 text-xs text-muted">
-              {[['primary','0–40% Saudável'],['warning','40–60% Atenção'],['warning','60–80% Risco'],['danger','80%+ Crítico']].map(([c,l]) => (
+              {[['success','0–40% Saudável'],['warning','40–60% Atenção'],['warning','60–80% Risco'],['danger','80%+ Crítico']].map(([c,l]) => (
                 <div key={l} className="flex items-center gap-1.5">
-                  <div className={`w-2 h-2 rounded-full bg-${c}`} />
+                  <div className={`w-2 h-2 rounded-full ${c === 'success' ? 'bg-success' : c === 'warning' ? 'bg-warning' : 'bg-danger'}`} />
                   <span>{l}</span>
                 </div>
               ))}
@@ -330,7 +330,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="h-2 w-full bg-subtle dark:bg-white/5 rounded-full overflow-hidden">
                         <div className="h-full rounded-full transition-all duration-700"
-                          style={{ width: `${pct}%`, backgroundColor: card.color ?? '#10B981' }} />
+                          style={{ width: `${pct}%`, backgroundColor: card.color ?? '#7C3AED' }} />
                       </div>
                       <div className="flex justify-between mt-1 text-[10px] text-muted font-mono">
                         <span>{formatCurrency(card.usedLimit)}</span>
@@ -377,13 +377,9 @@ export default function DashboardPage() {
                 <XAxis dataKey="name" tick={{ fontSize: 12, fill: axisColor }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: axisColor }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
                 <Tooltip content={<ThemedTooltip />} cursor={{ fill: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }} />
-                <defs>
-                  <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10B981" stopOpacity={1} />
-                    <stop offset="100%" stopColor="#10B981" stopOpacity={0.7} />
-                  </linearGradient>
-                </defs>
-                <Bar dataKey="valor" fill="url(#barGradient)" radius={[8,8,0,0]} barSize={36} />
+                <Bar dataKey="valor" radius={[8,8,0,0]} barSize={36}>
+                  {barData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -398,8 +394,8 @@ export default function DashboardPage() {
                   <AreaChart data={projData} margin={{ left: -20 }}>
                     <defs>
                       <linearGradient id="areaAcumulado" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#10B981" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#16A34A" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="#16A34A" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="areaLiquido" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.25} />
@@ -411,7 +407,7 @@ export default function DashboardPage() {
                     <YAxis tick={{ fontSize: 11, fill: axisColor }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
                     <Tooltip content={<ThemedTooltip />} />
                     <Area type="monotone" dataKey="líquido" stroke="#3B82F6" strokeWidth={2} fill="url(#areaLiquido)" />
-                    <Area type="monotone" dataKey="acumulado" stroke="#10B981" strokeWidth={2} fill="url(#areaAcumulado)" />
+                    <Area type="monotone" dataKey="acumulado" stroke="#16A34A" strokeWidth={2} fill="url(#areaAcumulado)" />
                   </AreaChart>
                 </ResponsiveContainer>}
           </div>
@@ -454,7 +450,7 @@ export default function DashboardPage() {
             {data.goals.map((g) => (
               <div key={g.id} className="bg-subtle dark:bg-white/[0.04] rounded-2xl p-4 transition-all duration-200 hover:bg-subtle/70 dark:hover:bg-white/[0.06]">
                 <p className="text-sm font-semibold text-slate-800 dark:text-zinc-200 mb-3">{g.name}</p>
-                <ProgressBar value={g.progress} max={Number(g.targetValue)} height="h-2.5" />
+                <ProgressBar value={g.progress} max={Number(g.targetValue)} height="h-2.5" color="success" />
                 <div className="flex justify-between text-xs text-muted mt-2">
                   <span>{formatCurrency(g.progress)}</span>
                   <span className="font-semibold text-slate-700 dark:text-zinc-300">{Math.round(g.percentage)}%</span>

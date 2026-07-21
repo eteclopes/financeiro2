@@ -8,7 +8,7 @@ import { FormGroup, Input, Select } from '../components/ui/Modal';
 import { useUIStore } from '../store/uiStore';
 
 const BAND_STYLES = {
-  saudavel: { bg:'bg-primary-subtle border-primary/20', text:'text-primary-dark', bar:'primary', label:'Saudável ✓' },
+  saudavel: { bg:'bg-success-subtle border-success/20 dark:bg-success/10', text:'text-success-dark dark:text-success-light', bar:'success', label:'Saudável ✓' },
   atencao:  { bg:'bg-warning-subtle border-warning/20', text:'text-warning-dark', bar:'warning', label:'Atenção ⚠' },
   risco:    { bg:'bg-warning-subtle border-warning/20', text:'text-warning-dark', bar:'warning', label:'Risco ⚠' },
   critico:  { bg:'bg-danger-subtle border-danger/20',   text:'text-danger-dark',  bar:'danger',  label:'Crítico ✕' },
@@ -48,9 +48,9 @@ export default function PurchaseSimulatorPage() {
   const band = result ? (BAND_STYLES[result.commitmentBand] ?? BAND_STYLES.atencao) : null;
 
   return (
-    <div className="space-y-5 animate-fade-in max-w-3xl">
+    <div className="space-y-6 animate-page-enter max-w-3xl">
       <div>
-        <h2 className="font-bold text-xl text-slate-900 dark:text-zinc-50">Simulador de Compras</h2>
+        <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Simulador de Compras</h2>
         <p className="text-sm text-muted mt-0.5">Analise o impacto antes de comprar. Nenhum dado é salvo.</p>
       </div>
 
@@ -99,13 +99,13 @@ export default function PurchaseSimulatorPage() {
         {result ? (
           <div className="space-y-4 animate-slide-up">
             {/* Veredicto */}
-            <div className={`rounded-2xl border p-5 ${result.recommended ? 'bg-primary-subtle border-primary/20' : 'bg-danger-subtle border-danger/20'}`}>
+            <div className={`rounded-2xl border p-5 ${result.recommended ? 'bg-success-subtle border-success/20 dark:bg-success/10' : 'bg-danger-subtle border-danger/20'}`}>
               <div className="flex items-start gap-4">
-                <div className={`h-14 w-14 rounded-2xl flex items-center justify-center text-3xl font-bold shrink-0 ${result.recommended ? 'bg-primary text-white' : 'bg-danger text-white'}`}>
+                <div className={`h-14 w-14 rounded-2xl flex items-center justify-center text-3xl font-bold shrink-0 ${result.recommended ? 'bg-success text-white' : 'bg-danger text-white'}`}>
                   {result.recommended ? '✓' : '✕'}
                 </div>
                 <div>
-                  <p className={`text-lg font-bold ${result.recommended ? 'text-primary-dark' : 'text-danger-dark'}`}>
+                  <p className={`text-lg font-bold ${result.recommended ? 'text-success-dark dark:text-success-light' : 'text-danger-dark'}`}>
                     {result.recommended ? 'Compra Recomendada' : 'Não Recomendada'}
                   </p>
                   <p className="text-sm text-slate-600 dark:text-zinc-400 mt-0.5 leading-relaxed">{result.explanation}</p>

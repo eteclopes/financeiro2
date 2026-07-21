@@ -8,7 +8,7 @@ import { Modal, ConfirmDialog, FormGroup, Input, Select } from '../components/ui
 import { CategorySelect } from '../components/ui/CategorySelect';
 import { useUIStore } from '../store/uiStore';
 
-const COLORS = ['#10B981','#3B82F6','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#EC4899'];
+const COLORS = ['#7C3AED','#2563EB','#16A34A','#F59E0B','#DC2626','#A855F7','#06B6D4'];
 const STATUS_V = { open:'info', closed:'warning', paid:'success' };
 const STATUS_L = { open:'Aberta', closed:'Fechada', paid:'Paga' };
 
@@ -162,10 +162,10 @@ export default function CardsPage() {
   );
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-page-enter">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="font-bold text-xl text-slate-900 dark:text-zinc-50">Cartões de Crédito</h2>
+          <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Cartões de Crédito</h2>
           <p className="text-sm text-muted mt-0.5">{cards.length} cartão(ões) cadastrado(s)</p>
         </div>
         <Button onClick={() => setCardModal(true)}>+ Novo Cartão</Button>
@@ -183,14 +183,14 @@ export default function CardsPage() {
               const isSelected = String(selected?.id) === String(card.id);
               const isInactive = card.active === false;
               return (
-                <button key={card.id} onClick={() => setSelected(card)} className={`relative text-left rounded-3xl p-5 text-white transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] ${isSelected ? 'ring-2 ring-white/50 ring-offset-2 ring-offset-bg shadow-xl' : 'shadow-md'} ${isInactive ? 'grayscale opacity-60' : ''}`}
-                  style={{ background: `linear-gradient(135deg, ${card.color ?? '#10B981'}, ${card.color ?? '#10B981'}99)` }}>
+                <button key={card.id} onClick={() => setSelected(card)} className={`group relative overflow-hidden text-left rounded-[24px] border border-white/20 p-5 text-white transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] active:translate-y-0 active:scale-[0.985] ${isSelected ? 'ring-2 ring-primary-light/70 ring-offset-2 ring-offset-bg shadow-floating dark:ring-offset-canvas-dark' : 'shadow-[0_22px_46px_-26px_rgb(15_23_42_/_0.55)]'} ${isInactive ? 'grayscale opacity-60' : ''}`}
+                  style={{ background: `linear-gradient(135deg, ${card.color ?? '#7C3AED'}, ${card.color ?? '#7C3AED'}99)` }}>
                   {isInactive && (
                     <span className="absolute top-3 right-3 text-[10px] font-semibold uppercase tracking-wider bg-black/30 px-2 py-1 rounded-lg">
                       Desativado
                     </span>
                   )}
-                  <div className="flex justify-between items-start mb-4">
+                  <span className="pointer-events-none absolute -right-10 -top-16 h-36 w-36 rounded-full bg-white/15 blur-2xl transition-transform duration-500 group-hover:scale-125" /><span className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/10" /><div className="relative flex justify-between items-start mb-4">
                     <p className="font-bold text-lg">{card.name}</p>
                     {!isInactive && (
                       <span className="text-white/60 text-xs bg-white/10 px-2 py-1 rounded-lg">
@@ -198,12 +198,12 @@ export default function CardsPage() {
                       </span>
                     )}
                   </div>
-                  <p className="font-mono text-2xl font-bold mb-1">{formatCurrency(card.availableLimit)}</p>
-                  <p className="text-white/60 text-xs mb-3">disponível de {formatCurrency(card.limitValue)}</p>
-                  <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
+                  <p className="relative font-mono text-2xl font-bold mb-1 tracking-tight">{formatCurrency(card.availableLimit)}</p>
+                  <p className="relative text-white/65 text-xs mb-3">disponível de {formatCurrency(card.limitValue)}</p>
+                  <div className="relative h-1.5 bg-white/20 rounded-full overflow-hidden">
                     <div className="h-full bg-white rounded-full transition-all duration-700" style={{ width: `${pct}%` }} />
                   </div>
-                  <p className="text-white/60 text-xs mt-1 text-right">{pct}% utilizado</p>
+                  <p className="relative text-white/65 text-xs mt-1.5 text-right">{pct}% utilizado</p>
                 </button>
               );
             })}

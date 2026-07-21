@@ -80,10 +80,10 @@ export default function BudgetsPage() {
   const totalSpent = budgets.reduce((s, b) => s + b.spent, 0);
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="space-y-5 animate-page-enter">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="font-bold text-xl text-slate-900 dark:text-zinc-50">Orçamento por Categoria</h2>
+          <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Orçamento por Categoria</h2>
           <p className="text-sm text-muted mt-0.5">Defina limites mensais e acompanhe quanto já gastou em cada categoria</p>
         </div>
         <Button onClick={openCreate}>+ Definir orçamento</Button>

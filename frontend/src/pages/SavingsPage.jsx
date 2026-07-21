@@ -18,9 +18,9 @@ function CustomTooltip({ active, payload, label }) {
   const theme = useThemeStore((s) => s.theme);
   if (!active || !payload?.length) return null;
   return (
-    <div className={`rounded-xl p-3 shadow-modal text-xs border ${theme === 'dark' ? 'bg-panel-dark border-white/10' : 'bg-white border-border'}`}>
+    <div className="chart-tooltip">
       <p className="text-muted mb-1">{label}</p>
-      <p className="font-bold text-primary-dark dark:text-primary-light">{formatCurrency(payload[0]?.value)}</p>
+      <p className="font-bold text-success-dark dark:text-success-light">{formatCurrency(payload[0]?.value)}</p>
     </div>
   );
 }
@@ -107,9 +107,9 @@ export default function SavingsPage() {
   }));
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-6 animate-page-enter">
       {/* Hero card */}
-      <div className="bg-gradient-to-br from-primary to-primary-dark rounded-3xl p-6 text-white relative overflow-hidden">
+      <div className="bg-gradient-to-br from-success to-success-dark rounded-3xl p-6 text-white relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full -translate-y-1/2 translate-x-1/2" />
           <div className="absolute bottom-0 left-0 w-48 h-48 bg-white rounded-full translate-y-1/2 -translate-x-1/2" />
@@ -124,7 +124,7 @@ export default function SavingsPage() {
               − Retirar
             </Button>
             <Button onClick={() => openModal('deposit')}
-              className="bg-white text-primary-dark hover:bg-white/90 flex-1 justify-center font-bold">
+              className="bg-white text-success-dark hover:bg-white/90 flex-1 justify-center font-bold">
               + Depositar
             </Button>
           </div>
@@ -155,15 +155,15 @@ export default function SavingsPage() {
               <AreaChart data={chartData} margin={{ left: -20 }}>
                 <defs>
                   <linearGradient id="saldoGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#16A34A" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#16A34A" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
                 <XAxis dataKey="label" tick={{ fontSize: 11, fill: axisColor }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: axisColor }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
                 <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="saldo" stroke="#10B981" strokeWidth={2.5} fill="url(#saldoGrad)" dot={false} />
+                <Area type="monotone" dataKey="saldo" stroke="#16A34A" strokeWidth={2.5} fill="url(#saldoGrad)" dot={false} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -193,7 +193,7 @@ export default function SavingsPage() {
                         <td className="table-cell">
                           <Badge variant={t.type==='deposit'?'success':'danger'}>{t.type==='deposit'?'Depósito':'Retirada'}</Badge>
                         </td>
-                        <td className={`table-cell font-mono tabular-nums font-bold ${t.type==='deposit'?'text-primary-dark dark:text-primary-light':'text-danger-dark dark:text-danger-light'}`}>
+                        <td className={`table-cell font-mono tabular-nums font-bold ${t.type==='deposit'?'text-success-dark dark:text-success-light':'text-danger-dark dark:text-danger-light'}`}>
                           {t.type==='deposit'?'+':'-'}{formatCurrency(t.value)}
                         </td>
                         <td className="table-cell font-mono tabular-nums text-slate-600 dark:text-zinc-400">{formatCurrency(t.balanceAfter)}</td>
@@ -240,7 +240,7 @@ export default function SavingsPage() {
                   </label>
                 </div>
               </FormGroup>
-              <div className="bg-primary-subtle border border-primary/20 rounded-xl p-3 text-xs text-primary-dark">
+              <div className="bg-success-subtle border border-success/20 rounded-xl p-3 text-xs text-success-dark dark:bg-success/10 dark:text-success-light">
                 {form.origin === 'balance'
                   ? '💡 O valor será descontado do seu saldo disponível agora.'
                   : 'ℹ️ Só entra na reserva — seu saldo disponível não muda.'}

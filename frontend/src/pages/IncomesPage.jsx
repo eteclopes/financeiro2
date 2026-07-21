@@ -106,10 +106,10 @@ export default function IncomesPage() {
   const total = incomes.reduce((s, i) => s + Number(i.value), 0);
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="space-y-5 animate-page-enter">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="font-bold text-xl text-slate-900 dark:text-zinc-50">Receitas</h2>
+          <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Receitas</h2>
           <p className="text-sm text-muted mt-0.5">Total: <span className="font-mono font-bold text-primary-dark dark:text-primary-light">{formatCurrency(total)}</span></p>
         </div>
         <Button data-tutorial="new-income" onClick={openCreate}>+ Nova Receita</Button>

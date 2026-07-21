@@ -36,13 +36,13 @@ export default function ReportsPage() {
   const health = data.financialHealthScore;
   const activeAlerts = (data.alerts ?? []).filter((a) => !a.resolvedAt);
 
-  const SCORE_COLOR = (s) => s >= 75 ? '#10B981' : s >= 50 ? '#F59E0B' : '#EF4444';
+  const SCORE_COLOR = (s) => s >= 75 ? '#16A34A' : s >= 50 ? '#F59E0B' : '#EF4444';
 
   return (
-    <div className="space-y-5 animate-fade-in" id="report-content">
+    <div className="space-y-6 animate-page-enter" id="report-content">
       <div className="flex items-center justify-between flex-wrap gap-3 print:hidden">
         <div>
-          <h2 className="font-bold text-xl text-slate-900 dark:text-zinc-50 print:text-slate-900">Relatórios</h2>
+          <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white print:text-slate-900">Relatórios</h2>
           <p className="text-sm text-muted mt-0.5">{month ? formatMonthLabel(month) : ''}</p>
         </div>
         <Button onClick={() => window.print()} variant="outline">Exportar PDF</Button>
@@ -56,8 +56,8 @@ export default function ReportsPage() {
             { label:'Receita Total',      value: data.incomeTotal,      color:'text-primary-dark dark:text-primary-light' },
             { label:'Despesas Previstas', value: data.expensesPlanned,  color:'text-danger-dark dark:text-danger-light'  },
             { label:'Despesas Pagas',     value: data.expensesPaid,     color:'text-danger-dark dark:text-danger-light'  },
-            { label:'Saldo Atual',        value: data.currentBalance,   color: data.currentBalance   >= 0 ? 'text-primary-dark dark:text-primary-light' : 'text-danger-dark dark:text-danger-light' },
-            { label:'Saldo Projetado',    value: data.projectedBalance, color: data.projectedBalance >= 0 ? 'text-primary-dark dark:text-primary-light' : 'text-danger-dark dark:text-danger-light' },
+            { label:'Saldo Atual',        value: data.currentBalance,   color: data.currentBalance   >= 0 ? 'text-success-dark dark:text-success-light' : 'text-danger-dark dark:text-danger-light' },
+            { label:'Saldo Projetado',    value: data.projectedBalance, color: data.projectedBalance >= 0 ? 'text-success-dark dark:text-success-light' : 'text-danger-dark dark:text-danger-light' },
             { label:'Dívida Ativa Total', value: data.totalActiveDebt,  color:'text-warning-dark dark:text-warning-light' },
           ].map((item) => (
             <div key={item.label} className="bg-subtle dark:bg-white/[0.04] rounded-2xl p-4">
@@ -108,11 +108,11 @@ export default function ReportsPage() {
             <div className="space-y-3">
               {Object.entries(health.breakdown).map(([key, f]) => (
                 <div key={key} className="flex items-center gap-3 p-3 bg-subtle dark:bg-white/[0.04] rounded-xl">
-                  <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: f.points >= f.max * 0.6 ? '#10B981' : f.points > 0 ? '#F59E0B' : '#EF4444' }} />
+                  <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: f.points >= f.max * 0.6 ? '#16A34A' : f.points > 0 ? '#F59E0B' : '#EF4444' }} />
                   <p className="text-sm text-slate-700 dark:text-zinc-300 flex-1">{f.reason}</p>
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="w-20 bg-border dark:bg-white/10 h-1.5 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${(f.points/f.max)*100}%`, backgroundColor: f.points >= f.max * 0.6 ? '#10B981' : f.points > 0 ? '#F59E0B' : '#EF4444' }} />
+                      <div className="h-full rounded-full" style={{ width: `${(f.points/f.max)*100}%`, backgroundColor: f.points >= f.max * 0.6 ? '#16A34A' : f.points > 0 ? '#F59E0B' : '#EF4444' }} />
                     </div>
                     <span className="text-sm font-mono font-bold text-slate-700 dark:text-zinc-300 w-10 text-right">{f.points}/{f.max}</span>
                   </div>
@@ -230,7 +230,7 @@ export default function ReportsPage() {
                       <td className="table-cell">
                         <div className="flex items-center gap-2">
                           <div className="flex-1 h-2 bg-subtle dark:bg-white/10 rounded-full overflow-hidden min-w-16">
-                            <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: c.color ?? '#10B981' }} />
+                            <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: c.color ?? '#16A34A' }} />
                           </div>
                           <Badge variant={pct >= 80 ? 'danger' : pct >= 50 ? 'warning' : 'success'}>{pct}%</Badge>
                         </div>

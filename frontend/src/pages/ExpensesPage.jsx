@@ -253,9 +253,9 @@ export default function ExpensesPage() {
   );
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="space-y-5 animate-page-enter">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="font-bold text-xl text-slate-900 dark:text-zinc-50">Despesas</h2>
+        <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Despesas</h2>
         {addButton}
       </div>
 

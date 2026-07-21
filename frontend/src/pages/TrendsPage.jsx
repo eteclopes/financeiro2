@@ -93,8 +93,8 @@ export default function TrendsPage() {
 
   if (!data || data.periods < 2) {
     return (
-      <div className="space-y-4 animate-fade-in">
-        <h2 className="font-bold text-xl text-slate-900 dark:text-zinc-50">Tendências</h2>
+      <div className="space-y-5 animate-page-enter">
+        <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Tendências</h2>
         <Card><p className="text-sm text-muted text-center py-8">
           Dados insuficientes para detectar tendências. Feche mais meses para começar a ver essa análise.
         </p></Card>
@@ -109,10 +109,10 @@ export default function TrendsPage() {
   const debtData     = data.debtInstallments.series.map((v, i) => ({ name: labels[i], divida: v }));
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-6 animate-page-enter">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="font-bold text-xl text-slate-900 dark:text-zinc-50">Tendências</h2>
+          <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Tendências</h2>
           <p className="text-sm text-muted mt-0.5">Para onde suas finanças estão indo, com base nos últimos meses</p>
         </div>
         <TabGroup tabs={PERIOD_TABS} value={periods} onChange={setPeriods} />
@@ -139,13 +139,13 @@ export default function TrendsPage() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <MiniTrendCard title="Receita" data={incomeData} dataKey="receita" color="#10B981"
+        <MiniTrendCard title="Receita" data={incomeData} dataKey="receita" color="#7C3AED"
           trend={data.income.trend} positiveIsGood formatValue={(v) => `${(v/1000).toFixed(1)}k`} />
         <MiniTrendCard title="Despesas" data={expenseData} dataKey="despesa" color="#EF4444"
           trend={data.expenses.trend} formatValue={(v) => `${(v/1000).toFixed(1)}k`} />
         <MiniTrendCard title="Dependência de cartão de crédito" data={cardDepData} dataKey="dependencia" color="#F59E0B"
           trend={data.cardDependency.trend} formatValue={(v) => `${v.toFixed(0)}%`} />
-        <MiniTrendCard title="Parcelas de dívida" data={debtData} dataKey="divida" color="#8B5CF6"
+        <MiniTrendCard title="Parcelas de dívida" data={debtData} dataKey="divida" color="#A855F7"
           trend={data.debtInstallments.trend} formatValue={(v) => `${(v/1000).toFixed(1)}k`} />
       </div>
 

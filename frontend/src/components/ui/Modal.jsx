@@ -74,18 +74,18 @@ export function Modal({ open, onClose, title, children, size = 'md' }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-slate-900/50 dark:bg-black/60 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-950/55 dark:bg-black/70 backdrop-blur-md animate-fade-in" onClick={onClose} />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`relative bg-white dark:bg-panel-dark w-full ${sizes[size]} rounded-t-3xl sm:rounded-2xl shadow-modal flex flex-col max-h-[90vh] animate-slide-up`}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border dark:border-white/[0.06] shrink-0">
-          <h2 id={titleId} className="font-semibold text-slate-900 dark:text-zinc-50">{title}</h2>
+        className={`relative bg-white/95 dark:bg-[#1B1B26]/95 backdrop-blur-xl border border-white/70 dark:border-white/[0.08] w-full ${sizes[size]} rounded-t-[26px] sm:rounded-[22px] shadow-modal flex flex-col max-h-[90vh] animate-slide-up overflow-hidden`}>
+        <div className="flex items-center justify-between px-6 py-4.5 border-b border-slate-200/80 dark:border-white/[0.07] shrink-0">
+          <h2 id={titleId} className="font-bold tracking-tight text-slate-950 dark:text-white">{title}</h2>
           <button onClick={onClose} aria-label="Fechar"
-            className="h-8 w-8 flex items-center justify-center rounded-lg text-muted hover:text-slate-700 hover:bg-subtle dark:hover:bg-white/5 dark:hover:text-zinc-100 transition-colors text-xl leading-none">
+            className="h-9 w-9 flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-900 hover:bg-slate-100 dark:text-zinc-500 dark:hover:bg-white/[0.06] dark:hover:text-white transition-colors text-xl leading-none">
             ×
           </button>
         </div>
@@ -112,7 +112,7 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, description, co
 export function FormGroup({ label, htmlFor, error, children, required, hint }) {
   return (
     <div>
-      <label htmlFor={htmlFor} className="block text-sm font-medium text-slate-700 dark:text-zinc-300 mb-1.5">
+      <label htmlFor={htmlFor} className="block text-sm font-semibold text-slate-700 dark:text-zinc-300 mb-1.5">
         {label}
         {required && <span className="text-danger ml-0.5">*</span>}
         {hint && <span className="text-muted font-normal ml-1 text-xs">({hint})</span>}
@@ -148,16 +148,16 @@ export function Textarea({ className = '', ...props }) {
 // ── Table ──────────────────────────────────────────────────
 export function Table({ columns, data, loading, empty }) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-border dark:border-white/[0.06]">
+    <div className="overflow-x-auto rounded-2xl border border-slate-200/90 dark:border-white/[0.07] bg-white dark:bg-transparent">
       <table className="w-full text-sm">
-        <thead className="bg-subtle/60 dark:bg-white/[0.03] backdrop-blur-sm sticky top-0">
+        <thead className="bg-slate-50/90 dark:bg-white/[0.025] backdrop-blur-sm sticky top-0">
           <tr>
             {columns.map((col) => (
               <th key={col.key ?? col.label} className="table-header">{col.label}</th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-border/60 dark:divide-white/[0.06]">
+        <tbody className="divide-y divide-slate-200/70 dark:divide-white/[0.055]">
           {loading
             ? Array.from({ length: 4 }).map((_, i) => (
                 <tr key={i}>
@@ -177,7 +177,7 @@ export function Table({ columns, data, loading, empty }) {
                 </tr>
               )
               : data.map((row, i) => (
-                  <tr key={row.id ?? i} className="hover:bg-subtle/40 dark:hover:bg-white/[0.03] transition-colors">
+                  <tr key={row.id ?? i} className="hover:bg-primary-subtle/45 dark:hover:bg-primary/[0.045] transition-colors">
                     {columns.map((col) => (
                       <td key={col.key ?? col.label} className="table-cell">
                         {col.render ? col.render(row) : row[col.key]}
