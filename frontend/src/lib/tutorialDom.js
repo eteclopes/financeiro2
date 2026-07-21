@@ -1,5 +1,5 @@
-const DEFAULT_TIMEOUT = 18_000;
-const POLL_INTERVAL = 70;
+const DEFAULT_TIMEOUT = 4_500;
+const POLL_INTERVAL = 80;
 const VIEWPORT_MARGIN = 24;
 
 function sleep(ms) {
@@ -47,9 +47,13 @@ export function hasTutorialSelector(selectors) {
 
 async function waitForFonts() {
   try {
-    await document.fonts?.ready;
+    if (!document.fonts?.ready) return;
+    await Promise.race([
+      document.fonts.ready,
+      new Promise((resolve) => window.setTimeout(resolve, 1_200)),
+    ]);
   } catch {
-    // A fonte não deve impedir o uso do sistema nem do tutorial.
+    // A fonte nunca deve impedir o uso do sistema nem do tutorial.
   }
 }
 
@@ -83,7 +87,7 @@ async function waitUntil(check, { timeout = DEFAULT_TIMEOUT, signal } = {}) {
   return null;
 }
 
-async function waitForFiniteAnimations(root, { signal, timeout = 3_200 } = {}) {
+async function waitForFiniteAnimations(root, { signal, timeout = 1_500 } = {}) {
   if (!root?.getAnimations) {
     await waitForAnimationFrames(4, signal);
     return;
@@ -107,7 +111,7 @@ async function waitForFiniteAnimations(root, { signal, timeout = 3_200 } = {}) {
   }
 }
 
-async function waitForStableBox(element, { signal, timeout = 2_800, frames = 5 } = {}) {
+async function waitForStableBox(element, { signal, timeout = 1_600, frames = 3 } = {}) {
   if (!element) return false;
   let previous = null;
   let stableFrames = 0;
@@ -156,11 +160,11 @@ async function placeElementInViewport(element, { signal } = {}) {
 
   const inViewport = await waitUntil(
     () => elementHasUsableViewportPosition(element) && element,
-    { signal, timeout: 3_500 }
+    { signal, timeout: 1_800 }
   );
   if (!inViewport) return false;
 
-  return waitForStableBox(element, { signal, timeout: 2_800, frames: 5 });
+  return waitForStableBox(element, { signal, timeout: 1_600, frames: 3 });
 }
 
 export async function waitForTutorialRoute(pathname, { signal, timeout = DEFAULT_TIMEOUT } = {}) {
@@ -188,7 +192,7 @@ export async function waitForTutorialPage(pageReadySelector, { signal, timeout =
 
   if (!ready) return null;
   await waitForFiniteAnimations(routeStage(), { signal });
-  const stable = await waitForStableBox(ready, { signal, frames: 5 });
+  const stable = await waitForStableBox(ready, { signal, frames: 3 });
   return stable ? ready : null;
 }
 
@@ -210,13 +214,13 @@ export async function prepareTutorialStep(step, { signal, timeout = DEFAULT_TIME
     if (routeIsBusy()) return null;
     if (!readySelectors) return routeStage();
     return findVisibleTutorialElement(readySelectors);
-  }, { signal, timeout: Math.min(timeout, 9_000) });
+  }, { signal, timeout: Math.min(timeout, 3_000) });
 
   if (!readiness) return { status: 'timeout', element: null };
 
   if (!step.element) {
     await waitForFiniteAnimations(routeStage(), { signal });
-    await waitForStableBox(readiness, { signal, frames: 5 });
+    await waitForStableBox(readiness, { signal, frames: 3 });
     return { status: 'ready', element: null };
   }
 
@@ -229,7 +233,7 @@ export async function prepareTutorialStep(step, { signal, timeout = DEFAULT_TIME
   if (!target) {
     target = await waitUntil(
       () => !routeIsBusy() && findVisibleTutorialElement(step.element),
-      { signal, timeout: Math.min(timeout, 9_000) }
+      { signal, timeout: Math.min(timeout, 3_000) }
     );
   }
 

@@ -217,7 +217,7 @@ export default function WhatIfSimulatorPage() {
             </Card>
 
             {/* Salvar */}
-            <div className="flex gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
               <Input value={name} onChange={(e) => setName(e.target.value)}
                 placeholder="Nome para salvar esta simulação..." className="flex-1" />
               <Button variant="outline" onClick={handleSave} loading={saving}>Salvar</Button>
@@ -254,7 +254,7 @@ export default function WhatIfSimulatorPage() {
               // número aqui é diretamente comparável ao de uma prévia nova.
               const gain = (sim.results ?? []).reduce((sum, r) => sum + Number(r.difference), 0);
               return (
-                <div key={sim.id} className="flex items-center justify-between p-3.5 bg-subtle dark:bg-white/[0.04] rounded-xl">
+                <div key={sim.id} className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-subtle dark:bg-white/[0.04] rounded-xl">
                   <div>
                     <p className="text-sm font-semibold text-slate-900 dark:text-zinc-50">{sim.name}</p>
                     <p className="text-xs text-muted mt-0.5">

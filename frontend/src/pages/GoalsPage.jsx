@@ -229,13 +229,13 @@ export default function GoalsPage() {
       {/* Modal Nova Meta */}
       <Modal open={goalModal} onClose={() => setGoalModal(false)} title="Nova Meta">
         <div className="space-y-4">
-          <FormGroup label="Nome" required><Input value={goalForm.name} onChange={(e) => setGoalForm({...goalForm,name:e.target.value})} placeholder="Ex: Tênis novo, Viagem..." autoFocus /></FormGroup>
+          <FormGroup label="Nome" required><Input value={goalForm.name} onChange={(e) => setGoalForm({...goalForm,name:e.target.value})} placeholder="Ex: Tênis novo, Viagem..." /></FormGroup>
           <FormGroup label="Descrição"><Input value={goalForm.description} onChange={(e) => setGoalForm({...goalForm,description:e.target.value})} placeholder="Opcional" /></FormGroup>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor alvo" required><Input type="number" min="0" step="0.01" value={goalForm.targetValue} onChange={(e) => setGoalForm({...goalForm,targetValue:e.target.value})} /></FormGroup>
             <FormGroup label="Data desejada" hint="opcional"><Input type="date" value={goalForm.targetDate} onChange={(e) => setGoalForm({...goalForm,targetDate:e.target.value})} /></FormGroup>
           </div>
-          <div className="flex flex-wrap gap-3 justify-end pt-2">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setGoalModal(false)}>Cancelar</Button>
             <Button onClick={saveGoal} loading={saving}>Criar Meta</Button>
           </div>
@@ -245,13 +245,13 @@ export default function GoalsPage() {
       {/* Modal Editar Meta */}
       <Modal open={!!editGoalModal} onClose={() => setEditGoalModal(null)} title="Editar Meta">
         <div className="space-y-4">
-          <FormGroup label="Nome" required><Input value={editGoalForm.name} onChange={(e) => setEditGoalForm({...editGoalForm,name:e.target.value})} autoFocus /></FormGroup>
+          <FormGroup label="Nome" required><Input value={editGoalForm.name} onChange={(e) => setEditGoalForm({...editGoalForm,name:e.target.value})} /></FormGroup>
           <FormGroup label="Descrição"><Input value={editGoalForm.description} onChange={(e) => setEditGoalForm({...editGoalForm,description:e.target.value})} placeholder="Opcional" /></FormGroup>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor alvo" required hint="o progresso acumulado não é alterado"><Input type="number" min="0" step="0.01" value={editGoalForm.targetValue} onChange={(e) => setEditGoalForm({...editGoalForm,targetValue:e.target.value})} /></FormGroup>
             <FormGroup label="Data desejada" hint="opcional"><Input type="date" value={editGoalForm.targetDate} onChange={(e) => setEditGoalForm({...editGoalForm,targetDate:e.target.value})} /></FormGroup>
           </div>
-          <div className="flex flex-wrap gap-3 justify-end pt-2">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setEditGoalModal(null)}>Cancelar</Button>
             <Button onClick={saveEditGoal} loading={saving}>Salvar Alterações</Button>
           </div>
@@ -267,11 +267,11 @@ export default function GoalsPage() {
             <span className="text-primary-dark"> para atingir a meta</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormGroup label="Valor" required><Input type="number" min="0" step="0.01" value={contribForm.value} onChange={(e) => setContribForm({...contribForm,value:e.target.value})} autoFocus /></FormGroup>
+            <FormGroup label="Valor" required><Input type="number" min="0" step="0.01" value={contribForm.value} onChange={(e) => setContribForm({...contribForm,value:e.target.value})} /></FormGroup>
             <FormGroup label="Data"><Input type="date" value={contribForm.date} onChange={(e) => setContribForm({...contribForm,date:e.target.value})} /></FormGroup>
           </div>
           <p className="text-xs text-muted bg-subtle dark:bg-white/[0.04] p-3 rounded-xl">O valor será descontado do saldo atual do mês selecionado no sistema.</p>
-          <div className="flex flex-wrap gap-3 justify-end">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setContribTarget(null)}>Cancelar</Button>
             <Button onClick={saveContrib} loading={saving}>Confirmar Aporte</Button>
           </div>
@@ -283,7 +283,7 @@ export default function GoalsPage() {
         <div className="space-y-4">
           <p className="text-sm text-muted">A meta será arquivada. Esta ação não pode ser desfeita.</p>
           <ToggleSwitch checked={refundContributions} onChange={setRefundContributions} label="Devolver aportes ao saldo" description={`${formatCurrency(cancelTarget?.progress ?? 0)} serão devolvidos ao mês atual.`} />
-          <div className="flex flex-wrap gap-3 justify-end">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setCancelTarget(null)}>Voltar</Button>
             <Button variant="danger" onClick={handleCancel} loading={cancelling}>Cancelar Meta</Button>
           </div>

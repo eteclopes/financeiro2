@@ -127,7 +127,7 @@ export default function BudgetsPage() {
                   )}
                 </div>
                 <ProgressBar value={b.spent} max={b.monthlyLimit} color={b.exceeded ? 'danger' : b.percentUsed >= 80 ? 'warning' : 'primary'} />
-                <div className="flex gap-2 mt-3">
+                <div className="flex flex-wrap gap-2 mt-3">
                   <Button variant="ghost" size="sm" onClick={() => openEdit(b)}>Editar limite</Button>
                   <Button variant="ghost" size="sm" className="text-danger" onClick={() => handleRemoveLimit(b)}>Remover</Button>
                 </div>
@@ -149,9 +149,9 @@ export default function BudgetsPage() {
           </FormGroup>
           <FormGroup label="Limite mensal (R$)" required>
             <Input type="number" min="0.01" step="0.01" value={limitValue}
-              onChange={(e) => setLimitValue(e.target.value)} placeholder="Ex: 800,00" autoFocus />
+              onChange={(e) => setLimitValue(e.target.value)} placeholder="Ex: 800,00" />
           </FormGroup>
-          <div className="flex flex-wrap gap-3 justify-end pt-2">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
             <Button onClick={handleSave} loading={saving}>Salvar</Button>
           </div>

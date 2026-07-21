@@ -91,7 +91,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Skeleton className="h-20 rounded-2xl" />
             <Skeleton className="h-20 rounded-2xl" />
-            <Skeleton className="h-20 rounded-2xl col-span-2" />
+            <Skeleton className="h-20 rounded-2xl sm:col-span-2" />
           </div>
         </div>
         <Skeleton className="h-14 rounded-2xl" />
@@ -153,7 +153,7 @@ export default function DashboardPage() {
           </div>
           <div className="relative">
             <p className="text-white/80 text-sm font-medium mb-1">Saldo disponível acumulado</p>
-            <p className="text-4xl font-bold font-mono tracking-tight"><AnimatedNumber value={data.currentBalance} formatter={formatCurrency} /></p>
+            <p className="responsive-money font-bold font-mono tracking-tight"><AnimatedNumber value={data.currentBalance} formatter={formatCurrency} /></p>
             <p className="text-white/65 text-xs mt-1">O valor restante dos meses anteriores continua no seu caixa.</p>
             <div className="hero-mini-bars mt-4" aria-hidden="true">
               {[35, 68, 48, 82, 62, 96, 75].map((height, index) => <span key={index} style={{ height: `${height}%` }} />)}
@@ -191,7 +191,7 @@ export default function DashboardPage() {
             </p>
             <p className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-zinc-50">{formatCurrency(data.physicalCash)}</p>
           </Spotlight>
-          <Spotlight className="col-span-2 premium-card premium-card-hover p-4 flex items-center justify-between">
+          <Spotlight className="sm:col-span-2 premium-card premium-card-hover p-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
                 <IconAlert size={13} /> Dívida ativa
@@ -306,7 +306,7 @@ export default function DashboardPage() {
           <Card>
             <CardHeader title="Comprometimento da Renda" />
             <div className={`text-center p-4 rounded-2xl mb-4 ${COMMITMENT_BG[data.commitment.band] ?? 'bg-subtle dark:bg-white/5'}`}>
-              <p className={`text-4xl font-bold font-mono ${COMMITMENT_COLOR[data.commitment.band] ?? 'text-slate-900 dark:text-zinc-50'}`}>
+              <p className={`responsive-money font-bold font-mono ${COMMITMENT_COLOR[data.commitment.band] ?? 'text-slate-900 dark:text-zinc-50'}`}>
                 {Math.round(data.commitment.ratio * 100)}%
               </p>
               <p className={`text-sm font-semibold mt-1 ${COMMITMENT_COLOR[data.commitment.band] ?? 'text-slate-700 dark:text-zinc-300'}`}>

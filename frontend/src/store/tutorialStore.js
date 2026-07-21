@@ -27,28 +27,33 @@ function persistHasSeenTutorial() {
 
 export const useTutorialStore = create((set, get) => ({
   running: false,
+  requested: false,
   stepIndex: 0,
 
   hasSeenTutorial: () => readHasSeenTutorial(),
 
+  request() {
+    set({ requested: true, running: false, stepIndex: 0 });
+  },
+
   start() {
-    set({ running: true, stepIndex: 0 });
+    set({ requested: false, running: true, stepIndex: 0 });
   },
 
   finish() {
     persistHasSeenTutorial();
-    set({ running: false, stepIndex: 0 });
+    set({ requested: false, running: false, stepIndex: 0 });
   },
 
   skip() {
     persistHasSeenTutorial();
-    set({ running: false, stepIndex: 0 });
+    set({ requested: false, running: false, stepIndex: 0 });
   },
 
   // Interrompe sem marcar como visto. Usado quando a página não conseguiu
   // carregar a tempo; assim o usuário pode tentar novamente depois.
   cancel() {
-    set({ running: false, stepIndex: 0 });
+    set({ requested: false, running: false, stepIndex: 0 });
   },
 
   setStepIndex(i) {

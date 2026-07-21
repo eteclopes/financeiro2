@@ -117,7 +117,7 @@ export default function SavingsPage() {
         </div>
         <div className="relative">
           <p className="text-white/70 text-sm font-medium mb-1">Saldo Guardado</p>
-          <p className="text-5xl font-bold font-mono mb-4"><AnimatedNumber value={data.balance} formatter={formatCurrency} /></p>
+          <p className="responsive-money font-bold font-mono mb-4"><AnimatedNumber value={data.balance} formatter={formatCurrency} /></p>
           <p className="text-white/60 text-xs mb-6">Reserva financeira separada do fluxo mensal</p>
           <div data-tutorial="savings-actions" className="flex gap-3">
             <Button variant="outline" onClick={() => openModal('withdraw')}
@@ -235,11 +235,11 @@ export default function SavingsPage() {
             </>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormGroup label="Valor" required><Input type="number" min="0" step="0.01" value={form.value} onChange={(e) => setForm({...form,value:e.target.value})} autoFocus /></FormGroup>
+            <FormGroup label="Valor" required><Input type="number" min="0" step="0.01" value={form.value} onChange={(e) => setForm({...form,value:e.target.value})} /></FormGroup>
             <FormGroup label="Data"><Input type="date" value={form.date} onChange={(e) => setForm({...form,date:e.target.value})} /></FormGroup>
           </div>
           <FormGroup label="Observação"><Input value={form.observation} onChange={(e) => setForm({...form,observation:e.target.value})} placeholder="Opcional" /></FormGroup>
-          <div className="flex flex-wrap gap-3 justify-end">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setModal(null)}>Cancelar</Button>
             <Button variant={modal==='deposit'?'primary':'danger'} onClick={handle} loading={saving}>
               {modal==='deposit'?'Depositar':'Retirar'}
@@ -252,11 +252,11 @@ export default function SavingsPage() {
       <Modal open={!!editTxModal} onClose={() => setEditTxModal(null)} title={`Editar ${editTxModal?.type==='deposit'?'Depósito':'Retirada'}`} size="sm">
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormGroup label="Valor" required><Input type="number" min="0" step="0.01" value={editTxForm.value} onChange={(e) => setEditTxForm({...editTxForm,value:e.target.value})} autoFocus /></FormGroup>
+            <FormGroup label="Valor" required><Input type="number" min="0" step="0.01" value={editTxForm.value} onChange={(e) => setEditTxForm({...editTxForm,value:e.target.value})} /></FormGroup>
             <FormGroup label="Data"><Input type="date" value={editTxForm.date} onChange={(e) => setEditTxForm({...editTxForm,date:e.target.value})} /></FormGroup>
           </div>
           <FormGroup label="Observação"><Input value={editTxForm.observation} onChange={(e) => setEditTxForm({...editTxForm,observation:e.target.value})} placeholder="Opcional" /></FormGroup>
-          <div className="flex flex-wrap gap-3 justify-end">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setEditTxModal(null)}>Cancelar</Button>
             <Button onClick={saveEditTx} loading={saving}>Salvar Alteração</Button>
           </div>

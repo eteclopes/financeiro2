@@ -70,7 +70,7 @@ export function Topbar({ title }) {
   }, []);
 
   return (
-    <header className="glass sticky top-0 z-20 flex min-h-[76px] items-center gap-3 border-b border-slate-200/80 px-4 dark:border-white/[0.06] sm:px-6 lg:px-8">
+    <header className="app-topbar glass sticky top-0 z-20 flex min-h-[76px] items-center gap-3 border-b border-slate-200/80 px-4 dark:border-white/[0.06] sm:px-6 lg:px-8">
       <button
         onClick={toggle}
         aria-label="Abrir ou recolher menu"
@@ -79,12 +79,17 @@ export function Topbar({ title }) {
         <IconMenu size={19} />
       </button>
 
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1 sm:flex-none">
         <h1 className="truncate text-base font-bold tracking-tight text-slate-950 dark:text-white sm:text-lg">{title}</h1>
+        {month ? (
+          <Dropdown variant="ghost" value={selectedId ?? ''} onChange={(e) => selectMonth(e.target.value)} className="mt-0.5 max-w-[132px] sm:hidden">
+            {months.map((m) => <option key={m.id} value={m.id}>{formatMonthLabel(m)}</option>)}
+          </Dropdown>
+        ) : null}
         <p className="hidden text-xs text-slate-400 dark:text-zinc-500 sm:block">{greeting()}, {user?.name?.split(' ')?.[0] ?? 'bem-vindo'}.</p>
       </div>
 
-      <div className="flex-1" />
+      <div className="hidden flex-1 sm:block" />
 
       {month && (
         <div data-tutorial="month-selector" className="hidden items-center gap-1 rounded-xl border border-slate-200 bg-white/85 p-1 shadow-sm dark:border-white/[0.07] dark:bg-white/[0.035] sm:flex">

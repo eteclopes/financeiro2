@@ -68,8 +68,14 @@ export function Dropdown({ value, onChange, children, className = '', placeholde
     const el = triggerRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom - GAP - VIEWPORT_MARGIN;
-    const spaceAbove = rect.top - GAP - VIEWPORT_MARGIN;
+    const viewport = window.visualViewport;
+    const viewportTop = viewport?.offsetTop ?? 0;
+    const viewportLeft = viewport?.offsetLeft ?? 0;
+    const viewportHeight = viewport?.height ?? window.innerHeight;
+    const viewportWidth = viewport?.width ?? window.innerWidth;
+    const viewportBottom = viewportTop + viewportHeight;
+    const spaceBelow = viewportBottom - rect.bottom - GAP - VIEWPORT_MARGIN;
+    const spaceAbove = rect.top - viewportTop - GAP - VIEWPORT_MARGIN;
 
     // Abre para baixo por padrão. Só vira para cima se não houver espaço
     // suficiente abaixo para a altura preferida E houver mais espaço
@@ -80,14 +86,20 @@ export function Dropdown({ value, onChange, children, className = '', placeholde
     const availableSpace = shouldFlip ? spaceAbove : spaceBelow;
     const maxHeight = Math.max(Math.min(PREFERRED_HEIGHT, availableSpace), 120);
 
+    const width = Math.min(rect.width, viewportWidth - (VIEWPORT_MARGIN * 2));
+    const left = Math.min(
+      Math.max(rect.left, viewportLeft + VIEWPORT_MARGIN),
+      viewportLeft + viewportWidth - width - VIEWPORT_MARGIN,
+    );
+
     setPos({
       placement,
-      left: rect.left,
-      width: rect.width,
+      left,
+      width,
       maxHeight,
       ...(placement === 'down'
         ? { top: rect.bottom + GAP }
-        : { bottom: window.innerHeight - rect.top + GAP }),
+        : { bottom: Math.max(VIEWPORT_MARGIN, window.innerHeight - rect.top + GAP) }),
     });
   }
 
@@ -100,9 +112,13 @@ export function Dropdown({ value, onChange, children, className = '', placeholde
     function handleReposition() { updatePosition(); }
     window.addEventListener('scroll', handleReposition, true);
     window.addEventListener('resize', handleReposition);
+    window.visualViewport?.addEventListener('resize', handleReposition);
+    window.visualViewport?.addEventListener('scroll', handleReposition);
     return () => {
       window.removeEventListener('scroll', handleReposition, true);
       window.removeEventListener('resize', handleReposition);
+      window.visualViewport?.removeEventListener('resize', handleReposition);
+      window.visualViewport?.removeEventListener('scroll', handleReposition);
     };
   }, [open]);
 
@@ -252,7 +268,7 @@ export function Dropdown({ value, onChange, children, className = '', placeholde
             width: variant === 'ghost' ? undefined : pos.width,
             minWidth: variant === 'ghost' ? 160 : undefined,
           }}
-          className={`z-[100] overflow-y-auto rounded-2xl border border-slate-200 dark:border-white/[0.08]
+          className={`z-[120] overflow-y-auto rounded-2xl border border-slate-200 dark:border-white/[0.08]
                      bg-white/95 dark:bg-[#1B1B26]/95 backdrop-blur-xl shadow-modal py-1.5 animate-scale-in
                      ${pos.placement === 'down' ? 'origin-top' : 'origin-bottom'}`}
         >

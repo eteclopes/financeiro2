@@ -6,7 +6,7 @@ export default function ProtectedRoute({ children }) {
 
   if (status === 'idle' || status === 'loading') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-paper">
+      <div className="flex min-h-[100dvh] items-center justify-center bg-paper">
         <p className="font-mono text-sm text-muted">carregando sessão…</p>
       </div>
     );

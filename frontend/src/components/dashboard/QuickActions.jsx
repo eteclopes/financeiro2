@@ -222,7 +222,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
       <Modal open={modal === 'income'} onClose={() => setModal(null)} title="Nova Receita" size="sm">
         <div className="space-y-3">
           <FormGroup label="Descrição" required>
-            <Input value={incForm.description} onChange={(e) => setIncForm({ ...incForm, description: e.target.value })} placeholder="Ex: Salário" autoFocus />
+            <Input value={incForm.description} onChange={(e) => setIncForm({ ...incForm, description: e.target.value })} placeholder="Ex: Salário" />
           </FormGroup>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor" required>
@@ -240,7 +240,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
             <button onClick={() => { setModal(null); navigate('/incomes'); }} className="underline text-primary">Ir para Receitas</button>{' '}
             para escolher a categoria.
           </p>
-          <div className="flex gap-2 justify-end pt-1">
+          <div className="modal-actions">
             <Button variant="outline" size="sm" onClick={() => setModal(null)}>Cancelar</Button>
             <Button size="sm" onClick={saveIncome} loading={saving}>Salvar</Button>
           </div>
@@ -251,7 +251,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
       <Modal open={modal === 'expense'} onClose={() => setModal(null)} title="Nova Despesa Variável" size="sm">
         <div className="space-y-3">
           <FormGroup label="Descrição" required>
-            <Input value={expForm.description} onChange={(e) => setExpForm({ ...expForm, description: e.target.value })} placeholder="Ex: Mercado" autoFocus />
+            <Input value={expForm.description} onChange={(e) => setExpForm({ ...expForm, description: e.target.value })} placeholder="Ex: Mercado" />
           </FormGroup>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor" required>
@@ -282,7 +282,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
               </Select>
             </FormGroup>
           )}
-          <div className="flex gap-2 justify-end pt-1">
+          <div className="modal-actions">
             <Button variant="outline" size="sm" onClick={() => setModal(null)}>Cancelar</Button>
             <Button size="sm" onClick={saveExpense} loading={saving}>Salvar</Button>
           </div>
@@ -317,7 +317,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                     <ChoiceCards compact columns={2} value={payMethod} onChange={setPayMethod} options={PAYMENT_OPTIONS.filter((option) => option.value !== 'credit')} />
                   </FormGroup>
                 </div>
-                <div className="flex gap-2 justify-end">
+                <div className="modal-actions">
                   <Button variant="outline" size="sm" onClick={() => setModal(null)}>Cancelar</Button>
                   <Button size="sm" onClick={payExpense} loading={saving}>Confirmar</Button>
                 </div>
@@ -351,7 +351,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                 <FormGroup label="Forma de pagamento">
                   <ChoiceCards compact columns={2} value={invMethod} onChange={setInvMethod} options={PAYMENT_OPTIONS.filter((option) => option.value !== 'credit')} />
                 </FormGroup>
-                <div className="flex gap-2 justify-end">
+                <div className="modal-actions">
                   <Button variant="outline" size="sm" onClick={() => setModal(null)}>Cancelar</Button>
                   <Button size="sm" onClick={payInvoice} loading={saving}>Pagar Fatura</Button>
                 </div>
@@ -381,7 +381,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                   <Input type="number" min="0" step="0.01" value={contribValue}
                     onChange={(e) => setContribValue(e.target.value)} placeholder="R$ 0,00" />
                 </FormGroup>
-                <div className="flex gap-2 justify-end">
+                <div className="modal-actions">
                   <Button variant="outline" size="sm" onClick={() => setModal(null)}>Cancelar</Button>
                   <Button size="sm" onClick={saveContrib} loading={saving}>Aportar</Button>
                 </div>
@@ -413,7 +413,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
           <p className="text-xs text-muted">
             Pendências não pagas permanecem no histórico — nada é perdido ou duplicado.
           </p>
-          <div className="flex gap-2 justify-end">
+          <div className="modal-actions">
             <Button variant="outline" size="sm" onClick={() => setModal(null)}>Cancelar</Button>
             <Button variant="danger" size="sm" onClick={closeMonth} loading={closing} disabled={!preview}>
               Encerrar Mês

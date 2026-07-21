@@ -1,17 +1,15 @@
 import { useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
 import './TutorialRunner.css';
 import { useTutorialStore } from '../../store/tutorialStore';
+import { useUIStore } from '../../store/uiStore';
 import { TUTORIAL_STEPS } from '../../lib/tutorialSteps';
-import {
-  findVisibleTutorialElement,
-  prepareTutorialStep,
-  waitForTutorialRoute,
-} from '../../lib/tutorialDom';
+import { findVisibleTutorialElement, prepareTutorialStep } from '../../lib/tutorialDom';
 
 const TOTAL_STEPS = TUTORIAL_STEPS.length;
+const STEP_TIMEOUT = 4_500;
 
 function decoratePopover(popover, index) {
   const step = TUTORIAL_STEPS[index];
@@ -24,8 +22,9 @@ function decoratePopover(popover, index) {
 
   wrapper.querySelectorAll('.financehub-tour-progress-line, .financehub-tour-heading, .financehub-tour-features').forEach((node) => node.remove());
 
-  closeButton.setAttribute('aria-label', 'Pular tutorial');
-  closeButton.setAttribute('title', 'Pular tutorial');
+  closeButton.disabled = false;
+  closeButton.setAttribute('aria-label', 'Fechar tutorial');
+  closeButton.setAttribute('title', 'Fechar tutorial');
   closeButton.innerHTML = '<span aria-hidden="true">×</span>';
 
   const progressLine = document.createElement('div');
@@ -56,9 +55,9 @@ function decoratePopover(popover, index) {
     const features = document.createElement('div');
     features.className = 'financehub-tour-features';
     features.innerHTML = `
-      <span><i aria-hidden="true">✓</i> Fluxo guiado</span>
-      <span><i aria-hidden="true">✓</i> Sem alterar seus dados</span>
-      <span><i aria-hidden="true">✓</i> Menos de 2 minutos</span>
+      <span><i aria-hidden="true">✓</i> Sem trocar de página</span>
+      <span><i aria-hidden="true">✓</i> Sem novas requisições</span>
+      <span><i aria-hidden="true">✓</i> Feche quando quiser</span>
     `;
     description.insertAdjacentElement('afterend', features);
   }
@@ -67,36 +66,44 @@ function decoratePopover(popover, index) {
 function setPopoverBusy(isBusy) {
   const wrapper = document.querySelector('.financehub-tour-popover');
   if (!wrapper) return;
+
   wrapper.classList.toggle('financehub-tour-loading', isBusy);
   wrapper.setAttribute('aria-busy', String(isBusy));
-  wrapper.querySelectorAll('button').forEach((button) => {
+
+  // O botão de fechar permanece sempre utilizável. A versão anterior
+  // desabilitava todos os botões e podia prender o usuário numa espera.
+  wrapper.querySelectorAll('.driver-popover-prev-btn, .driver-popover-next-btn').forEach((button) => {
     button.disabled = isBusy;
   });
+
+  const closeButton = wrapper.querySelector('.driver-popover-close-btn');
+  if (closeButton) closeButton.disabled = false;
+
   const next = wrapper.querySelector('.driver-popover-next-btn');
-  if (isBusy && next) next.innerHTML = '<span class="financehub-tour-button-spinner" aria-hidden="true"></span><span>Carregando</span>';
+  if (isBusy && next) {
+    next.innerHTML = '<span class="financehub-tour-button-spinner" aria-hidden="true"></span><span>Ajustando</span>';
+  }
 }
 
 /**
- * Tour multi-rota com sincronização real. A navegação só avança depois que a
- * rota terminou de renderizar, os skeletons sumiram e o alvo ficou estável.
+ * Tutorial de rota única.
+ *
+ * Ele nunca navega entre páginas, portanto não dispara consultas adicionais e
+ * não interfere no carregamento do backend. Se um alvo não ficar disponível em
+ * poucos segundos, o tour é encerrado com segurança e o app continua normal.
  */
 export function TutorialRunner() {
-  const navigate = useNavigate();
   const location = useLocation();
   const running = useTutorialStore((state) => state.running);
   const finish = useTutorialStore((state) => state.finish);
   const skip = useTutorialStore((state) => state.skip);
   const cancel = useTutorialStore((state) => state.cancel);
   const setStepIndex = useTutorialStore((state) => state.setStepIndex);
+  const info = useUIStore((state) => state.info);
 
   const driverRef = useRef(null);
-  const locationRef = useRef(location.pathname);
   const transitioningRef = useRef(false);
   const abortRef = useRef(null);
-
-  useEffect(() => {
-    locationRef.current = location.pathname;
-  }, [location.pathname]);
 
   useEffect(() => {
     if (!running) {
@@ -110,41 +117,54 @@ export function TutorialRunner() {
     const controller = new AbortController();
     abortRef.current = controller;
     let disposed = false;
+    const initialWindowScroll = { x: window.scrollX, y: window.scrollY };
+    const sidebarNav = document.querySelector('aside nav');
+    const initialSidebarScroll = sidebarNav?.scrollTop ?? 0;
 
-    const closeTour = (mode) => {
+    const restoreScrollPosition = () => {
+      window.requestAnimationFrame(() => {
+        window.scrollTo(initialWindowScroll.x, initialWindowScroll.y);
+        if (sidebarNav) sidebarNav.scrollTop = initialSidebarScroll;
+      });
+    };
+
+    const closeTour = (mode, message) => {
       if (disposed) return;
       disposed = true;
       controller.abort();
       const activeDriver = driverRef.current;
       driverRef.current = null;
       activeDriver?.destroy();
+      restoreScrollPosition();
+
       if (mode === 'finish') finish();
       else if (mode === 'skip') skip();
       else cancel();
+
+      if (message) window.setTimeout(() => info(message), 0);
     };
+
+    if (location.pathname !== '/dashboard') {
+      closeTour('cancel', 'Abra o dashboard para iniciar o tutorial.');
+      return undefined;
+    }
 
     async function prepareIndex(index) {
       const step = TUTORIAL_STEPS[index];
       if (!step) return { status: 'missing', element: null };
-
-      if (locationRef.current !== step.route || window.location.pathname !== step.route) {
-        navigate(step.route);
-        const arrived = await waitForTutorialRoute(step.route, { signal: controller.signal });
-        if (!arrived) return { status: 'timeout', element: null };
-      }
-
-      return prepareTutorialStep(step, { signal: controller.signal });
+      return prepareTutorialStep(step, { signal: controller.signal, timeout: STEP_TIMEOUT });
     }
 
     async function moveToAvailable(startIndex, direction) {
       if (transitioningRef.current || disposed) return;
       transitioningRef.current = true;
       setPopoverBusy(true);
-      document.documentElement.classList.add('tutorial-route-transition');
 
       try {
         let index = startIndex;
-        while (index >= 0 && index < TOTAL_STEPS) {
+        let skipped = 0;
+
+        while (index >= 0 && index < TOTAL_STEPS && skipped < TOTAL_STEPS) {
           const prepared = await prepareIndex(index);
           if (prepared.status === 'ready') {
             const activeDriver = driverRef.current;
@@ -155,25 +175,29 @@ export function TutorialRunner() {
             return;
           }
 
-          // Elementos ocultos por breakpoint ou indisponíveis em uma tela
-          // vazia não travam o restante do tour.
-          if (index === 0) {
-            closeTour('cancel');
+          // Apenas elementos realmente ocultos pelo breakpoint são pulados.
+          // Timeout, erro ou alvo instável encerram o tutorial; nunca procuramos
+          // páginas seguintes nem acumulamos chamadas ao backend.
+          const maySkipForViewport = TUTORIAL_STEPS[index]?.skipIfHidden
+            && (prepared.status === 'hidden' || prepared.status === 'not-visible');
+          if (!maySkipForViewport) {
+            closeTour('cancel', 'O tutorial foi pausado, mas o sistema continua funcionando normalmente. Você pode iniciá-lo novamente em Configurações.');
             return;
           }
+
           index += direction;
+          skipped += 1;
         }
 
         if (direction > 0) closeTour('finish');
       } catch (error) {
         if (error?.name !== 'AbortError') {
-          console.warn('[Tutorial] Não foi possível preparar o próximo passo.', error);
-          closeTour('cancel');
+          console.warn('[Tutorial] Etapa encerrada com segurança.', error);
+          closeTour('cancel', 'O tutorial foi pausado para não interferir no carregamento do sistema.');
         }
       } finally {
         transitioningRef.current = false;
         setPopoverBusy(false);
-        document.documentElement.classList.remove('tutorial-route-transition');
       }
     }
 
@@ -194,13 +218,13 @@ export function TutorialRunner() {
     const driverObj = driver({
       steps,
       animate: true,
-      duration: 340,
+      duration: 260,
       smoothScroll: true,
       allowClose: true,
-      allowScroll: false,
+      allowScroll: true,
       overlayClickBehavior: () => {},
       overlayColor: '#05030B',
-      overlayOpacity: 0.76,
+      overlayOpacity: 0.72,
       stagePadding: 10,
       stageRadius: 18,
       popoverOffset: 16,
@@ -245,7 +269,7 @@ export function TutorialRunner() {
         window.requestAnimationFrame(() => driverObj.refresh());
       } catch (error) {
         if (error?.name !== 'AbortError') {
-          console.warn('[Tutorial] O tour aguardará uma próxima tentativa.', error);
+          console.warn('[Tutorial] Inicialização cancelada sem afetar o app.', error);
           closeTour('cancel');
         }
       }
@@ -254,14 +278,10 @@ export function TutorialRunner() {
     return () => {
       disposed = true;
       controller.abort();
-      document.documentElement.classList.remove('tutorial-route-transition');
       if (driverRef.current === driverObj) driverRef.current = null;
       driverObj.destroy();
     };
-    // O runner controla navegação e localização por refs para não recriar o
-    // Driver.js em cada mudança de rota durante o próprio tour.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running]);
+  }, [running, location.pathname, finish, skip, cancel, setStepIndex, info]);
 
   return null;
 }

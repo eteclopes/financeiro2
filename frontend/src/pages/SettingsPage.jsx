@@ -15,7 +15,7 @@ export default function SettingsPage() {
   const updateProfile = useAuthStore((s) => s.updateProfile);
   const toast = useUIStore((s) => s);
   const navigate = useNavigate();
-  const startTutorial = useTutorialStore((s) => s.start);
+  const requestTutorial = useTutorialStore((s) => s.request);
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
   const [catType, setCatType]     = useState('expense');
@@ -96,18 +96,18 @@ export default function SettingsPage() {
       {/* Perfil */}
       <Card>
         <CardHeader title="Perfil" />
-        <div className="flex items-center gap-4">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
           <div className="h-16 w-16 bg-gradient-to-br from-primary to-primary-dark rounded-2xl flex items-center justify-center text-white text-2xl font-bold shadow-md shrink-0">
             {user?.name?.[0]?.toUpperCase() ?? 'U'}
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <p className="font-bold text-slate-900 dark:text-zinc-50 text-lg">{user?.name}</p>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <p className="min-w-0 break-words font-bold text-slate-900 dark:text-zinc-50 text-lg">{user?.name}</p>
               <button onClick={openEditName} className="text-xs text-primary-dark dark:text-primary-light hover:underline">
                 Editar
               </button>
             </div>
-            <p className="text-sm text-muted">{user?.email}</p>
+            <p className="truncate text-sm text-muted">{user?.email}</p>
             <Badge variant="success" className="mt-1.5">Conta ativa</Badge>
           </div>
         </div>
@@ -127,11 +127,11 @@ export default function SettingsPage() {
       <Modal open={editNameModal} onClose={() => setEditNameModal(false)} title="Editar Nome" size="sm">
         <div className="space-y-4">
           <FormGroup label="Nome" required>
-            <Input value={nameForm} onChange={(e) => setNameForm(e.target.value)} autoFocus
+            <Input value={nameForm} onChange={(e) => setNameForm(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') saveEditName(); }} />
           </FormGroup>
           <p className="text-xs text-muted">O e-mail não pode ser alterado por aqui.</p>
-          <div className="flex flex-wrap gap-3 justify-end">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setEditNameModal(false)}>Cancelar</Button>
             <Button onClick={saveEditName} loading={savingName}>Salvar</Button>
           </div>
@@ -152,7 +152,7 @@ export default function SettingsPage() {
       {/* Ajuda */}
       <Card>
         <CardHeader title="Ajuda" subtitle="Precisa relembrar como alguma parte do app funciona?" />
-        <Button data-tutorial="tutorial-replay-button" variant="outline" onClick={() => { navigate('/dashboard'); startTutorial(); }}>
+        <Button data-tutorial="tutorial-replay-button" variant="outline" onClick={() => { requestTutorial(); navigate('/dashboard'); }}>
           🔁 Ver tutorial novamente
         </Button>
       </Card>
@@ -167,10 +167,10 @@ export default function SettingsPage() {
         ]} />
 
         {/* Nova categoria */}
-        <div className="flex gap-2 mb-5">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] mb-5">
           <Input value={catName} onChange={(e) => setCatName(e.target.value)}
             placeholder={`Nome da nova categoria de ${catType === 'expense' ? 'despesa' : 'receita'}...`}
-            className="flex-1"
+            className="min-w-0"
             onKeyDown={(e) => e.key === 'Enter' && saveCategory()} />
           <Button onClick={saveCategory} loading={savingCat}>Criar</Button>
         </div>
@@ -184,7 +184,7 @@ export default function SettingsPage() {
                 editingCatId === cat.id ? (
                   <div key={cat.id} className="flex items-center gap-1 bg-white dark:bg-panel-dark border border-primary/40 rounded-xl pl-2 pr-1.5 py-1.5">
                     <input
-                      autoFocus
+                     
                       value={editingCatName}
                       onChange={(e) => setEditingCatName(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') saveRename(cat.id); if (e.key === 'Escape') cancelRename(); }}

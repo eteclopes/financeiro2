@@ -358,6 +358,12 @@
   transition: opacity 180ms ease;
 }
 
+.driver-popover.financehub-tour-popover.financehub-tour-loading .driver-popover-close-btn {
+  cursor: pointer;
+  opacity: 1;
+  pointer-events: auto;
+}
+
 /* Arrow follows the same glass card instead of Driver.js' default white. */
 .driver-popover.financehub-tour-popover .driver-popover-arrow { border-width: 7px; }
 .driver-popover.financehub-tour-popover .driver-popover-arrow-side-left { border-left-color: var(--tour-card); }
@@ -372,18 +378,6 @@
   outline-offset: 5px !important;
   box-shadow: 0 0 0 8px rgb(124 58 237 / 0.1), 0 18px 48px -25px rgb(124 58 237 / 0.55) !important;
   transition: outline-color 220ms ease, box-shadow 220ms ease !important;
-}
-
-.driver-active .route-stage,
-.driver-active .page-content > div > * {
-  animation-play-state: paused !important;
-}
-
-.tutorial-route-transition .driver-popover.financehub-tour-popover {
-  pointer-events: none;
-  opacity: 0 !important;
-  visibility: hidden !important;
-  transform: translateY(8px) scale(0.985) !important;
 }
 
 .driver-popover.financehub-tour-popover {

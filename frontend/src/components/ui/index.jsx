@@ -43,12 +43,12 @@ export function Card({ children, className = '', padding = true, hover = false, 
 
 export function CardHeader({ title, subtitle, actions, className = '' }) {
   return (
-    <div className={`flex items-start justify-between gap-4 mb-5 ${className}`}>
+    <div className={`flex flex-col gap-3 mb-5 sm:flex-row sm:items-start sm:justify-between ${className}`}>
       <div className="min-w-0">
         <h3 className="font-bold tracking-tight text-slate-950 dark:text-white">{title}</h3>
         {subtitle && <p className="text-sm text-slate-500 dark:text-zinc-400 mt-1">{subtitle}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+      {actions && <div className="card-header-actions flex flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">{actions}</div>}
     </div>
   );
 }
@@ -61,7 +61,7 @@ export function PageHeader({ eyebrow, title, description, actions, className = '
         <h2 className="text-2xl sm:text-[28px] leading-tight font-bold tracking-[-0.025em] text-slate-950 dark:text-white">{title}</h2>
         {description && <p className="mt-1.5 text-sm text-slate-500 dark:text-zinc-400 max-w-2xl">{description}</p>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="page-header-actions flex flex-wrap items-center gap-2 sm:w-auto">{actions}</div>}
     </div>
   );
 }
@@ -177,7 +177,7 @@ export function StatCard({ label, value, tone = 'neutral', icon, subtitle, trend
           </span>
         )}
       </div>
-      <p className={`relative text-[26px] leading-none font-bold font-mono tabular-nums tracking-tight ${accent.text}`}>{value}</p>
+      <p className={`relative max-w-full break-words text-[clamp(1.35rem,6vw,1.625rem)] leading-tight font-bold font-mono tabular-nums tracking-tight ${accent.text}`}>{value}</p>
       <div className="relative flex items-end justify-between mt-3 min-h-[28px]">
         {hasTrend ? (
           <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg ${accent.chip}`}>

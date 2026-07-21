@@ -42,7 +42,10 @@ export default function LoginPage() {
     if (localErrors.email || localErrors.password) return;
     clearError();
     const ok = await login(email.trim().toLowerCase(), password);
-    if (ok) navigate('/dashboard', { replace: true });
+    if (ok) {
+      document.activeElement?.blur?.();
+      navigate('/dashboard', { replace: true });
+    }
   }
 
   const inputClass = (hasError) => `input-base w-full py-3 pl-11 ${hasError ? '!border-danger focus:!ring-danger/20' : ''}`;

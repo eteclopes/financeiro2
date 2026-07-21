@@ -294,7 +294,7 @@ export default function CardsPage() {
       {/* Modal Novo Cartão */}
       <Modal open={cardModal} onClose={() => setCardModal(false)} title="Novo Cartão" size="sm">
         <div className="space-y-4">
-          <FormGroup label="Nome do cartão" required><Input value={cardForm.name} onChange={(e) => setCardForm({...cardForm,name:e.target.value})} placeholder="Ex: Nubank, Inter..." autoFocus /></FormGroup>
+          <FormGroup label="Nome do cartão" required><Input value={cardForm.name} onChange={(e) => setCardForm({...cardForm,name:e.target.value})} placeholder="Ex: Nubank, Inter..." /></FormGroup>
           <FormGroup label="Limite de crédito" required><Input type="number" min="0" step="0.01" value={cardForm.limitValue} onChange={(e) => setCardForm({...cardForm,limitValue:e.target.value})} /></FormGroup>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Dia de fechamento"><Input type="number" min="1" max="31" value={cardForm.closingDay} onChange={(e) => setCardForm({...cardForm,closingDay:e.target.value})} /></FormGroup>
@@ -309,7 +309,7 @@ export default function CardsPage() {
               ))}
             </div>
           </FormGroup>
-          <div className="flex flex-wrap gap-3 justify-end pt-1">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setCardModal(false)}>Cancelar</Button>
             <Button onClick={saveCard} loading={saving}>Criar Cartão</Button>
           </div>
@@ -319,7 +319,7 @@ export default function CardsPage() {
       {/* Modal Editar Cartão */}
       <Modal open={!!editCardModal} onClose={() => setEditCardModal(null)} title={`Editar Cartão — ${editCardModal?.name ?? ''}`} size="sm">
         <div className="space-y-4">
-          <FormGroup label="Nome do cartão" required><Input value={editCardForm.name} onChange={(e) => setEditCardForm({...editCardForm,name:e.target.value})} autoFocus /></FormGroup>
+          <FormGroup label="Nome do cartão" required><Input value={editCardForm.name} onChange={(e) => setEditCardForm({...editCardForm,name:e.target.value})} /></FormGroup>
           <FormGroup label="Limite de crédito" required hint="pode ser alterado a qualquer momento">
             <Input type="number" min="0" step="0.01" value={editCardForm.limitValue} onChange={(e) => setEditCardForm({...editCardForm,limitValue:e.target.value})} />
           </FormGroup>
@@ -336,7 +336,7 @@ export default function CardsPage() {
               ))}
             </div>
           </FormGroup>
-          <div className="flex flex-wrap gap-3 justify-end pt-1">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setEditCardModal(null)}>Cancelar</Button>
             <Button onClick={saveEditCard} loading={saving}>Salvar Alterações</Button>
           </div>
@@ -373,7 +373,7 @@ export default function CardsPage() {
       {/* Modal Nova Compra */}
       <Modal open={purchaseModal} onClose={() => setPurchaseModal(false)} title={`Nova Compra — ${selected?.name}`} size="lg">
         <div className="space-y-4">
-          <FormGroup label="Descrição" required><Input value={purchaseForm.description} onChange={(e) => setPurchaseForm({...purchaseForm,description:e.target.value})} placeholder="Ex: Tênis, Notebook..." autoFocus /></FormGroup>
+          <FormGroup label="Descrição" required><Input value={purchaseForm.description} onChange={(e) => setPurchaseForm({...purchaseForm,description:e.target.value})} placeholder="Ex: Tênis, Notebook..." /></FormGroup>
           <FormGroup label="Categoria">
             <CategorySelect
               value={purchaseForm.categoryId}
@@ -401,7 +401,7 @@ export default function CardsPage() {
               <p className="text-xs text-muted mt-1.5">Deixe em 1 se a compra é nova. Lança fatura só a partir da parcela informada.</p>
             </FormGroup>
           )}
-          <div className="flex flex-wrap gap-3 justify-end pt-1">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setPurchaseModal(false)}>Cancelar</Button>
             <Button onClick={savePurchase} loading={saving}>Registrar Compra</Button>
           </div>
@@ -420,7 +420,7 @@ export default function CardsPage() {
             <FormGroup label="Forma de pagamento">
               <ChoiceCards compact columns={2} value={invMethod} onChange={setInvMethod} options={PAYMENT_OPTIONS} />
             </FormGroup>
-            <div className="flex flex-wrap gap-3 justify-end">
+            <div className="modal-actions">
               <Button variant="outline" onClick={() => setPayTarget(null)}>Cancelar</Button>
               <Button onClick={payInvoice} loading={paying}>Confirmar Pagamento</Button>
             </div>

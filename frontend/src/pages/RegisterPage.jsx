@@ -45,7 +45,10 @@ export default function RegisterPage() {
     if (localErrors.name || localErrors.email || localErrors.password) return;
     clearError();
     const ok = await register(name.trim(), email.trim().toLowerCase(), password);
-    if (ok) navigate('/dashboard', { replace: true });
+    if (ok) {
+      document.activeElement?.blur?.();
+      navigate('/dashboard', { replace: true });
+    }
   }
 
   const inputClass = (hasError) => `input-base w-full py-3 ${hasError ? '!border-danger' : ''}`;

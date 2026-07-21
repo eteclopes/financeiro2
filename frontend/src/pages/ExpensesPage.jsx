@@ -485,7 +485,7 @@ export default function ExpensesPage() {
                 💡 Se pagar menos que a parcela e a dívida tiver pagamento flexível, o saldo restante será acumulado para a próxima parcela.
               </p>
             )}
-            <div className="flex flex-wrap gap-3 justify-end pt-1">
+            <div className="modal-actions">
               <Button variant="outline" onClick={() => setPayModal(null)}>Cancelar</Button>
               <Button onClick={handlePay} loading={paying}>Confirmar Pagamento</Button>
             </div>
@@ -497,7 +497,7 @@ export default function ExpensesPage() {
       <Modal open={varModal} onClose={() => setVarModal(false)} title="Nova Despesa Variável">
         <div className="space-y-4">
           <FormGroup label="Descrição" required>
-            <Input value={varForm.description} onChange={(e) => setVarForm({...varForm,description:e.target.value})} placeholder="Ex: Mercado, Lanche..." autoFocus />
+            <Input value={varForm.description} onChange={(e) => setVarForm({...varForm,description:e.target.value})} placeholder="Ex: Mercado, Lanche..." />
           </FormGroup>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor" required>
@@ -529,7 +529,7 @@ export default function ExpensesPage() {
             </FormGroup>
           )}
           {varForm.paymentMethod !== 'credit' && <ToggleSwitch checked={varForm.paid} onChange={(paid) => setVarForm({ ...varForm, paid })} label="Já foi pago" description="Desative para deixar a despesa pendente neste mês." />}
-          <div className="flex flex-wrap gap-3 justify-end pt-1">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setVarModal(false)}>Cancelar</Button>
             <Button onClick={saveVariable} loading={saving}>Salvar</Button>
           </div>
@@ -543,7 +543,7 @@ export default function ExpensesPage() {
             ℹ Despesas fixas são geradas automaticamente todo mês ao fechar o período.
           </p>
           <FormGroup label="Descrição" required>
-            <Input value={fixForm.description} onChange={(e) => setFixForm({...fixForm,description:e.target.value})} placeholder="Ex: Netflix, Academia, Internet..." autoFocus />
+            <Input value={fixForm.description} onChange={(e) => setFixForm({...fixForm,description:e.target.value})} placeholder="Ex: Netflix, Academia, Internet..." />
           </FormGroup>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor mensal" required>
@@ -582,7 +582,7 @@ export default function ExpensesPage() {
               </p>
             </FormGroup>
           )}
-          <div className="flex flex-wrap gap-3 justify-end pt-1">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setFixModal(false)}>Cancelar</Button>
             <Button onClick={saveFixed} loading={saving}>Criar Despesa Fixa</Button>
           </div>
@@ -617,7 +617,7 @@ export default function ExpensesPage() {
               </Select>
             </FormGroup>
           )}
-          <div className="flex flex-wrap gap-3 justify-end pt-1">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setEditFixModal(null)}>Cancelar</Button>
             <Button onClick={saveEditFixed} loading={saving}>Salvar Alteração</Button>
           </div>
@@ -628,7 +628,7 @@ export default function ExpensesPage() {
       <Modal open={!!editVarModal} onClose={() => setEditVarModal(null)} title="Editar Despesa Variável" size="sm">
         <div className="space-y-4">
           <FormGroup label="Descrição" required>
-            <Input value={editVarForm.description} onChange={(e) => setEditVarForm({...editVarForm,description:e.target.value})} autoFocus />
+            <Input value={editVarForm.description} onChange={(e) => setEditVarForm({...editVarForm,description:e.target.value})} />
           </FormGroup>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor" required>
@@ -653,7 +653,7 @@ export default function ExpensesPage() {
           <p className="text-xs text-muted">
             Forma de pagamento e status (pago/pendente) não são alterados aqui — use "Pagar" na listagem para isso.
           </p>
-          <div className="flex flex-wrap gap-3 justify-end pt-1">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setEditVarModal(null)}>Cancelar</Button>
             <Button onClick={saveEditVariable} loading={saving}>Salvar Alteração</Button>
           </div>
@@ -664,7 +664,7 @@ export default function ExpensesPage() {
       <Modal open={debtModal} onClose={() => setDebtModal(false)} title="Nova Dívida / Parcelamento" size="xl">
         <div className="space-y-4">
           <FormGroup label="Descrição" required>
-            <Input value={debtForm.description} onChange={(e) => setDebtForm({...debtForm,description:e.target.value})} placeholder="Ex: Empréstimo, Financiamento..." autoFocus />
+            <Input value={debtForm.description} onChange={(e) => setDebtForm({...debtForm,description:e.target.value})} placeholder="Ex: Empréstimo, Financiamento..." />
           </FormGroup>
           <FormGroup label="Categoria">
             <CategorySelect
@@ -701,7 +701,7 @@ export default function ExpensesPage() {
             </p>
           </FormGroup>
           <ToggleSwitch checked={debtForm.flexiblePayment} onChange={(flexiblePayment) => setDebtForm({ ...debtForm, flexiblePayment })} label="Aceitar pagamento parcial" description="O valor não pago será somado à próxima parcela." />
-          <div className="flex flex-wrap gap-3 justify-end pt-1">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setDebtModal(false)}>Cancelar</Button>
             <Button onClick={saveDebt} loading={saving}>Criar Dívida</Button>
           </div>
@@ -730,7 +730,7 @@ export default function ExpensesPage() {
             <Input type="number" min="1" max="31" value={editDebtForm.dueDay} onChange={(e) => setEditDebtForm({...editDebtForm,dueDay:e.target.value})} />
           </FormGroup>
           <ToggleSwitch checked={editDebtForm.flexiblePayment} onChange={(flexiblePayment) => setEditDebtForm({ ...editDebtForm, flexiblePayment })} label="Aceitar pagamento parcial" description="O valor não pago será somado à próxima parcela." />
-          <div className="flex flex-wrap gap-3 justify-end pt-1">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setEditDebtModal(null)}>Cancelar</Button>
             <Button onClick={saveEditDebt} loading={saving}>Salvar Alteração</Button>
           </div>

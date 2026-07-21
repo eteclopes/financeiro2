@@ -31,7 +31,7 @@ class ErrorBoundary extends Component {
   render() {
     if (this.state.error) {
       return (
-        <div className="app-shell flex min-h-screen items-center justify-center p-6">
+        <div className="app-shell flex min-h-[100dvh] items-center justify-center p-6">
           <div className="premium-card w-full max-w-md p-8 text-center">
             <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-danger-subtle text-2xl text-danger dark:bg-danger/10 dark:text-danger-light">!</div>
             <h2 className="mb-2 text-xl font-bold tracking-tight text-slate-950 dark:text-white">Algo não saiu como esperado</h2>
@@ -54,7 +54,7 @@ function ProtectedRoute({ children }) {
   const status = useAuthStore((s) => s.status);
   if (status === 'idle' || status === 'loading') {
     return (
-      <div className="app-shell flex min-h-screen flex-col items-center justify-center gap-5">
+      <div className="app-shell flex min-h-[100dvh] flex-col items-center justify-center gap-5">
         <div className="relative grid h-16 w-16 place-items-center rounded-2xl bg-primary text-white shadow-glow animate-pulse-soft">
           <span className="text-lg font-black tracking-[-0.08em]">FH</span>
           <span className="absolute -inset-3 -z-10 rounded-3xl border border-primary/20 animate-ping" />
@@ -75,7 +75,7 @@ function AuthShell({ children }) {
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#F8FAFC] dark:bg-[#0B0B0F]">
+    <div className="relative min-h-[100dvh] overflow-x-hidden bg-[#F8FAFC] dark:bg-[#0B0B0F]">
       <div className="pointer-events-none absolute inset-0">
         <div className="auth-aurora absolute -left-28 -top-24 h-[420px] w-[420px] rounded-full bg-primary/10 blur-[90px] dark:bg-primary/20" />
         <div className="auth-aurora absolute -bottom-40 right-[-8rem] h-[520px] w-[520px] rounded-full bg-info/8 blur-[110px] dark:bg-primary-light/10" />
@@ -85,12 +85,12 @@ function AuthShell({ children }) {
       <button
         onClick={toggleTheme}
         aria-label="Alternar tema"
-        className="absolute right-5 top-5 z-30 grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white/80 text-slate-500 shadow-sm backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:text-primary dark:border-white/[0.08] dark:bg-white/[0.055] dark:text-zinc-400 dark:hover:text-primary-hover"
+        className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-30 sm:right-5 grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white/80 text-slate-500 shadow-sm backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:text-primary dark:border-white/[0.08] dark:bg-white/[0.055] dark:text-zinc-400 dark:hover:text-primary-hover"
       >
         {theme === 'dark' ? <IconMoon size={17} /> : <IconSun size={17} />}
       </button>
 
-      <div className="relative z-10 grid min-h-screen lg:grid-cols-[1.08fr_0.92fr]">
+      <div className="relative z-10 grid min-h-[100dvh] lg:grid-cols-[1.08fr_0.92fr]">
         <section className="relative hidden overflow-hidden border-r border-slate-200/70 px-10 py-10 dark:border-white/[0.06] lg:flex lg:flex-col xl:px-16 xl:py-14">
           <div className="flex items-center gap-3">
             <div className="relative grid h-11 w-11 place-items-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary-light to-info text-white shadow-glow">
@@ -154,7 +154,7 @@ function AuthShell({ children }) {
           </div>
         </section>
 
-        <section className="flex min-h-screen items-center justify-center px-4 py-16 sm:px-8 lg:px-12">
+        <section className="flex min-h-[100dvh] items-start justify-center px-4 pb-10 pt-20 sm:items-center sm:px-8 sm:py-16 lg:px-12">
           <div className="w-full max-w-[440px] animate-slide-up">
             <div className="mb-7 flex items-center gap-3 lg:hidden">
               <div className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-primary to-primary-light text-sm font-black tracking-[-0.08em] text-white shadow-glow">FH</div>
@@ -180,6 +180,39 @@ export default function App() {
   const forceSignOut = useAuthStore((s) => s.forceSignOut);
 
   useEffect(() => { bootstrap(); }, [bootstrap]);
+
+  // Mantém CSS sincronizado com a área realmente visível quando o teclado
+  // virtual aparece. Isso evita modais cortados e barras inferiores sobre os
+  // campos em Android/iOS, inclusive nas telas de autenticação.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const root = document.documentElement;
+
+    const syncVisualViewport = () => {
+      const height = viewport?.height ?? window.innerHeight;
+      const offsetTop = viewport?.offsetTop ?? 0;
+      root.style.setProperty('--app-viewport-height', `${Math.round(height)}px`);
+      root.style.setProperty('--app-viewport-offset-top', `${Math.round(offsetTop)}px`);
+
+      const keyboardOpen = viewport
+        ? window.innerHeight - viewport.height > 140
+        : false;
+      document.body.dataset.keyboardOpen = keyboardOpen ? 'true' : 'false';
+    };
+
+    syncVisualViewport();
+    viewport?.addEventListener('resize', syncVisualViewport);
+    viewport?.addEventListener('scroll', syncVisualViewport);
+    window.addEventListener('resize', syncVisualViewport);
+
+    return () => {
+      viewport?.removeEventListener('resize', syncVisualViewport);
+      viewport?.removeEventListener('scroll', syncVisualViewport);
+      window.removeEventListener('resize', syncVisualViewport);
+      delete document.body.dataset.keyboardOpen;
+    };
+  }, []);
+
   useEffect(() => {
     const h = () => forceSignOut();
     window.addEventListener('auth:session-expired', h);

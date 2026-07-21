@@ -14,7 +14,7 @@ export function ToastContainer() {
 
   return (
     <div aria-live="polite" aria-atomic="false"
-      className="fixed bottom-5 right-3 sm:bottom-6 sm:right-6 z-[100] flex flex-col gap-2 max-w-sm w-[calc(100%-1.5rem)] pointer-events-none">
+      className="fixed bottom-[calc(5.8rem+env(safe-area-inset-bottom))] right-3 sm:right-6 lg:bottom-6 z-[130] flex flex-col gap-2 max-w-sm w-[calc(100%-1.5rem)] pointer-events-none">
       {toasts.map((t) => (
         <div key={t.id} role="status"
           className={`flex items-start gap-3 rounded-2xl px-4 py-3.5 shadow-modal border border-white/20 backdrop-blur-xl pointer-events-auto animate-slide-up ${STYLES[t.type] ?? STYLES.info}`}>

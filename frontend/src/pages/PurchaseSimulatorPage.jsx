@@ -62,7 +62,7 @@ export default function PurchaseSimulatorPage() {
           <div className="space-y-4">
             <FormGroup label="Produto / Descrição" required>
               <Input value={form.description} onChange={(e) => setForm({...form, description:e.target.value})}
-                placeholder="Ex: Notebook, Geladeira, Tênis..." autoFocus />
+                placeholder="Ex: Notebook, Geladeira, Tênis..." />
             </FormGroup>
             <FormGroup label="Valor total" required>
               <Input type="number" min="0" step="0.01" value={form.value}
@@ -137,7 +137,7 @@ export default function PurchaseSimulatorPage() {
             <Card>
               <CardHeader title="Comprometimento da Renda" />
               <div className={`flex items-center gap-3 p-4 rounded-2xl border mb-3 ${band.bg}`}>
-                <p className={`text-4xl font-bold font-mono ${band.text}`}>{result.monthlyCommitmentRatio}%</p>
+                <p className={`responsive-money font-bold font-mono ${band.text}`}>{result.monthlyCommitmentRatio}%</p>
                 <div>
                   <Badge variant={result.commitmentBand === 'saudavel' ? 'success' : result.commitmentBand === 'critico' ? 'danger' : 'warning'}>
                     {band.label}

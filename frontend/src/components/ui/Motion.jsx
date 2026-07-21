@@ -49,14 +49,17 @@ export function ChoiceCards({
 }) {
   const generatedName = useId();
   const radioName = name ?? generatedName;
+  // Evita cartões estreitos demais. Quando não houver largura confortável,
+  // o grid reduz a quantidade de colunas em vez de esmagar texto e rádio.
   const minCardWidth = compact
-    ? (columns >= 4 ? 132 : 150)
-    : (columns === 2 ? 210 : columns >= 4 ? 150 : 174);
+    ? (columns >= 4 ? 236 : 220)
+    : (columns >= 4 ? 244 : columns === 2 ? 230 : 220);
 
   return (
     <div
-      className={`grid gap-2 ${className}`}
-      style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${minCardWidth}px), 1fr))` }}
+      className={`choice-grid ${className}`}
+      style={{ '--choice-min-width': `${minCardWidth}px` }}
+      data-choice-columns={columns}
       role="radiogroup"
     >
       {options.map((option) => {

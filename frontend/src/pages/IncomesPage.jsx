@@ -177,7 +177,7 @@ export default function IncomesPage() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Editar Receita' : 'Nova Receita'} size="lg">
         <div className="space-y-4">
           <FormGroup label="Descrição" required>
-            <Input value={form.description} onChange={(e) => setForm({...form,description:e.target.value})} placeholder="Ex: Salário, Freelance..." autoFocus />
+            <Input value={form.description} onChange={(e) => setForm({...form,description:e.target.value})} placeholder="Ex: Salário, Freelance..." />
           </FormGroup>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor" required>
@@ -208,7 +208,7 @@ export default function IncomesPage() {
           {!editing && (
             <ToggleSwitch checked={form.recurring} onChange={(recurring) => setForm({ ...form, recurring })} label="Receita recorrente" description="Será gerada automaticamente todo mês ao fechar o período." />
           )}
-          <div className="flex flex-wrap gap-3 justify-end pt-2">
+          <div className="modal-actions">
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
             <Button onClick={handleSave} loading={saving}>Salvar</Button>
           </div>

@@ -63,9 +63,9 @@ export function CategorySelect({ value, onChange, categories, type, onCategoryCr
   if (creating) {
     return (
       <div>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex">
           <Input
-            autoFocus
+           
             placeholder="Nome da nova categoria"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
@@ -73,13 +73,13 @@ export function CategorySelect({ value, onChange, categories, type, onCategoryCr
               if (e.key === 'Enter') { e.preventDefault(); handleCreate(); }
               if (e.key === 'Escape') handleCancel();
             }}
-            className="flex-1"
+            className="col-span-2 sm:flex-1"
           />
           <button
             type="button"
             onClick={handleCreate}
             disabled={saving}
-            className="px-3 rounded-lg bg-primary text-white text-sm font-medium disabled:opacity-50 shrink-0"
+            className="min-h-11 rounded-xl bg-primary px-3 text-sm font-semibold text-white disabled:opacity-50 sm:shrink-0"
           >
             {saving ? '...' : 'Criar'}
           </button>
@@ -87,7 +87,7 @@ export function CategorySelect({ value, onChange, categories, type, onCategoryCr
             type="button"
             onClick={handleCancel}
             disabled={saving}
-            className="px-3 rounded-lg border border-border dark:border-white/10 text-sm text-muted shrink-0"
+            className="min-h-11 rounded-xl border border-border px-3 text-sm font-semibold text-muted dark:border-white/10 sm:shrink-0"
           >
             Cancelar
           </button>
