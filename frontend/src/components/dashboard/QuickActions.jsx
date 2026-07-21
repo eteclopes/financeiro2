@@ -4,13 +4,14 @@ import { useMonthStore } from '../../store/monthStore';
 import { incomesApi, expensesApi, cardsApi, goalsApi, categoriesApi } from '../../lib/services';
 import { api, extractErrorMessage } from '../../lib/api';
 import { formatCurrency } from '../../lib/format';
+import { localDateInputValue } from '../../lib/date';
 import { Button } from '../ui/index';
 import { Modal, FormGroup, Input, Select } from '../ui/Modal';
 import { useUIStore } from '../../store/uiStore';
 import { IconIncome, IconExpense, IconCheck, IconCard, IconGoal, IconAlert } from '../icons';
 
 const PM_LABELS = { cash: 'Dinheiro', pix: 'PIX', debit: 'Débito', credit: 'Crédito', transfer: 'Transferência' };
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localDateInputValue();
 
 export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goals = [], monthStatus }) {
   const selectedMonthId = useMonthStore((s) => s.selectedMonthId);
@@ -23,7 +24,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   const [saving, setSaving] = useState(false);
 
   const [incForm, setIncForm]   = useState({ description: '', value: '', paymentMethod: 'pix', date: today() });
-  const [expForm, setExpForm]   = useState({ description: '', value: '', categoryId: '', paymentMethod: 'pix', date: today() });
+  const [expForm, setExpForm]   = useState({ description: '', value: '', categoryId: '', paymentMethod: 'pix', cardId: '', date: today() });
   const [expCats, setExpCats]   = useState([]);
   const [payTarget, setPayTarget]   = useState(null);
   const [payAmount, setPayAmount]   = useState('');
@@ -41,7 +42,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
       const r = await categoriesApi.list('expense');
       setExpCats(r.data.categories ?? []);
     } catch {}
-    setExpForm({ description: '', value: '', categoryId: '', paymentMethod: 'pix', date: today() });
+    setExpForm({ description: '', value: '', categoryId: '', paymentMethod: 'pix', cardId: '', date: today() });
     setModal('expense');
   }
 
@@ -95,6 +96,10 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
 
   async function saveExpense() {
     if (!expForm.description || !expForm.value) { toast.error('Preencha descrição e valor.'); return; }
+    if (expForm.paymentMethod === 'credit' && !expForm.cardId) {
+      toast.error('Selecione o cartão de crédito.');
+      return;
+    }
     setSaving(true);
     try {
       const cats = await categoriesApi.list('expense');
@@ -108,7 +113,8 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
         categoryId: String(cat?.id ?? ''),
         date: expForm.date,
         paymentMethod: expForm.paymentMethod,
-        paid: true,
+        cardId: expForm.paymentMethod === 'credit' ? expForm.cardId : undefined,
+        paid: expForm.paymentMethod !== 'credit',
       });
       toast.success('Despesa adicionada.');
       setModal(null);
@@ -258,10 +264,22 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
             </Select>
           </FormGroup>
           <FormGroup label="Forma de pagamento">
-            <Select value={expForm.paymentMethod} onChange={(e) => setExpForm({ ...expForm, paymentMethod: e.target.value })}>
+            <Select value={expForm.paymentMethod} onChange={(e) => setExpForm({ ...expForm, paymentMethod: e.target.value, cardId: e.target.value === 'credit' ? expForm.cardId : '' })}>
               {Object.entries(PM_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </Select>
           </FormGroup>
+          {expForm.paymentMethod === 'credit' && (
+            <FormGroup label="Cartão" required>
+              <Select value={expForm.cardId} onChange={(e) => setExpForm({ ...expForm, cardId: e.target.value })}>
+                <option value="">Selecione o cartão...</option>
+                {cards.filter((card) => card.active !== false).map((card) => (
+                  <option key={card.id} value={card.id}>
+                    {card.name} — disponível {formatCurrency(card.availableLimit)}
+                  </option>
+                ))}
+              </Select>
+            </FormGroup>
+          )}
           <div className="flex gap-2 justify-end pt-1">
             <Button variant="outline" size="sm" onClick={() => setModal(null)}>Cancelar</Button>
             <Button size="sm" onClick={saveExpense} loading={saving}>Salvar</Button>
@@ -295,7 +313,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                   </FormGroup>
                   <FormGroup label="Forma">
                     <Select value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>
-                      {Object.entries(PM_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                      {Object.entries(PM_LABELS).filter(([v]) => v !== 'credit').map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </Select>
                   </FormGroup>
                 </div>

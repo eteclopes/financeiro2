@@ -55,7 +55,8 @@ describe('closeMonth — despesa fixa vinculada a cartão gera a próxima instâ
     prismaMock.fixedExpenseTemplate.findMany.mockResolvedValue([
       { id: 9n, description: 'Plano de corte', categoryId: 2n, value: 50, dueDay: 10, paymentMethod: 'credit', cardId: 7n },
     ]);
-    prismaMock.card.findUnique.mockResolvedValue({ id: 7n, userId: 10n, closingDay: 20, dueDay: 5 });
+    prismaMock.card.findUnique.mockResolvedValue({ id: 7n, userId: 10n, closingDay: 20, dueDay: 5, active: true, limitValue: 1000 });
+    prismaMock.card.findFirst.mockResolvedValue({ id: 7n, userId: 10n, closingDay: 20, dueDay: 5, active: true, limitValue: 1000 });
     prismaMock.cardInvoice.findUnique.mockResolvedValue(null); // fatura ainda não existe, será criada
 
     await closeMonth(10n, 3n);
@@ -80,5 +81,29 @@ describe('closeMonth — despesa fixa vinculada a cartão gera a próxima instâ
 
     expect(created).toMatchObject({ type: 'fixed', value: 1200 });
     expect(created.cardInvoiceId).toBeUndefined();
+  });
+});
+
+describe('closeMonth — data real da receita recorrente', () => {
+  const expensesService = require('../../src/modules/expenses/expenses.service');
+
+  test('preserva o dia configurado em vez de antecipar toda receita para o dia 1', async () => {
+    const expectedDate = new Date('2026-07-15T00:00:00Z');
+    expensesService.dueDateFromDay.mockReturnValue(expectedDate);
+    prismaMock.incomeTemplate.findMany.mockResolvedValue([{
+      id: 20n, userId: 10n, description: 'Salário', value: 3000, categoryId: 1n,
+      paymentMethod: 'pix', incomeDay: 15, active: true,
+    }]);
+    prismaMock.income.findFirst.mockResolvedValue(null);
+
+    await closeMonth(10n, 3n);
+
+    expect(expensesService.dueDateFromDay).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 4n, month: 7, year: 2026 }),
+      15
+    );
+    expect(prismaMock.income.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ incomeDate: expectedDate }) })
+    );
   });
 });

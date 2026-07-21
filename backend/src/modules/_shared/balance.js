@@ -1,49 +1,96 @@
 const prisma = require('../../config/prisma');
 const AppError = require('../../utils/AppError');
-const savingsService = require('../savings/savings.service');
 const { round2 } = require('../../utils/math');
+const { todayUtcDate } = require('../../utils/dateTime');
 
-/**
- * Saldo disponível para GASTAR agora — não é um campo gravado em lugar
- * nenhum, é sempre recalculado na hora (soma de tudo que já entrou menos
- * tudo que já saiu de verdade), pelo mesmo motivo que o resto do app não
- * mantém nenhum total "cacheado": um saldo mantido manualmente é fácil de
- * dessincronizar; um saldo sempre recalculado a partir dos lançamentos
- * reais nunca pode ficar inconsistente com eles.
- *
- * = TUDO que já entrou (soma de Income.value, todos os meses)
- * − TUDO que já saiu de fato (soma de Expense.paidAmount, todos os meses —
- *   não `value`: uma despesa pendente ainda não tirou nada do bolso, e uma
- *   parcela de cartão só conta quando a FATURA é paga, momento em que
- *   `paidAmount` daquelas parcelas passa a refletir o valor pago)
- * − o que está guardado na Reserva Financeira (dinheiro reservado
- *   deliberadamente não é "livre" para gastos do dia a dia)
- */
-async function getAvailableBalance(userId) {
-  const [incomeAgg, expenseAgg, breakdown] = await Promise.all([
-    prisma.income.aggregate({ where: { userId }, _sum: { value: true } }),
-    prisma.expense.aggregate({ where: { userId, deletedAt: null }, _sum: { paidAmount: true } }),
-    savingsService.getBalanceBreakdown(userId),
+async function getBalanceComponents(userId, client = prisma, asOf = null) {
+  const dateFilter = asOf ? { lte: asOf } : undefined;
+
+  const [incomeAgg, expenseAgg, goalContributions, goalRefunds, savingsDeposits, savingsWithdrawals] = await Promise.all([
+    client.income.aggregate({
+      where: { userId, ...(dateFilter ? { incomeDate: dateFilter } : {}) },
+      _sum: { value: true },
+    }),
+    client.expense.aggregate({
+      where: {
+        userId,
+        deletedAt: null,
+        ...(dateFilter ? { paidAt: dateFilter } : {}),
+      },
+      _sum: { paidAmount: true },
+    }),
+    client.goalContribution.aggregate({
+      where: {
+        goal: { userId },
+        type: 'contribution',
+        ...(dateFilter ? { contributionDate: dateFilter } : {}),
+      },
+      _sum: { value: true },
+    }),
+    client.goalContribution.aggregate({
+      where: {
+        goal: { userId },
+        type: 'refund',
+        ...(dateFilter ? { contributionDate: dateFilter } : {}),
+      },
+      _sum: { value: true },
+    }),
+    client.savingsTransaction.aggregate({
+      where: {
+        userId,
+        type: 'deposit',
+        origin: 'balance',
+        ...(dateFilter ? { transactionDate: dateFilter } : {}),
+      },
+      _sum: { value: true },
+    }),
+    client.savingsTransaction.aggregate({
+      where: {
+        userId,
+        type: 'withdraw',
+        ...(dateFilter ? { transactionDate: dateFilter } : {}),
+      },
+      _sum: { value: true },
+    }),
   ]);
 
-  const totalIncome = Number(incomeAgg._sum.value ?? 0);
-  const totalPaid = Number(expenseAgg._sum.paidAmount ?? 0);
-  // Só o que de fato SAIU do saldo disponível para a reserva conta aqui —
-  // dinheiro registrado como "já guardado fora do app" (origin='external')
-  // nunca esteve no saldo disponível, então não pode ser descontado dele.
-  return round2(totalIncome - totalPaid - breakdown.movedFromBalance);
+  return {
+    income: Number(incomeAgg._sum.value ?? 0),
+    paidExpenses: Number(expenseAgg._sum.paidAmount ?? 0),
+    goalContributions: Number(goalContributions._sum.value ?? 0),
+    goalRefunds: Number(goalRefunds._sum.value ?? 0),
+    savingsDepositsFromBalance: Number(savingsDeposits._sum.value ?? 0),
+    savingsWithdrawals: Number(savingsWithdrawals._sum.value ?? 0),
+  };
+}
+
+function calculateBalance(components) {
+  return round2(
+    components.income
+      - components.paidExpenses
+      - components.goalContributions
+      + components.goalRefunds
+      - components.savingsDepositsFromBalance
+      + components.savingsWithdrawals
+  );
 }
 
 /**
- * Barreira única antes de qualquer operação que reduza saldo (pagar
- * despesa, pagar parcela de dívida, pagar fatura, criar despesa já como
- * paga, mover dinheiro pra reserva). Lança 422 se o valor pedido for maior
- * que o disponível — a operação chamadora deve rodar isto ANTES de
- * qualquer escrita no banco, nunca depois, para nunca deixar o saldo
- * negativo nem por uma fração de segundo.
+ * Saldo livre acumulado de todos os meses. O valor nunca é reiniciado na
+ * virada do mês: toda entrada e saída real participa do mesmo caixa.
  */
-async function assertSufficientBalance(userId, amount) {
-  const available = await getAvailableBalance(userId);
+async function getAvailableBalance(userId, client = prisma) {
+  // Dinheiro com data futura (por exemplo, uma receita recorrente já gerada
+  // para o próximo mês) ainda não está disponível para gastar hoje.
+  return calculateBalance(await getBalanceComponents(userId, client, todayUtcDate()));
+}
+
+async function getBalanceAsOf(userId, date, client = prisma) {
+  return calculateBalance(await getBalanceComponents(userId, client, date));
+}
+
+async function assertSufficientBalance(userId, amount, client = prisma) {
+  const available = await getAvailableBalance(userId, client);
   if (round2(amount) > available + 0.009) {
     throw new AppError(
       `Saldo insuficiente para esta operação (disponível: R$ ${available.toFixed(2)}).`,
@@ -55,4 +102,16 @@ async function assertSufficientBalance(userId, amount) {
   return available;
 }
 
-module.exports = { getAvailableBalance, assertSufficientBalance };
+/** Serializa todas as operações que podem consumir o saldo do mesmo usuário. */
+async function lockUserBalance(client, userId) {
+  await client.$executeRaw`SELECT pg_advisory_xact_lock(${userId})`;
+}
+
+module.exports = {
+  getAvailableBalance,
+  getBalanceAsOf,
+  getBalanceComponents,
+  calculateBalance,
+  assertSufficientBalance,
+  lockUserBalance,
+};

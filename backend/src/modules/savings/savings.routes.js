@@ -4,6 +4,7 @@ const authenticate = require('../../middlewares/authenticate');
 const validate = require('../../middlewares/validate');
 const service = require('./savings.service');
 const { savingsMovementSchema } = require('./savings.validators');
+const { parseBigIntParam } = require('../../utils/parseParams');
 
 const router = Router();
 router.use(authenticate);
@@ -45,7 +46,7 @@ router.patch(
   '/:id',
   validate(savingsMovementSchema),
   asyncHandler(async (req, res) => {
-    const transaction = await service.updateLastTransaction(req.userId, BigInt(req.params.id), req.body);
+    const transaction = await service.updateLastTransaction(req.userId, parseBigIntParam(req.params.id, 'id'), req.body);
     res.json({ transaction });
   })
 );
@@ -53,7 +54,7 @@ router.patch(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const transaction = await service.deleteLastTransaction(req.userId, BigInt(req.params.id));
+    const transaction = await service.deleteLastTransaction(req.userId, parseBigIntParam(req.params.id, 'id'));
     res.json({ transaction });
   })
 );

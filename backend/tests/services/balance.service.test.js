@@ -1,18 +1,11 @@
 jest.mock('../../src/config/prisma', () => require('../helpers/prismaMock').createPrismaMock());
-jest.mock('../../src/modules/savings/savings.service');
 
 const prismaMock = require('../../src/config/prisma');
 const { installDefaults } = require('../helpers/prismaMock');
-const savingsService = require('../../src/modules/savings/savings.service');
 const { getAvailableBalance, assertSufficientBalance } = require('../../src/modules/_shared/balance');
-
-function breakdown(overrides = {}) {
-  return { totalReserved: 0, movedFromBalance: 0, externalReported: 0, ...overrides };
-}
 
 beforeEach(() => {
   installDefaults(prismaMock);
-  savingsService.getBalanceBreakdown.mockResolvedValue(breakdown());
 });
 
 describe('getAvailableBalance', () => {
@@ -26,7 +19,9 @@ describe('getAvailableBalance', () => {
   test('dinheiro que SAIU do saldo para a reserva não conta como disponível', async () => {
     prismaMock.income.aggregate.mockResolvedValue({ _sum: { value: 5000 } });
     prismaMock.expense.aggregate.mockResolvedValue({ _sum: { paidAmount: 1000 } });
-    savingsService.getBalanceBreakdown.mockResolvedValue(breakdown({ totalReserved: 1500, movedFromBalance: 1500 }));
+    prismaMock.savingsTransaction.aggregate
+      .mockResolvedValueOnce({ _sum: { value: 1500 } })
+      .mockResolvedValueOnce({ _sum: { value: 0 } });
 
     expect(await getAvailableBalance(10n)).toBe(2500); // 5000 - 1000 - 1500
   });
@@ -36,9 +31,9 @@ describe('getAvailableBalance', () => {
     prismaMock.expense.aggregate.mockResolvedValue({ _sum: { paidAmount: 1000 } });
     // R$2000 reservados no total, mas só R$500 realmente saíram do saldo —
     // os outros R$1500 foram só "informados" (já estavam guardados fora do app).
-    savingsService.getBalanceBreakdown.mockResolvedValue(
-      breakdown({ totalReserved: 2000, movedFromBalance: 500, externalReported: 1500 })
-    );
+    prismaMock.savingsTransaction.aggregate
+      .mockResolvedValueOnce({ _sum: { value: 500 } })
+      .mockResolvedValueOnce({ _sum: { value: 0 } });
 
     // Antes desta correção, isto usava o total reservado (2000) inteiro,
     // devolvendo 2000 em vez de 3500 — penalizando o saldo disponível por

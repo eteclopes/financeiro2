@@ -134,13 +134,3 @@ export const alertsApi = {
 export const behavioralAnalysisApi = {
   get: (monthId, periods = 6) => api.get('/behavioral-analysis', { params: { monthId, periods } }),
 };
-
-// ---- Assinaturas ----
-export const subscriptionsApi = {
-  list: () => api.get('/subscriptions'),
-  create: (data) => api.post('/subscriptions', data),
-  update: (id, data) => api.patch(`/subscriptions/${id}`, data),
-  pause: (id) => api.post(`/subscriptions/${id}/pause`),
-  resume: (id) => api.post(`/subscriptions/${id}/resume`),
-  cancel: (id) => api.delete(`/subscriptions/${id}`),
-};

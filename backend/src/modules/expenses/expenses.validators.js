@@ -9,11 +9,15 @@ const createVariableExpenseSchema = z.object({
   categoryId: z.coerce.bigint(),
   date: z.coerce.date(),
   paymentMethod: z.enum(PAYMENT_METHODS),
+  cardId: z.coerce.bigint().optional(),
   // Despesa variável normalmente já representa um gasto que aconteceu
   // (ex.: compra no mercado) — por isso nasce paga por padrão. O usuário
   // pode desmarcar para registrar algo planejado e ainda não pago.
   paid: z.boolean().default(true),
   observation: z.string().trim().max(255).optional(),
+}).refine((data) => data.paymentMethod !== 'credit' || data.cardId !== undefined, {
+  message: 'Selecione o cartão quando a forma de pagamento for Cartão de Crédito.',
+  path: ['cardId'],
 });
 
 const createFixedExpenseSchema = z.object({
@@ -40,7 +44,7 @@ const updateExpenseSchema = z.object({
 
 const payExpenseSchema = z.object({
   amount: z.coerce.number().positive('Valor pago deve ser maior que zero.'),
-  paymentMethod: z.enum(PAYMENT_METHODS),
+  paymentMethod: z.enum(PAYMENT_METHODS.filter((method) => method !== 'credit')),
 });
 
 module.exports = {

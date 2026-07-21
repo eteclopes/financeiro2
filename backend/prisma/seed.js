@@ -8,7 +8,7 @@ const INCOME_CATEGORIES = [
 
 const EXPENSE_CATEGORIES = [
   'Alimentação','Transporte','Moradia','Saúde','Lazer','Estética',
-  'Educação','Investimentos','Assinaturas','Pets','Roupas','Tecnologia',
+  'Educação','Investimentos','Pets','Roupas','Tecnologia',
   'Presentes','Viagens','Impostos','Contas','Outros',
 ];
 

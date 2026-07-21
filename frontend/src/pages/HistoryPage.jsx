@@ -53,7 +53,7 @@ export default function HistoryPage() {
   const months = data?.months ?? [];
   const chartData = months.map((m) => ({
     name: `${String(m.month).padStart(2,'0')}/${String(m.year).slice(-2)}`,
-    receita: m.income, despesas: m.paidExpenses, líquido: m.netBalance, dívidas: m.debtInstallments,
+    receita: m.income, despesas: m.paidExpenses, líquido: m.netBalance, acumulado: m.cumulativeBalance, dívidas: m.debtInstallments,
   }));
   const healthData = months.filter((m) => m.healthScore != null).map((m) => ({
     name: `${String(m.month).padStart(2,'0')}/${String(m.year).slice(-2)}`, saúde: m.healthScore,
@@ -86,7 +86,7 @@ export default function HistoryPage() {
               {[
                 { label:'Receita média',    value: data.summary.avgIncome,        color:'text-primary-dark' },
                 { label:'Despesa média',    value: data.summary.avgExpenses,      color:'text-danger-dark' },
-                { label:'Saldo acumulado',  value: data.summary.totalNetBalance,  color: data.summary.totalNetBalance >= 0 ? 'text-primary-dark' : 'text-danger-dark' },
+                { label:'Saldo disponível', value: data.summary.endingBalance, color: data.summary.endingBalance >= 0 ? 'text-primary-dark' : 'text-danger-dark' },
                 { label:'Melhor mês',       value: data.summary.bestMonthNet?.netBalance, color:'text-primary-dark',
                   sub: data.summary.bestMonthNet ? `${String(data.summary.bestMonthNet.month).padStart(2,'0')}/${data.summary.bestMonthNet.year}` : '—' },
               ].map((item) => (
@@ -120,7 +120,7 @@ export default function HistoryPage() {
           {/* Saldo líquido + Saúde */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
-              <CardHeader title="Saldo Líquido" />
+              <CardHeader title="Saldo do mês × acumulado" />
               <div className="h-44">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData} margin={{ left: -20 }}>
@@ -129,6 +129,7 @@ export default function HistoryPage() {
                     <YAxis tick={{ fontSize:10, fill:axisColor }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
                     <Tooltip content={<CustomTooltip />} />
                     <Line type="monotone" dataKey="líquido" stroke="#3B82F6" strokeWidth={2.5} dot={{ r:3, fill:'#3B82F6' }} />
+                    <Line type="monotone" dataKey="acumulado" stroke="#10B981" strokeWidth={2.5} dot={{ r:3, fill:'#10B981' }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -165,7 +166,7 @@ export default function HistoryPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-subtle/60 dark:bg-white/[0.03]"><tr>
-                  {['Mês','Receita','Despesas pagas','Dívidas','Saldo líquido','Saúde','Status'].map(h=><th key={h} className="table-header">{h}</th>)}
+                  {['Mês','Receita','Despesas pagas','Dívidas','Saldo do mês','Saldo acumulado','Saúde','Status'].map(h=><th key={h} className="table-header">{h}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-border/60 dark:divide-white/[0.06]">
                   {[...months].reverse().map((m) => (
@@ -175,6 +176,7 @@ export default function HistoryPage() {
                       <td className="table-cell font-mono tabular-nums text-danger-dark dark:text-danger-light">{formatCurrency(m.paidExpenses)}</td>
                       <td className="table-cell font-mono tabular-nums text-warning-dark dark:text-warning-light">{formatCurrency(m.debtInstallments)}</td>
                       <td className={`table-cell font-mono tabular-nums font-bold ${m.netBalance >= 0 ? 'text-primary-dark dark:text-primary-light' : 'text-danger-dark dark:text-danger-light'}`}>{formatCurrency(m.netBalance)}</td>
+                      <td className={`table-cell font-mono tabular-nums font-bold ${m.cumulativeBalance >= 0 ? 'text-primary-dark dark:text-primary-light' : 'text-danger-dark dark:text-danger-light'}`}>{formatCurrency(m.cumulativeBalance)}</td>
                       <td className="table-cell">
                         {m.healthScore != null
                           ? <span className={`font-mono font-bold text-base ${m.healthScore>=75?'text-primary-dark dark:text-primary-light':m.healthScore>=50?'text-warning-dark dark:text-warning-light':'text-danger-dark dark:text-danger-light'}`}>{m.healthScore}</span>

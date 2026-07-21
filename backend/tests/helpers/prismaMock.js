@@ -29,20 +29,19 @@ function createPrismaMock() {
     auditLog: modelMock(['create']),
     savingsTransaction: modelMock(['findFirst', 'findMany', 'create', 'update', 'delete', 'aggregate']),
     card: modelMock(['findMany', 'findFirst', 'findUnique', 'create', 'update', 'delete']),
-    cardInvoice: modelMock(['findUnique', 'findFirst', 'findMany', 'create', 'update', 'count', 'deleteMany']),
+    cardInvoice: modelMock(['findUnique', 'findFirst', 'findMany', 'create', 'update', 'updateMany', 'count', 'deleteMany']),
     cardPurchase: modelMock(['create', 'findMany', 'groupBy', 'deleteMany']),
-    expense: modelMock(['findMany', 'findFirst', 'aggregate', 'groupBy', 'count', 'update', 'updateMany', 'create', 'deleteMany']),
-    income: modelMock(['aggregate', 'groupBy', 'create', 'findFirst', 'findMany']),
-    incomeTemplate: modelMock(['count', 'findMany', 'aggregate']),
-    fixedExpenseTemplate: modelMock(['count', 'findMany', 'aggregate', 'create', 'update', 'findFirst']),
+    expense: modelMock(['findMany', 'findFirst', 'aggregate', 'groupBy', 'count', 'update', 'updateMany', 'create', 'delete', 'deleteMany']),
+    income: modelMock(['aggregate', 'groupBy', 'create', 'findFirst', 'findMany', 'update', 'delete']),
+    incomeTemplate: modelMock(['count', 'findMany', 'aggregate', 'create', 'update', 'findFirst']),
+    fixedExpenseTemplate: modelMock(['count', 'findMany', 'aggregate', 'create', 'update', 'updateMany', 'delete', 'findFirst']),
     debt: modelMock(['findMany', 'findFirst', 'aggregate', 'create', 'update', 'count']),
     category: modelMock(['findMany', 'findFirst', 'update']),
     goal: modelMock(['findMany', 'create', 'findFirst', 'update', 'count']),
-    goalContribution: modelMock(['create', 'findMany']),
-    simulation: modelMock(['findFirst', 'delete']),
+    goalContribution: modelMock(['create', 'findMany', 'aggregate']),
+    simulation: modelMock(['findFirst', 'findMany', 'create', 'update', 'delete']),
     alert: modelMock(['findMany', 'update', 'upsert']),
-    subscription: modelMock(['findFirst', 'findMany', 'create', 'update']),
-    month: modelMock(['findFirst', 'findUnique', 'findMany', 'update']),
+    month: modelMock(['findFirst', 'findUnique', 'findMany', 'create', 'update']),
     refreshToken: modelMock(['findUnique', 'create', 'update', 'updateMany']),
     passwordReset: modelMock(['findFirst', 'findUnique', 'create', 'update']),
     $transaction: jest.fn(),
@@ -72,16 +71,24 @@ function installDefaults(mock) {
   mock.expense.groupBy.mockResolvedValue([]);
   mock.expense.count.mockResolvedValue(0);
   mock.expense.create.mockImplementation(({ data }) => Promise.resolve({ id: 999n, ...data }));
+  mock.expense.delete.mockImplementation(({ where }) => Promise.resolve({ id: where.id }));
   mock.income.aggregate.mockResolvedValue({ _sum: { value: null } });
   mock.income.groupBy.mockResolvedValue([]);
+  mock.income.create.mockImplementation(({ data }) => Promise.resolve({ id: 666n, ...data }));
+  mock.income.update.mockImplementation(({ where, data }) => Promise.resolve({ id: where.id, ...data }));
+  mock.income.delete.mockImplementation(({ where }) => Promise.resolve({ id: where.id }));
   mock.incomeTemplate.count.mockResolvedValue(0);
   mock.incomeTemplate.findMany.mockResolvedValue([]);
   mock.incomeTemplate.aggregate.mockResolvedValue({ _sum: { value: null } });
+  mock.incomeTemplate.create.mockImplementation(({ data }) => Promise.resolve({ id: 667n, ...data }));
+  mock.incomeTemplate.update.mockImplementation(({ where, data }) => Promise.resolve({ id: where.id, ...data }));
   mock.fixedExpenseTemplate.count.mockResolvedValue(0);
   mock.fixedExpenseTemplate.findMany.mockResolvedValue([]);
   mock.fixedExpenseTemplate.aggregate.mockResolvedValue({ _sum: { value: null } });
   mock.fixedExpenseTemplate.create.mockImplementation(({ data }) => Promise.resolve({ id: 777n, ...data }));
   mock.fixedExpenseTemplate.update.mockImplementation(({ where, data }) => Promise.resolve({ id: where.id, ...data }));
+  mock.fixedExpenseTemplate.updateMany.mockResolvedValue({ count: 0 });
+  mock.fixedExpenseTemplate.delete.mockImplementation(({ where }) => Promise.resolve({ id: where.id }));
 
   mock.debt.findMany.mockResolvedValue([]);
   mock.debt.aggregate.mockResolvedValue({ _sum: { remainingBalance: null, totalValue: null } });
@@ -91,17 +98,17 @@ function installDefaults(mock) {
   mock.goal.findMany.mockResolvedValue([]);
   mock.goal.count.mockResolvedValue(0);
   mock.goalContribution.findMany.mockResolvedValue([]);
+  mock.goalContribution.aggregate.mockResolvedValue({ _sum: { value: null } });
   mock.month.findMany.mockResolvedValue([]);
+  mock.month.create.mockImplementation(({ data }) => Promise.resolve({ id: 333n, ...data }));
   mock.savingsTransaction.aggregate.mockResolvedValue({ _sum: { value: null } });
   mock.savingsTransaction.findMany.mockResolvedValue([]);
   mock.auditLog.create.mockResolvedValue({});
   mock.cardInvoice.count.mockResolvedValue(0);
   mock.cardInvoice.findMany.mockResolvedValue([]);
   mock.cardInvoice.update.mockImplementation(({ where, data }) => Promise.resolve({ id: where.id, ...data }));
+  mock.cardInvoice.updateMany.mockResolvedValue({ count: 1 });
   mock.cardInvoice.create.mockImplementation(({ data }) => Promise.resolve({ id: 888n, status: 'open', ...data }));
-  mock.subscription.findMany.mockResolvedValue([]);
-  mock.subscription.create.mockImplementation(({ data }) => Promise.resolve({ id: 444n, ...data }));
-  mock.subscription.update.mockImplementation(({ where, data }) => Promise.resolve({ id: where.id, ...data }));
   mock.cardPurchase.groupBy.mockResolvedValue([]);
   mock.cardPurchase.findMany.mockResolvedValue([]);
   mock.alert.findMany.mockResolvedValue([]);

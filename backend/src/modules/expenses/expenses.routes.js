@@ -17,8 +17,11 @@ const updateFixedTemplateSchema = z.object({
   categoryId: z.coerce.bigint().optional(),
   dueDay: z.coerce.number().int().min(1).max(31).optional(),
   paymentMethod: z.enum(PAYMENT_METHODS).optional(),
-  cardId: z.coerce.bigint().optional(),
-}).refine((data) => data.paymentMethod !== 'credit' || data.cardId !== undefined, {
+  cardId: z.preprocess(
+    (value) => value === '' || value === null ? null : value,
+    z.coerce.bigint().nullable()
+  ).optional(),
+}).refine((data) => data.paymentMethod !== 'credit' || (data.cardId !== undefined && data.cardId !== null), {
   message: 'Selecione o cartão quando a forma de pagamento for Cartão de Crédito.',
   path: ['cardId'],
 });

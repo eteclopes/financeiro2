@@ -12,8 +12,14 @@ services:
         value: production
       - key: DATABASE_URL
         sync: false
+      - key: DIRECT_URL
+        sync: false
       - key: CORS_ORIGIN
         sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: APP_TIME_ZONE
+        value: America/Sao_Paulo
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_ACCESS_EXPIRES_IN

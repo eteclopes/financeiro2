@@ -2,6 +2,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const cardsService = require('./cards.service');
 const purchasesService = require('./cardPurchases.service');
 const invoicesService = require('./cardInvoices.service');
+const { parseBigIntParam } = require('../../utils/parseParams');
 
 const listCards = asyncHandler(async (req, res) => {
   const cards = await cardsService.listCards(req.userId);
@@ -14,37 +15,37 @@ const createCard = asyncHandler(async (req, res) => {
 });
 
 const updateCard = asyncHandler(async (req, res) => {
-  const card = await cardsService.updateCard(req.userId, BigInt(req.params.id), req.body);
+  const card = await cardsService.updateCard(req.userId, parseBigIntParam(req.params.id, 'id'), req.body);
   res.json({ card });
 });
 
 const deactivateCard = asyncHandler(async (req, res) => {
-  const card = await cardsService.deactivateCard(req.userId, BigInt(req.params.id));
+  const card = await cardsService.deactivateCard(req.userId, parseBigIntParam(req.params.id, 'id'));
   res.json({ card });
 });
 
 const deleteCard = asyncHandler(async (req, res) => {
-  const result = await cardsService.deleteCard(req.userId, BigInt(req.params.id));
+  const result = await cardsService.deleteCard(req.userId, parseBigIntParam(req.params.id, 'id'));
   res.json(result);
 });
 
 const createPurchase = asyncHandler(async (req, res) => {
   const result = await purchasesService.createCardPurchase(req.userId, {
     ...req.body,
-    cardId: BigInt(req.params.id),
+    cardId: parseBigIntParam(req.params.id, 'id'),
   });
   res.status(201).json(result);
 });
 
 const listInvoices = asyncHandler(async (req, res) => {
-  const invoices = await invoicesService.listInvoices(req.userId, BigInt(req.params.id));
+  const invoices = await invoicesService.listInvoices(req.userId, parseBigIntParam(req.params.id, 'id'));
   res.json({ invoices });
 });
 
 const payInvoice = asyncHandler(async (req, res) => {
   const invoice = await invoicesService.payInvoice(
     req.userId,
-    BigInt(req.params.invoiceId),
+    parseBigIntParam(req.params.invoiceId, 'invoiceId'),
     req.body.paymentMethod
   );
   res.json({ invoice });

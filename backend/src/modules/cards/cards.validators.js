@@ -25,7 +25,7 @@ const createCardPurchaseSchema = z.object({
 });
 
 const payInvoiceSchema = z.object({
-  paymentMethod: z.enum(['cash', 'pix', 'debit', 'credit', 'transfer']),
+  paymentMethod: z.enum(['cash', 'pix', 'debit', 'transfer']),
 });
 
 module.exports = {

@@ -3,6 +3,7 @@ import { useMonthStore } from '../store/monthStore';
 import { goalsApi } from '../lib/services';
 import { extractErrorMessage } from '../lib/api';
 import { formatCurrency } from '../lib/format';
+import { localDateInputValue, apiDateToInput } from '../lib/date';
 import { Card, Badge, Button, EmptyState, ProgressBar } from '../components/ui/index';
 import { Modal, FormGroup, Input } from '../components/ui/Modal';
 import { useUIStore } from '../store/uiStore';
@@ -96,7 +97,7 @@ export default function GoalsPage() {
   const [cancelling, setCancelling] = useState(false);
   const [goalForm, setGoalForm]   = useState({ name:'', description:'', targetValue:'', targetDate:'' });
   const [editGoalForm, setEditGoalForm] = useState({ name:'', description:'', targetValue:'', targetDate:'' });
-  const [contribForm, setContribForm] = useState({ value:'', date: new Date().toISOString().slice(0,10) });
+  const [contribForm, setContribForm] = useState({ value:'', date: localDateInputValue() });
   const [refundContributions, setRefundContributions] = useState(false);
   const toast = useUIStore((s) => s);
 
@@ -124,7 +125,7 @@ export default function GoalsPage() {
       name: goal.name,
       description: goal.description ?? '',
       targetValue: String(goal.targetValue),
-      targetDate: goal.targetDate ? new Date(goal.targetDate).toISOString().slice(0,10) : '',
+      targetDate: goal.targetDate ? apiDateToInput(goal.targetDate) : '',
     });
     setEditGoalModal(goal);
   }
@@ -170,7 +171,7 @@ export default function GoalsPage() {
 
   function openContribute(goal) {
     setContribTarget(goal);
-    setContribForm({ value: '', date: new Date().toISOString().slice(0, 10) });
+    setContribForm({ value: '', date: localDateInputValue() });
   }
 
   function openCancel(goal) {

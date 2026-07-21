@@ -1,5 +1,5 @@
 const asyncHandler = require('../../utils/asyncHandler');
-const { parseMonthId } = require('../../utils/parseParams');
+const { parseMonthId, parseBigIntParam } = require('../../utils/parseParams');
 const service = require('./incomes.service');
 
 const list = asyncHandler(async (req, res) => {
@@ -14,17 +14,17 @@ const create = asyncHandler(async (req, res) => {
 });
 
 const update = asyncHandler(async (req, res) => {
-  const income = await service.updateIncome(req.userId, BigInt(req.params.id), req.body);
+  const income = await service.updateIncome(req.userId, parseBigIntParam(req.params.id, 'id'), req.body);
   res.json({ income });
 });
 
 const remove = asyncHandler(async (req, res) => {
-  await service.deleteIncome(req.userId, BigInt(req.params.id));
+  await service.deleteIncome(req.userId, parseBigIntParam(req.params.id, 'id'));
   res.status(204).send();
 });
 
 const deactivateTemplate = asyncHandler(async (req, res) => {
-  const template = await service.deactivateRecurringTemplate(req.userId, BigInt(req.params.id));
+  const template = await service.deactivateRecurringTemplate(req.userId, parseBigIntParam(req.params.id, 'id'));
   res.json({ template });
 });
 

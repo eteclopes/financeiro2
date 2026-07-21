@@ -5,7 +5,7 @@ const validate = require('../../middlewares/validate');
 const AppError = require('../../utils/AppError');
 const service = require('./categories.service');
 const { createCategorySchema, updateCategorySchema, renameCategorySchema } = require('./categories.validators');
-const { parseMonthId } = require('../../utils/parseParams');
+const { parseMonthId, parseBigIntParam } = require('../../utils/parseParams');
 
 const router = Router();
 router.use(authenticate);
@@ -45,7 +45,7 @@ router.patch(
   '/:id/limit',
   validate(updateCategorySchema),
   asyncHandler(async (req, res) => {
-    const category = await service.updateCategoryLimit(req.userId, BigInt(req.params.id), req.body.monthlyLimit);
+    const category = await service.updateCategoryLimit(req.userId, parseBigIntParam(req.params.id, 'id'), req.body.monthlyLimit);
     res.json({ category });
   })
 );
@@ -56,7 +56,7 @@ router.patch(
   '/:id',
   validate(renameCategorySchema),
   asyncHandler(async (req, res) => {
-    const category = await service.renameCategory(req.userId, BigInt(req.params.id), req.body.name);
+    const category = await service.renameCategory(req.userId, parseBigIntParam(req.params.id, 'id'), req.body.name);
     res.json({ category });
   })
 );
@@ -64,7 +64,7 @@ router.patch(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    await service.deleteCategory(req.userId, BigInt(req.params.id));
+    await service.deleteCategory(req.userId, parseBigIntParam(req.params.id, 'id'));
     res.status(204).send();
   })
 );

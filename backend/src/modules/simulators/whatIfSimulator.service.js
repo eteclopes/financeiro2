@@ -21,12 +21,10 @@ const {
  *  anticipate_installments → { debtId, amount }      (abate um valor extra no saldo devedor, hoje)
  *  save_monthly         → { amount }                 (reduz o net projetado todo mês — dinheiro vai para a poupança, não é gasto)
  *  reduce_category      → { amount }                 (reduz despesas fixas mensais — ver nota abaixo)
- *  cancel_subscription  → { amount }                 (reduz despesas fixas mensais)
  *  increase_income      → { amount }                 (aumenta a renda recorrente)
  *
- * NOTA sobre reduce_category/cancel_subscription: hoje os dois cenários
- * fazem exatamente a mesma coisa (reduzir `fixedExpenses` pelo valor
- * informado) — "reduce_category" não recebe nem um `categoryId`, então não
+ * NOTA sobre reduce_category: o cenário ainda recebe apenas um valor mensal;
+ * não recebe `categoryId`, então não
  * há, de fato, nenhuma categoria específica sendo considerada, nem
  * qualquer ligação com o histórico real de gastos daquela categoria
  * (ver categories.service.getBudgetStatus, que já existe e poderia
@@ -104,7 +102,6 @@ async function applyScenario(userId, type, input, components) {
       break;
 
     case 'reduce_category':
-    case 'cancel_subscription':
       c.fixedExpenses = round2(Math.max(c.fixedExpenses - Number(input.amount), 0));
       break;
 

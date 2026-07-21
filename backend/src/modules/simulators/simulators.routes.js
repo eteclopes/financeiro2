@@ -7,6 +7,7 @@ const purchaseService = require('./purchaseSimulator.service');
 const whatIfService = require('./whatIfSimulator.service');
 const { purchaseSimulationSchema } = require('./purchaseSimulator.validators');
 const { previewSchema, saveSchema, scenarioInputMap } = require('./whatIfSimulator.validators');
+const { parseBigIntParam } = require('../../utils/parseParams');
 
 const router = Router();
 router.use(authenticate);
@@ -78,7 +79,7 @@ router.get(
 router.delete(
   '/what-if/:id',
   asyncHandler(async (req, res) => {
-    await whatIfService.deleteSimulation(req.userId, BigInt(req.params.id));
+    await whatIfService.deleteSimulation(req.userId, parseBigIntParam(req.params.id, 'id'));
     res.status(204).send();
   })
 );

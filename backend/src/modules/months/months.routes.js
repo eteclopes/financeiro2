@@ -3,6 +3,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const authenticate = require('../../middlewares/authenticate');
 const monthsService = require('./months.service');
 const closingService = require('../closing/closing.service');
+const { parseBigIntParam } = require('../../utils/parseParams');
 
 const router = Router();
 router.use(authenticate);
@@ -26,7 +27,7 @@ router.get(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const month = await monthsService.getMonthOrThrow(req.userId, BigInt(req.params.id));
+    const month = await monthsService.getMonthOrThrow(req.userId, parseBigIntParam(req.params.id, 'id'));
     res.json({ month });
   })
 );
@@ -34,7 +35,7 @@ router.get(
 router.get(
   '/:id/closing-preview',
   asyncHandler(async (req, res) => {
-    const preview = await closingService.getClosingPreview(req.userId, BigInt(req.params.id));
+    const preview = await closingService.getClosingPreview(req.userId, parseBigIntParam(req.params.id, 'id'));
     res.json(preview);
   })
 );
@@ -42,7 +43,7 @@ router.get(
 router.post(
   '/:id/close',
   asyncHandler(async (req, res) => {
-    const result = await closingService.closeMonth(req.userId, BigInt(req.params.id));
+    const result = await closingService.closeMonth(req.userId, parseBigIntParam(req.params.id, 'id'));
     res.json(result);
   })
 );

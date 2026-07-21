@@ -11,7 +11,6 @@ const goalsRoutes = require('../modules/goals/goals.routes');
 const dashboardRoutes = require('../modules/dashboard/dashboard.routes');
 const financialHealthRoutes = require('../modules/financialHealth/financialHealth.routes');
 const alertsRoutes = require('../modules/alerts/alerts.routes');
-const subscriptionsRoutes = require('../modules/subscriptions/subscriptions.routes');
 const projectionsRoutes = require('../modules/projections/projections.routes');
 const simulatorsRoutes = require('../modules/simulators/simulators.routes');
 const recommendationsRoutes = require('../modules/recommendations/recommendations.routes');
@@ -38,6 +37,5 @@ router.use('/simulators',         heavyLimiter, simulatorsRoutes);
 router.use('/recommendations',    heavyLimiter, recommendationsRoutes);
 router.use('/behavioral-analysis',heavyLimiter, behavioralAnalysisRoutes);
 router.use('/alerts',             alertsRoutes);
-router.use('/subscriptions',      subscriptionsRoutes);
 
 module.exports = router;

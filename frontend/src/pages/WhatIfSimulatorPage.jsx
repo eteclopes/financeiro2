@@ -14,7 +14,6 @@ const SCENARIO_TYPES = [
   { value:'anticipate_installments', label:'⚡ Antecipar parcelas' },
   { value:'save_monthly',        label:'💰 Guardar valor mensal' },
   { value:'reduce_category',     label:'✂️ Reduzir gastos' },
-  { value:'cancel_subscription', label:'❌ Cancelar assinatura' },
   { value:'increase_income',     label:'📈 Aumentar receita' },
 ];
 
@@ -68,15 +67,10 @@ function ScenarioInputFields({ type, input, setInput, activeDebts }) {
       </FormGroup>
     </div>
   );
-  // reduce_category e cancel_subscription pedem o mesmo tipo de input
-  // (um valor mensal) porque, hoje, o backend aplica exatamente o mesmo
-  // cálculo para os dois — nenhum dos dois pergunta QUAL categoria, nem
-  // usa o histórico real de gastos dela (ver nota em
-  // whatIfSimulator.service.js). Funciona, mas é uma simplificação.
+  // Cenários de valor mensal usam o mesmo campo numérico.
   const amountLabels = {
     save_monthly: 'Valor a guardar por mês',
     reduce_category: 'Redução mensal nos gastos',
-    cancel_subscription: 'Valor da assinatura',
     increase_income: 'Aumento mensal na receita',
   };
   return (

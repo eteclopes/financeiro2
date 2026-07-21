@@ -144,16 +144,22 @@ export default function DashboardPage() {
           <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/[0.08]" />
           <div className="absolute -bottom-16 -left-8 w-32 h-32 rounded-full bg-white/[0.06]" />
           <div className="relative">
-            <p className="text-white/80 text-sm font-medium mb-1">Saldo atual</p>
+            <p className="text-white/80 text-sm font-medium mb-1">Saldo disponível acumulado</p>
             <p className="text-4xl font-bold font-mono tabular-nums tracking-tight">{formatCurrency(data.currentBalance)}</p>
-            <div className="flex items-center gap-6 mt-4">
+            <p className="text-white/65 text-xs mt-1">O valor restante dos meses anteriores continua no seu caixa.</p>
+            <div className="flex items-center gap-4 mt-4 flex-wrap">
               <div>
-                <p className="text-white/65 text-[11px] font-medium uppercase tracking-wide">Receita total</p>
+                <p className="text-white/65 text-[11px] font-medium uppercase tracking-wide">Saldo trazido</p>
+                <p className="text-base font-semibold font-mono mt-0.5">{formatCurrency(data.openingBalance)}</p>
+              </div>
+              <div className="w-px h-9 bg-white/15" />
+              <div>
+                <p className="text-white/65 text-[11px] font-medium uppercase tracking-wide">Receitas do mês</p>
                 <p className="text-base font-semibold font-mono mt-0.5">{formatCurrency(data.incomeTotal)}</p>
               </div>
               <div className="w-px h-9 bg-white/15" />
               <div>
-                <p className="text-white/65 text-[11px] font-medium uppercase tracking-wide">Projetado</p>
+                <p className="text-white/65 text-[11px] font-medium uppercase tracking-wide">Após pendências</p>
                 <p className="text-base font-semibold font-mono mt-0.5">{formatCurrency(data.projectedBalance)}</p>
               </div>
             </div>

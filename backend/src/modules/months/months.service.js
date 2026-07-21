@@ -1,29 +1,27 @@
 const prisma = require('../../config/prisma');
 const AppError = require('../../utils/AppError');
-
-/**
- * Praticamente todo módulo financeiro depende de um month_id válido.
- * Este service é o único lugar que cria registros em "months" — nenhum
- * outro módulo deve fazer prisma.month.create() diretamente, para manter
- * a constraint de unicidade (user, mês, ano) como única fonte de verdade.
- *
- * `client` é opcional e por padrão usa o singleton do Prisma; módulos que
- * precisam que esta operação participe de uma transação maior (ex.:
- * fechamento mensal) passam o `tx` recebido de prisma.$transaction.
- */
+const { getDateParts } = require('../../utils/dateTime');
 
 async function getOrCreateMonth(userId, month, year, client = prisma) {
-  const existing = await client.month.findUnique({
-    where: { userId_month_year: { userId, month, year } },
-  });
+  const where = { userId_month_year: { userId, month, year } };
+  const existing = await client.month.findUnique({ where });
   if (existing) return existing;
 
-  return client.month.create({ data: { userId, month, year, status: 'open' } });
+  try {
+    return await client.month.create({ data: { userId, month, year, status: 'open' } });
+  } catch (error) {
+    // Duas requisições podem tentar abrir o mesmo mês simultaneamente.
+    if (error?.code === 'P2002') {
+      const concurrent = await client.month.findUnique({ where });
+      if (concurrent) return concurrent;
+    }
+    throw error;
+  }
 }
 
 async function getCurrentMonth(userId, client = prisma) {
-  const now = new Date();
-  return getOrCreateMonth(userId, now.getMonth() + 1, now.getFullYear(), client);
+  const { month, year } = getDateParts();
+  return getOrCreateMonth(userId, month, year, client);
 }
 
 async function listMonths(userId) {
@@ -41,12 +39,6 @@ async function getMonthOrThrow(userId, monthId, client = prisma) {
   return month;
 }
 
-/**
- * Bloqueia escrita em meses fechados. Esta função deve ser chamada por
- * TODO módulo antes de criar/editar/excluir uma instância vinculada a um
- * mês (receitas, despesas, faturas) — é a garantia central de imutabilidade
- * de histórico exigida pelas regras do projeto.
- */
 function assertMonthIsOpen(month) {
   if (month.status === 'closed') {
     throw new AppError(

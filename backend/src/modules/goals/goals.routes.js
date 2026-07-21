@@ -9,6 +9,7 @@ const {
   contributeSchema,
   cancelGoalSchema,
 } = require('./goals.validators');
+const { parseBigIntParam } = require('../../utils/parseParams');
 
 const router = Router();
 router.use(authenticate);
@@ -34,7 +35,7 @@ router.patch(
   '/:id',
   validate(updateGoalSchema),
   asyncHandler(async (req, res) => {
-    const goal = await service.updateGoal(req.userId, BigInt(req.params.id), req.body);
+    const goal = await service.updateGoal(req.userId, parseBigIntParam(req.params.id, 'id'), req.body);
     res.json({ goal });
   })
 );
@@ -43,7 +44,7 @@ router.post(
   '/:id/contributions',
   validate(contributeSchema),
   asyncHandler(async (req, res) => {
-    const contribution = await service.contribute(req.userId, BigInt(req.params.id), req.body);
+    const contribution = await service.contribute(req.userId, parseBigIntParam(req.params.id, 'id'), req.body);
     res.status(201).json({ contribution });
   })
 );
@@ -52,7 +53,7 @@ router.post(
   '/:id/cancel',
   validate(cancelGoalSchema),
   asyncHandler(async (req, res) => {
-    const result = await service.cancelGoal(req.userId, BigInt(req.params.id), req.body);
+    const result = await service.cancelGoal(req.userId, parseBigIntParam(req.params.id, 'id'), req.body);
     res.json(result);
   })
 );

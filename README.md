@@ -1,45 +1,116 @@
-# Sistema de Gestão Financeira Pessoal Inteligente
+# FinançasPro
 
-## Status do projeto
+Aplicação de gestão financeira pessoal com frontend React/Vite e API Express/Prisma/PostgreSQL.
 
-Concluído nesta entrega:
-- Etapa 1 — Arquitetura Funcional (`arquitetura-etapas-1-2.md`)
-- Etapa 2 — Modelagem do Banco (`arquitetura-etapas-1-2.md`)
-- Etapa 3 — Modelagem SQL inicial (substituída por `backend/prisma/schema.prisma`, ver Etapa 4 — `database.sql` foi removido por ser MySQL e o projeto rodar em Postgres/Supabase)
-- Etapa 4 — `backend/prisma/schema.prisma`
-- Etapa 5 — Arquitetura backend (estrutura de pastas, camadas, middlewares)
-- Etapa 6 — Autenticação completa (cadastro, login, logout, refresh, recuperação de senha)
-- Etapa 7 — Receitas (criar, editar, excluir, listar, recorrência)
-- Etapa 8 — Despesas fixas e variáveis
-- Etapa 9 — Parcelamentos (despesas de prioridade)
-- Etapa 10 — Pagamento flexível e excedente
-- Etapa 11 — Cartões de crédito, compras parceladas e faturas
-- Etapa 12 — Saldo Guardado
-- Etapa 13 — Metas
-- Etapa 14 — Dashboard
-- Etapa 15 — Fechamento Mensal
-- Frontend (parcial) — Login, Cadastro, Recuperação de Senha e Dashboard em React, conectados à API real
+## Estado desta versão
 
-Pendente para as próximas entregas: saúde financeira, alertas, simuladores, projeções, relatórios; telas de Receitas, Despesas, Dívidas, Cartões, Saldo Guardado e Metas no frontend (Etapas 16-19).
+Esta versão consolida o sistema financeiro em torno de quatro regras principais:
 
-Etapa 20 (auditoria final): uma primeira rodada independente foi feita — ver `AUDITORIA-CLAUDE.md` para a lista completa de achados (segurança, condições de corrida, N+1, deploy) e o que foi corrigido. Testes automatizados começaram a existir (`backend/tests`, `npm test`) cobrindo os módulos financeiros mais críticos, mas ainda não é cobertura completa nem inclui o frontend.
+1. **Saldo acumulado real:** o dinheiro que sobra continua disponível nos meses seguintes.
+2. **Pagamentos protegidos:** contas, dívidas, faturas, metas e depósitos na reserva não podem consumir mais do que o saldo disponível.
+3. **Cartão de crédito real:** compras e despesas fixas no crédito exigem um cartão, entram na fatura e reduzem o limite disponível.
+4. **Recorrências centralizadas:** o módulo separado de Assinaturas foi removido. Serviços mensais, anuidades e cobranças recorrentes devem ser cadastrados em **Despesas Fixas**.
 
-## Setup local
+O detalhamento das mudanças está em [`CORRECOES-IMPLEMENTADAS.md`](./CORRECOES-IMPLEMENTADAS.md).
 
-O projeto roda em **PostgreSQL** (Supabase) — o `schema.prisma` está configurado para isso (`provider = "postgresql"`). `database.sql` (MySQL/XAMPP) foi removido: era de uma fase anterior do projeto e não é compatível com o banco atual; o Prisma Migrate é a fonte única da verdade do schema.
+## Stack
 
-1. Crie um projeto no [Supabase](https://supabase.com) (ou use outro Postgres).
-2. Dentro de `backend/`:
-   ```bash
-   cp .env.example .env
-   # preencha DATABASE_URL (connection pooling) e DIRECT_URL (conexão
-   # direta) — as duas ficam na mesma tela do Supabase: Project Settings >
-   # Database > Connection string. Sem DIRECT_URL, "prisma generate" e
-   # "prisma migrate" falham (o pooler não suporta as operações do migrate).
-   npm install
-   npm run prisma:migrate -- --name init
-   node prisma/seed.js   # popula categorias padrão
-   npm run dev
-   ```
-3. API disponível em `http://localhost:3333/api` (teste com `GET /api/health`).
-4. `npm test` roda a suíte de testes automatizados (Jest) — cobre hoje a lógica pura de cálculo (parcelas, faturas) e os módulos financeiros mais sensíveis a condição de corrida (saldo guardado, limite de cartão). Ainda não é cobertura completa; ver `AUDITORIA-CLAUDE.md`.
+- Frontend: React 18, Vite, React Router, Zustand, Tailwind CSS e Recharts.
+- Backend: Node.js, Express, Prisma ORM, PostgreSQL, Zod e JWT.
+- Testes: Jest.
+
+## Estrutura
+
+```text
+frontend/   interface web
+backend/    API, regras financeiras, Prisma e testes
+render.yaml configuração de deploy do backend no Render
+```
+
+## Atualizando um banco existente
+
+A migração `20260721030000_financial_core_fixes`:
+
+- adiciona competência e data real de pagamento às despesas;
+- preserva o dia das receitas recorrentes;
+- converte assinaturas ativas/pausadas em despesas fixas;
+- remove tabelas, relações e enums do módulo Assinaturas;
+- remove o cenário obsoleto `cancel_subscription`;
+- cria proteção contra duplicidade de despesas fixas por competência.
+
+Antes de aplicar em produção, faça backup do banco.
+
+```bash
+cd backend
+npm ci
+npx prisma generate
+npx prisma migrate deploy
+node prisma/seed.js
+```
+
+## Configuração local do backend
+
+```bash
+cd backend
+cp .env.example .env
+npm ci
+npx prisma generate
+npx prisma migrate deploy
+node prisma/seed.js
+npm run dev
+```
+
+Variáveis essenciais:
+
+- `DATABASE_URL`: conexão de runtime com PostgreSQL.
+- `DIRECT_URL`: conexão direta usada pelo Prisma Migrate.
+- `JWT_ACCESS_SECRET`: segredo forte para autenticação.
+- `CORS_ORIGIN`: URL permitida do frontend.
+- `FRONTEND_URL`: URL usada nos links de recuperação de senha.
+- `APP_TIME_ZONE`: use `America/Sao_Paulo` para datas brasileiras.
+
+API local: `http://localhost:3333/api`
+
+Health check: `http://localhost:3333/health`
+
+## Configuração local do frontend
+
+```bash
+cd frontend
+cp .env.example .env
+npm ci
+npm run dev
+```
+
+Defina `VITE_API_URL`, por exemplo:
+
+```env
+VITE_API_URL="http://localhost:3333/api"
+```
+
+## Validação
+
+Backend:
+
+```bash
+cd backend
+npm test -- --runInBand
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm run build
+```
+
+Nesta entrega, a suíte possui **21 arquivos de teste e 173 testes aprovados**, e o build de produção do frontend foi concluído com sucesso.
+
+## Regras importantes de uso
+
+- Crédito sempre exige cartão ativo e limite disponível.
+- Uma despesa fixa no crédito aparece na aba **Fixas** e também na fatura do cartão.
+- Pagar a fatura libera o limite correspondente aos lançamentos quitados.
+- Receitas futuras não ficam disponíveis antes da data configurada.
+- Meses fechados preservam o histórico; pagamentos de pendências antigas continuam possíveis e são contabilizados na data real do pagamento.
+- Aportes em metas e depósitos na reserva com origem no saldo reduzem o caixa disponível.

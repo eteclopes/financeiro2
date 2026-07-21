@@ -4,7 +4,8 @@ const monthsService = require('../months/months.service');
 const expensesService = require('../expenses/expenses.service');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
 const { round2 } = require('../../utils/math');
-const { assertSufficientBalance } = require('../_shared/balance');
+const { assertSufficientBalance, lockUserBalance } = require('../_shared/balance');
+const { todayUtcDate } = require('../../utils/dateTime');
 
 /**
  * O valor de cada parcela nunca é "total / parcelas" fixo e cego — é sempre
@@ -113,8 +114,8 @@ async function listDebts(userId) {
   });
 }
 
-async function getDebtOrThrow(userId, debtId) {
-  const debt = await prisma.debt.findFirst({ where: { id: debtId, userId } });
+async function getDebtOrThrow(userId, debtId, client = prisma) {
+  const debt = await client.debt.findFirst({ where: { id: debtId, userId } });
   if (!debt) {
     throw new AppError('Dívida não encontrada.', 404, 'DEBT_NOT_FOUND');
   }
@@ -155,7 +156,7 @@ async function updateDebt(userId, debtId, payload) {
     // de vencimento antigos depois de uma edição.
     if (payload.description || payload.categoryId || payload.dueDay !== undefined) {
       const openInstallments = await tx.expense.findMany({
-        where: { debtId, status: { in: ['pending', 'partial', 'late'] }, month: { status: 'open' } },
+        where: { debtId, status: { in: ['pending', 'late'] }, paidAmount: 0, month: { status: 'open' } },
         include: { month: true },
       });
       for (const installment of openInstallments) {
@@ -163,9 +164,10 @@ async function updateDebt(userId, debtId, payload) {
           where: { id: installment.id },
           data: {
             ...(payload.categoryId && { categoryId: payload.categoryId }),
-            ...(payload.dueDay !== undefined && {
-              dueDate: expensesService.dueDateFromDay(installment.month, payload.dueDay),
-            }),
+            ...(payload.dueDay !== undefined && (() => {
+              const dueDate = expensesService.dueDateFromDay(installment.month, payload.dueDay);
+              return { dueDate, status: dueDate < todayUtcDate() ? 'late' : 'pending' };
+            })()),
             ...(payload.description && {
               description: installment.description.replace(
                 /^.*(\(\d+\/\d+\))$/,
@@ -198,7 +200,8 @@ async function deleteDebt(userId, debtId) {
     await tx.expense.deleteMany({
       where: {
         debtId,
-        status: { in: ['pending', 'partial', 'late'] },
+        status: { in: ['pending', 'late'] },
+        paidAmount: 0,
         month: { status: 'open' },
       },
     });
@@ -224,47 +227,49 @@ async function deleteDebt(userId, debtId) {
  * diferença duas vezes.
  */
 async function applyPaymentToInstallment(userId, expense, amount, paymentMethod) {
-  if (['partial', 'paid', 'settled'].includes(expense.status)) {
-    throw new AppError(
-      'Esta parcela já recebeu um pagamento — o ajuste (se houve diferença) já foi aplicado à próxima parcela.',
-      409,
-      'INSTALLMENT_ALREADY_SETTLED'
-    );
+  if (paymentMethod === 'credit') {
+    throw new AppError('Pagamento de dívida com cartão precisa ser registrado como uma nova compra no cartão.', 422, 'INVALID_PAYMENT_METHOD');
   }
-
-  const debt = await getDebtOrThrow(userId, expense.debtId);
-
-  const installmentValue = Number(expense.value);
-  const isShortfall = amount < installmentValue - 0.009;
-
-  if (isShortfall && !debt.flexiblePayment) {
-    throw new AppError(
-      'Esta dívida exige pagamento exato da parcela (pagamento flexível desativado).',
-      422,
-      'EXACT_PAYMENT_REQUIRED'
-    );
-  }
-
-  await assertSufficientBalance(userId, amount);
-
-  const newRemainingBalanceRaw = Number(debt.remainingBalance) - amount;
-  const newRemainingBalance = round2(Math.max(newRemainingBalanceRaw, 0));
-  const isSettled = newRemainingBalance <= 0.009;
-
-  const newExpenseStatus = amount >= installmentValue - 0.009 ? 'paid' : 'partial';
-
-  // delta > 0 (pagou a mais) reduz o ajuste pendente (fica negativo,
-  // "crédito" que abate a próxima parcela); delta < 0 (pagou a menos)
-  // aumenta o ajuste pendente (fica positivo, soma na próxima parcela).
-  // Zerado quando a dívida é quitada — não há próxima parcela para ajustar.
-  const delta = round2(amount - installmentValue);
-  const newCarryOver = isSettled ? 0 : round2(Number(debt.pendingCarryOver) - delta);
 
   return prisma.$transaction(async (tx) => {
+    await lockUserBalance(tx, userId);
+
+    const currentExpense = await tx.expense.findFirst({
+      where: { id: expense.id, userId, deletedAt: null },
+    });
+    if (!currentExpense) throw new AppError('Despesa não encontrada.', 404, 'EXPENSE_NOT_FOUND');
+    if (['partial', 'paid', 'settled'].includes(currentExpense.status)) {
+      throw new AppError(
+        'Esta parcela já recebeu um pagamento — o ajuste já foi aplicado à próxima parcela.',
+        409,
+        'INSTALLMENT_ALREADY_SETTLED'
+      );
+    }
+
+    const debt = await getDebtOrThrow(userId, currentExpense.debtId, tx);
+    const installmentValue = Number(currentExpense.value);
+    const isShortfall = amount < installmentValue - 0.009;
+    if (isShortfall && !debt.flexiblePayment) {
+      throw new AppError(
+        'Esta dívida exige pagamento exato da parcela (pagamento flexível desativado).',
+        422,
+        'EXACT_PAYMENT_REQUIRED'
+      );
+    }
+
+    await assertSufficientBalance(userId, amount, tx);
+
+    const newRemainingBalance = round2(Math.max(Number(debt.remainingBalance) - amount, 0));
+    const isSettled = newRemainingBalance <= 0.009;
+    const newExpenseStatus = amount >= installmentValue - 0.009 ? 'paid' : 'partial';
+    const delta = round2(amount - installmentValue);
+    const newCarryOver = isSettled ? 0 : round2(Number(debt.pendingCarryOver) - delta);
+
     const updatedExpense = await tx.expense.update({
-      where: { id: expense.id },
+      where: { id: currentExpense.id },
       data: {
         paidAmount: amount,
+        paidAt: todayUtcDate(),
         status: isSettled ? 'paid' : newExpenseStatus,
         paymentMethod,
       },

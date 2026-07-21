@@ -3,6 +3,7 @@ import { useMonthStore } from '../store/monthStore';
 import { incomesApi, categoriesApi } from '../lib/services';
 import { extractErrorMessage } from '../lib/api';
 import { formatCurrency, formatShortDate } from '../lib/format';
+import { localDateInputValue } from '../lib/date';
 import { Card, Badge, Button, EmptyState, Skeleton } from '../components/ui/index';
 import { Modal, ConfirmDialog, FormGroup, Input, Select } from '../components/ui/Modal';
 import { CategorySelect } from '../components/ui/CategorySelect';
@@ -12,7 +13,7 @@ const PM_LABELS = { cash:'Dinheiro', pix:'PIX', debit:'Débito', credit:'Crédit
 
 const EMPTY_FORM = {
   description:'', value:'', categoryId:'', paymentMethod:'pix',
-  origin:'digital', date: new Date().toISOString().slice(0,10),
+  origin:'digital', date: localDateInputValue(),
   observation:'', recurring: false,
 };
 

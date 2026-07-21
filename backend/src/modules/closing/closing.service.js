@@ -85,7 +85,7 @@ async function closeMonth(userId, monthId) {
           categoryId: template.categoryId,
           paymentMethod: template.paymentMethod,
           origin: 'digital',
-          incomeDate: new Date(Date.UTC(next.year, next.month - 1, 1)),
+          incomeDate: expensesService.dueDateFromDay(nextMonth, template.incomeDay ?? 1),
         },
       });
       generated.incomes += 1;
@@ -95,46 +95,39 @@ async function closeMonth(userId, monthId) {
     const fixedTemplates = await tx.fixedExpenseTemplate.findMany({ where: { userId, active: true } });
     for (const template of fixedTemplates) {
       const alreadyGenerated = await tx.expense.findFirst({
-        where: { fixedTemplateId: template.id, monthId: nextMonth.id },
+        where: { fixedTemplateId: template.id, competenceMonth: next.month, competenceYear: next.year },
       });
       if (alreadyGenerated) continue;
 
       const dueDate = expensesService.dueDateFromDay(nextMonth, template.dueDay);
 
-      // Vinculada a cartão: a próxima instância nasce direto na fatura
-      // correspondente (mesma regra de "em qual fatura cai" das compras no
-      // cartão), como despesa tipo 'card' — não desconta do saldo até a
-      // fatura ser paga. Um cartão desativado depois de a despesa fixa já
-      // estar configurada não bloqueia o fechamento (diferente da criação):
-      // travar o fechamento do mês inteiro por causa de um cartão
-      // desativado seria pior que simplesmente lançar a despesa mesmo
-      // assim — o usuário já foi avisado ao tentar editar/usar o cartão.
-      if (template.paymentMethod === 'credit' && template.cardId) {
-        const card = await tx.card.findUnique({ where: { id: template.cardId } });
-        if (card) {
-          const cardPurchasesService = require('../cards/cardPurchases.service');
-          const ref = cardPurchasesService.firstInvoiceReference(dueDate, card.closingDay);
-          const invoice = await cardPurchasesService.getOrCreateInvoice(card, ref.month, ref.year, tx);
-
-          await tx.expense.create({
-            data: {
-              userId,
-              monthId: invoice.monthId,
-              type: 'card',
-              description: template.description,
-              categoryId: template.categoryId,
-              dueDate,
-              value: template.value,
-              status: 'pending',
-              fixedTemplateId: template.id,
-              cardInvoiceId: invoice.id,
-              paymentMethod: template.paymentMethod,
-            },
-          });
-          await tx.cardInvoice.update({ where: { id: invoice.id }, data: { totalValue: { increment: Number(template.value) } } });
-          generated.fixedExpenses += 1;
-          continue;
+      if (template.paymentMethod === 'credit') {
+        if (!template.cardId) {
+          throw new AppError(
+            `A despesa fixa "${template.description}" está configurada como crédito sem um cartão válido.`,
+            409,
+            'FIXED_EXPENSE_CARD_REQUIRED'
+          );
         }
+        const card = await tx.card.findUnique({ where: { id: template.cardId } });
+        if (!card || !card.active) {
+          throw new AppError(
+            `O cartão da despesa fixa "${template.description}" está indisponível. Edite a despesa antes de encerrar o mês.`,
+            409,
+            'FIXED_EXPENSE_CARD_INACTIVE'
+          );
+        }
+        const cardPurchasesService = require('../cards/cardPurchases.service');
+        await cardPurchasesService.createFixedCardCharge({
+          userId,
+          card,
+          template,
+          month: nextMonth,
+          dueDate,
+          client: tx,
+        });
+        generated.fixedExpenses += 1;
+        continue;
       }
 
       await tx.expense.create({
@@ -145,6 +138,8 @@ async function closeMonth(userId, monthId) {
           description: template.description,
           categoryId: template.categoryId,
           dueDate,
+          competenceMonth: next.month,
+          competenceYear: next.year,
           value: template.value,
           status: 'pending',
           fixedTemplateId: template.id,
@@ -166,16 +161,9 @@ async function closeMonth(userId, monthId) {
       if (created) generated.debtInstallments += 1;
     }
 
-    // ---- Assinaturas com cobrança devida no mês recém-aberto ----
-    // Ao contrário de despesa fixa (sempre mensal), assinatura pode ser
-    // anual/customizada — a maioria dos meses não gera cobrança nenhuma
-    // pra maioria das assinaturas; só quando nextChargeDate cai dentro do
-    // mês que está abrindo.
-    const subscriptionsService = require('../subscriptions/subscriptions.service');
-    await subscriptionsService.processSubscriptionsForMonth(userId, nextMonth, tx);
 
     // ---- O que NÃO precisa de ação aqui ----
-    // Pendências do mês que está fechando (despesas não pagas, faturas não
+    // Pendências do mês que está fechando (despesas não pagas e faturas não
     // pagas) permanecem vinculadas a ele — não são copiadas/duplicadas no
     // próximo mês, apenas continuam aparecendo como "Atrasado" até o
     // usuário pagá-las. Saldo guardado e metas são entidades contínuas, não

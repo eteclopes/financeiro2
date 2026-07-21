@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { cardsApi, categoriesApi } from '../lib/services';
 import { extractErrorMessage } from '../lib/api';
 import { formatCurrency, formatShortDate } from '../lib/format';
+import { localDateInputValue } from '../lib/date';
 import { Card, CardHeader, Badge, Button, EmptyState, ProgressBar } from '../components/ui/index';
 import { Modal, ConfirmDialog, FormGroup, Input, Select } from '../components/ui/Modal';
 import { CategorySelect } from '../components/ui/CategorySelect';
@@ -34,7 +35,7 @@ export default function CardsPage() {
 
   const [cardForm, setCardForm] = useState({ name:'', color: COLORS[0], limitValue:'', closingDay:'20', dueDay:'27' });
   const [editCardForm, setEditCardForm] = useState({ name:'', color: COLORS[0], limitValue:'', closingDay:'', dueDay:'' });
-  const [purchaseForm, setPurchaseForm] = useState({ description:'', categoryId:'', totalValue:'', installmentsCount:'1', purchaseDate: new Date().toISOString().slice(0,10) });
+  const [purchaseForm, setPurchaseForm] = useState({ description:'', categoryId:'', totalValue:'', installmentsCount:'1', purchaseDate: localDateInputValue() });
 
   const toast = useUIStore((s) => s);
 
@@ -240,7 +241,7 @@ export default function CardsPage() {
                   {selected.active === false ? (
                     <span className="text-xs text-muted italic">Não aceita novas compras</span>
                   ) : (
-                    <Button size="sm" onClick={() => { setPurchaseForm({ description:'', categoryId:'', totalValue:'', installmentsCount:'1', startingInstallment:'1', purchaseDate: new Date().toISOString().slice(0,10) }); setPurchaseModal(true); }}>
+                    <Button size="sm" onClick={() => { setPurchaseForm({ description:'', categoryId:'', totalValue:'', installmentsCount:'1', startingInstallment:'1', purchaseDate: localDateInputValue() }); setPurchaseModal(true); }}>
                       + Compra
                     </Button>
                   )}

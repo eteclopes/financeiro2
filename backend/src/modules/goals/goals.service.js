@@ -3,6 +3,8 @@ const AppError = require('../../utils/AppError');
 const monthsService = require('../months/months.service');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
 const { round2 } = require('../../utils/math');
+const { assertSufficientBalance, lockUserBalance } = require('../_shared/balance');
+const { todayUtcDate, isFutureDate } = require('../../utils/dateTime');
 
 function computeProgress(contributions) {
   return contributions.reduce((total, c) => {
@@ -74,20 +76,25 @@ async function updateGoal(userId, goalId, payload) {
 }
 
 async function contribute(userId, goalId, { monthId, value, date }) {
-  const goal = await getOwnedGoalOrThrow(userId, goalId);
-  if (goal.status !== 'active') {
-    throw new AppError('Esta meta não está ativa.', 409, 'GOAL_NOT_ACTIVE');
+  if (isFutureDate(date)) {
+    throw new AppError('Não é possível registrar um aporte com data futura.', 422, 'FUTURE_TRANSACTION_DATE');
   }
-  await monthsService.getMonthOrThrow(userId, monthId);
-  // Diferente de receitas/despesas, um aporte em meta é permitido mesmo em
-  // mês fechado — assim como o pagamento de uma despesa atrasada, é um
-  // evento financeiro novo, não uma reescrita do que já aconteceu naquele mês.
+  const month = await monthsService.getMonthOrThrow(userId, monthId);
+  if (date.getUTCMonth() + 1 !== month.month || date.getUTCFullYear() !== month.year) {
+    throw new AppError('A data do aporte não pertence ao mês selecionado.', 422, 'DATE_OUTSIDE_MONTH');
+  }
 
-  // O aporte é descontado do saldo atual (ver dashboard.service.js) no mês
-  // em que ocorreu — por isso guardamos month_id, mesmo a meta sendo uma
-  // entidade contínua e não "fechada" junto com o mês.
-  return prisma.goalContribution.create({
-    data: { goalId, monthId, value, type: 'contribution', contributionDate: date },
+  return prisma.$transaction(async (tx) => {
+    await lockUserBalance(tx, userId);
+    const goal = await tx.goal.findFirst({ where: { id: goalId, userId } });
+    if (!goal) throw new AppError('Meta não encontrada.', 404, 'GOAL_NOT_FOUND');
+    if (goal.status !== 'active') {
+      throw new AppError('Esta meta não está ativa.', 409, 'GOAL_NOT_ACTIVE');
+    }
+    await assertSufficientBalance(userId, value, tx);
+    return tx.goalContribution.create({
+      data: { goalId, monthId, value, type: 'contribution', contributionDate: date },
+    });
   });
 }
 
@@ -98,6 +105,13 @@ async function cancelGoal(userId, goalId, { refundContributions, monthId }) {
   }
 
   return prisma.$transaction(async (tx) => {
+    await lockUserBalance(tx, userId);
+    const currentGoal = await tx.goal.findFirst({ where: { id: goalId, userId } });
+    if (!currentGoal) throw new AppError('Meta não encontrada.', 404, 'GOAL_NOT_FOUND');
+    if (currentGoal.status === 'cancelled') {
+      throw new AppError('Esta meta já está cancelada.', 409, 'GOAL_ALREADY_CANCELLED');
+    }
+
     const updatedGoal = await tx.goal.update({ where: { id: goalId }, data: { status: 'cancelled' } });
 
     if (!refundContributions) {
@@ -123,7 +137,7 @@ async function cancelGoal(userId, goalId, { refundContributions, monthId }) {
         monthId: targetMonth.id,
         value: totalContributed,
         type: 'refund',
-        contributionDate: new Date(),
+        contributionDate: todayUtcDate(),
       },
     });
 

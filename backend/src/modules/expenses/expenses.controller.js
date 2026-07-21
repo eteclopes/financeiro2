@@ -1,5 +1,5 @@
 const asyncHandler = require('../../utils/asyncHandler');
-const { parseMonthId } = require('../../utils/parseParams');
+const { parseMonthId, parseBigIntParam } = require('../../utils/parseParams');
 const service = require('./expenses.service');
 
 const list = asyncHandler(async (req, res) => {
@@ -20,32 +20,32 @@ const createFixed = asyncHandler(async (req, res) => {
 });
 
 const deactivateFixedTemplate = asyncHandler(async (req, res) => {
-  const template = await service.deactivateFixedTemplate(req.userId, BigInt(req.params.id));
+  const template = await service.deactivateFixedTemplate(req.userId, parseBigIntParam(req.params.id, 'id'));
   res.json({ template });
 });
 
 const updateFixedTemplate = asyncHandler(async (req, res) => {
-  const template = await service.updateFixedTemplate(req.userId, BigInt(req.params.id), req.body);
+  const template = await service.updateFixedTemplate(req.userId, parseBigIntParam(req.params.id, 'id'), req.body);
   res.json({ template });
 });
 
 const deleteFixedTemplate = asyncHandler(async (req, res) => {
-  await service.deleteFixedTemplate(req.userId, BigInt(req.params.id));
+  await service.deleteFixedTemplate(req.userId, parseBigIntParam(req.params.id, 'id'));
   res.status(204).send();
 });
 
 const update = asyncHandler(async (req, res) => {
-  const expense = await service.updateExpense(req.userId, BigInt(req.params.id), req.body);
+  const expense = await service.updateExpense(req.userId, parseBigIntParam(req.params.id, 'id'), req.body);
   res.json({ expense });
 });
 
 const remove = asyncHandler(async (req, res) => {
-  await service.deleteExpense(req.userId, BigInt(req.params.id));
+  await service.deleteExpense(req.userId, parseBigIntParam(req.params.id, 'id'));
   res.status(204).send();
 });
 
 const pay = asyncHandler(async (req, res) => {
-  const result = await service.payExpense(req.userId, BigInt(req.params.id), req.body);
+  const result = await service.payExpense(req.userId, parseBigIntParam(req.params.id, 'id'), req.body);
   res.json(result);
 });
 

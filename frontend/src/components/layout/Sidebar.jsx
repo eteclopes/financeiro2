@@ -14,7 +14,6 @@ const NAV = [
   { to: '/cards',               Icon: IconCard,      label: 'Cartões',             group: 'main' },
   { to: '/savings',            Icon: IconWallet,    label: 'Reserva Financeira',  group: 'main' },
   { to: '/goals',              Icon: IconGoal,      label: 'Metas',               group: 'main' },
-  { to: '/subscriptions',      Icon: IconCard,      label: 'Assinaturas',         group: 'main' },
   { to: '/budgets',            Icon: IconBudget,    label: 'Orçamento',           group: 'main' },
   { to: '/simulator/purchase', Icon: IconSimulator, label: 'Simulador de Compras',group: 'tools' },
   { to: '/simulator/what-if',  Icon: IconSimulator, label: 'Simulador E Se?',     group: 'tools' },

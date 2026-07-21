@@ -49,14 +49,24 @@ async function computeUsedLimitsByCard(cardIds, client = prisma) {
 async function computeHistoryCountsByCard(cardIds, client = prisma) {
   if (cardIds.length === 0) return new Map();
 
-  const grouped = await client.cardPurchase.groupBy({
-    by: ['cardId'],
-    where: { cardId: { in: cardIds } },
-    _count: { _all: true },
-  });
+  const [purchases, invoices] = await Promise.all([
+    client.cardPurchase.groupBy({
+      by: ['cardId'],
+      where: { cardId: { in: cardIds } },
+      _count: { _all: true },
+    }),
+    client.cardInvoice.findMany({
+      where: { cardId: { in: cardIds } },
+      select: { cardId: true },
+    }),
+  ]);
 
   const map = new Map();
-  for (const row of grouped) map.set(String(row.cardId), row._count._all);
+  for (const row of purchases) map.set(String(row.cardId), row._count._all);
+  for (const invoice of invoices) {
+    const key = String(invoice.cardId);
+    map.set(key, (map.get(key) ?? 0) + 1);
+  }
   return map;
 }
 
@@ -95,8 +105,8 @@ async function createCard(userId, payload) {
   return card;
 }
 
-async function getOwnedCardOrThrow(userId, cardId) {
-  const card = await prisma.card.findFirst({ where: { id: cardId, userId } });
+async function getOwnedCardOrThrow(userId, cardId, client = prisma) {
+  const card = await client.card.findFirst({ where: { id: cardId, userId } });
   if (!card) {
     throw new AppError('Cartão não encontrado.', 404, 'CARD_NOT_FOUND');
   }
@@ -104,20 +114,38 @@ async function getOwnedCardOrThrow(userId, cardId) {
 }
 
 async function updateCard(userId, cardId, payload) {
-  const before = await getOwnedCardOrThrow(userId, cardId);
-  const updated = await prisma.card.update({ where: { id: cardId }, data: payload });
-  await recordAuditLog(userId, 'card', cardId, 'update', { oldValue: before, newValue: updated });
-  return updated;
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${cardId})`;
+    const before = await getOwnedCardOrThrow(userId, cardId, tx);
+    if (payload.limitValue !== undefined) {
+      const usedLimit = await computeUsedLimit(cardId, tx);
+      if (Number(payload.limitValue) + 0.009 < usedLimit) {
+        throw new AppError(
+          `O novo limite não pode ser menor que o valor já utilizado (R$ ${usedLimit.toFixed(2)}).`,
+          422,
+          'LIMIT_BELOW_USED'
+        );
+      }
+    }
+    const updated = await tx.card.update({ where: { id: cardId }, data: payload });
+    return { before, updated };
+  });
+  await recordAuditLog(userId, 'card', cardId, 'update', { oldValue: result.before, newValue: result.updated });
+  return result.updated;
 }
 
 async function deactivateCard(userId, cardId) {
-  const before = await getOwnedCardOrThrow(userId, cardId);
-  // Cartão com parcelas futuras pendentes não pode simplesmente sumir do
-  // sistema — apenas para de aceitar novas compras; faturas já geradas
-  // continuam existindo e precisam ser pagas normalmente.
-  const updated = await prisma.card.update({ where: { id: cardId }, data: { active: false } });
-  await recordAuditLog(userId, 'card', cardId, 'deactivate', { oldValue: before, newValue: updated });
-  return updated;
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${cardId})`;
+    const before = await getOwnedCardOrThrow(userId, cardId, tx);
+    // Cartão com parcelas futuras pendentes não pode simplesmente sumir do
+    // sistema — apenas para de aceitar novas compras; faturas já geradas
+    // continuam existindo e precisam ser pagas normalmente.
+    const updated = await tx.card.update({ where: { id: cardId }, data: { active: false } });
+    return { before, updated };
+  });
+  await recordAuditLog(userId, 'card', cardId, 'deactivate', { oldValue: result.before, newValue: result.updated });
+  return result.updated;
 }
 
 /**
@@ -144,11 +172,17 @@ async function deleteCard(userId, cardId) {
   });
   if (linkedFixedTemplates > 0) {
     throw new AppError(
-      `Este cartão está vinculado a ${linkedFixedTemplates} despesa(s) fixa(s) recorrente(s). Desative ou edite essas despesas fixas (mudando a forma de pagamento) antes de excluir o cartão.`,
+      `Este cartão está vinculado a ${linkedFixedTemplates} despesa(s) fixa(s) recorrente(s). Edite a forma de pagamento dessas despesas antes de excluir o cartão.`,
       409,
       'CARD_HAS_LINKED_FIXED_EXPENSES'
     );
   }
+
+  // Templates já desativados não devem manter uma FK invisível que impeça a exclusão.
+  await prisma.fixedExpenseTemplate.updateMany({
+    where: { userId, cardId, active: false },
+    data: { cardId: null },
+  });
 
   const [purchases, invoices] = await Promise.all([
     prisma.cardPurchase.findMany({ where: { cardId }, select: { id: true } }),

@@ -2,6 +2,15 @@ const prisma = require('../../config/prisma');
 const AppError = require('../../utils/AppError');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
 const { round2 } = require('../../utils/math');
+const { assertSufficientBalance, lockUserBalance } = require('../_shared/balance');
+const { isFutureDate } = require('../../utils/dateTime');
+
+
+function assertTransactionDateNotFuture(date) {
+  if (isFutureDate(date)) {
+    throw new AppError('Não é possível registrar uma movimentação com data futura.', 422, 'FUTURE_TRANSACTION_DATE');
+  }
+}
 
 async function getCurrentBalance(userId) {
   const last = await prisma.savingsTransaction.findFirst({
@@ -19,6 +28,7 @@ async function listTransactions(userId) {
 }
 
 async function deposit(userId, { value, date, observation, origin = 'balance' }) {
+  assertTransactionDateNotFuture(date);
   // Sem lock, duas chamadas concorrentes (duplo clique, retry de rede) podem
   // ler o mesmo currentBalance e gravar dois balanceAfter incorretos (lost
   // update) — mesma classe de bug que closing.service.js já trava com
@@ -27,7 +37,10 @@ async function deposit(userId, { value, date, observation, origin = 'balance' })
   // usuário: serializa apenas depósitos/saques do MESMO usuário entre si e
   // é liberado automaticamente ao fim da transação.
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${userId})`;
+    await lockUserBalance(tx, userId);
+    if (origin === 'balance') {
+      await assertSufficientBalance(userId, value, tx);
+    }
 
     const last = await tx.savingsTransaction.findFirst({
       where: { userId },
@@ -50,8 +63,9 @@ async function deposit(userId, { value, date, observation, origin = 'balance' })
 }
 
 async function withdraw(userId, { value, date, observation }) {
+  assertTransactionDateNotFuture(date);
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${userId})`;
+    await lockUserBalance(tx, userId);
 
     const last = await tx.savingsTransaction.findFirst({
       where: { userId },
@@ -87,8 +101,9 @@ async function withdraw(userId, { value, date, observation }) {
  * do lançamento; para isso o usuário deve excluir e lançar de novo.
  */
 async function updateLastTransaction(userId, transactionId, { value, date, observation, origin }) {
+  assertTransactionDateNotFuture(date);
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${userId})`;
+    await lockUserBalance(tx, userId);
 
     const last = await tx.savingsTransaction.findFirst({
       where: { userId },
@@ -116,6 +131,22 @@ async function updateLastTransaction(userId, transactionId, { value, date, obser
       );
     }
 
+    const oldBalanceImpact = last.type === 'deposit' && last.origin === 'balance'
+      ? Number(last.value)
+      : last.type === 'withdraw'
+        ? -Number(last.value)
+        : 0;
+    const nextOrigin = last.type === 'deposit' ? (origin ?? last.origin) : null;
+    const newBalanceImpact = last.type === 'deposit' && nextOrigin === 'balance'
+      ? value
+      : last.type === 'withdraw'
+        ? -value
+        : 0;
+    const additionalConsumption = round2(newBalanceImpact - oldBalanceImpact);
+    if (additionalConsumption > 0) {
+      await assertSufficientBalance(userId, additionalConsumption, tx);
+    }
+
     const balanceAfter = last.type === 'deposit'
       ? round2(balanceBeforeThis + value)
       : round2(balanceBeforeThis - value);
@@ -138,7 +169,7 @@ async function updateLastTransaction(userId, transactionId, { value, date, obser
  */
 async function deleteLastTransaction(userId, transactionId) {
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${userId})`;
+    await lockUserBalance(tx, userId);
 
     const last = await tx.savingsTransaction.findFirst({
       where: { userId },
@@ -151,6 +182,13 @@ async function deleteLastTransaction(userId, transactionId) {
         409,
         'NOT_LAST_SAVINGS_TRANSACTION'
       );
+    }
+
+    // Excluir uma retirada remove dinheiro que já havia voltado ao saldo
+    // disponível. Se esse dinheiro já foi gasto, a exclusão não pode criar
+    // um caixa negativo retroativo.
+    if (last.type === 'withdraw') {
+      await assertSufficientBalance(userId, Number(last.value), tx);
     }
 
     await tx.savingsTransaction.delete({ where: { id: last.id } });
@@ -201,11 +239,13 @@ async function getBalanceBreakdown(userId) {
   ]);
 
   const withdrawn = Number(withdrawnAgg._sum.value ?? 0);
-  return {
-    totalReserved,
-    movedFromBalance: round2(Number(movedFromBalanceAgg._sum.value ?? 0) - withdrawn),
-    externalReported: round2(Number(externalAgg._sum.value ?? 0)),
-  };
+  const originallyMoved = Number(movedFromBalanceAgg._sum.value ?? 0);
+  // Para exibição, considera que retiradas consomem primeiro o dinheiro que
+  // saiu do saldo do app. Assim nenhum componente fica negativo e a soma
+  // continua exatamente igual ao total ainda reservado.
+  const movedFromBalance = round2(Math.max(originallyMoved - withdrawn, 0));
+  const externalReported = round2(Math.max(totalReserved - movedFromBalance, 0));
+  return { totalReserved, movedFromBalance, externalReported };
 }
 
 module.exports = { getCurrentBalance, listTransactions, deposit, withdraw, updateLastTransaction, deleteLastTransaction, getNetMovementInRange, getBalanceBreakdown };

@@ -1,6 +1,9 @@
 const prisma = require('../../config/prisma');
 const AppError = require('../../utils/AppError');
 const monthsService = require('../months/months.service');
+const { assertSufficientBalance, lockUserBalance } = require('../_shared/balance');
+const { todayUtcDate } = require('../../utils/dateTime');
+const { round2 } = require('../../utils/math');
 
 /**
  * Garante que a data informada pertence ao mesmo mês/ano do registro de
@@ -70,6 +73,7 @@ async function createIncome(userId, payload) {
         value: payload.value,
         categoryId: payload.categoryId,
         paymentMethod: payload.paymentMethod,
+        incomeDay: payload.date.getUTCDate(),
         active: true,
       },
     });
@@ -81,8 +85,8 @@ async function createIncome(userId, payload) {
   });
 }
 
-async function getOwnedIncomeOrThrow(userId, incomeId) {
-  const income = await prisma.income.findFirst({
+async function getOwnedIncomeOrThrow(userId, incomeId, client = prisma) {
+  const income = await client.income.findFirst({
     where: { id: incomeId, userId },
     include: { month: true },
   });
@@ -93,41 +97,60 @@ async function getOwnedIncomeOrThrow(userId, incomeId) {
 }
 
 async function updateIncome(userId, incomeId, payload) {
-  const income = await getOwnedIncomeOrThrow(userId, incomeId);
-  monthsService.assertMonthIsOpen(income.month);
+  const initial = await getOwnedIncomeOrThrow(userId, incomeId);
+  monthsService.assertMonthIsOpen(initial.month);
 
-  const effectiveDate = payload.date ?? income.incomeDate;
-  assertDateMatchesMonth(effectiveDate, income.month);
+  const initialEffectiveDate = payload.date ?? initial.incomeDate;
+  assertDateMatchesMonth(initialEffectiveDate, initial.month);
+  if (payload.categoryId) await assertCategoryIsValid(userId, payload.categoryId);
 
-  if (payload.categoryId) {
-    await assertCategoryIsValid(userId, payload.categoryId);
-  }
+  return prisma.$transaction(async (tx) => {
+    await lockUserBalance(tx, userId);
+    const income = await getOwnedIncomeOrThrow(userId, incomeId, tx);
+    monthsService.assertMonthIsOpen(income.month);
 
-  // Importante: isto altera SOMENTE esta instância. O template (se existir)
-  // nunca é tocado aqui — editar o valor do mês corrente não pode mudar
-  // o que será gerado para meses futuros nem reescrever meses passados.
-  return prisma.income.update({
-    where: { id: incomeId },
-    data: {
-      ...(payload.description && { description: payload.description }),
-      ...(payload.value !== undefined && { value: payload.value }),
-      ...(payload.categoryId && { categoryId: payload.categoryId }),
-      ...(payload.paymentMethod && { paymentMethod: payload.paymentMethod }),
-      ...(payload.origin && { origin: payload.origin }),
-      ...(payload.date && { incomeDate: payload.date }),
-      ...(payload.observation !== undefined && { observation: payload.observation }),
-    },
-    include: { category: true },
+    const effectiveDate = payload.date ?? income.incomeDate;
+    const effectiveValue = payload.value !== undefined ? Number(payload.value) : Number(income.value);
+    assertDateMatchesMonth(effectiveDate, income.month);
+
+    // Reduzir/apagar uma receita já disponível não pode deixar o caixa
+    // negativo depois de gastos que já foram registrados.
+    const today = todayUtcDate();
+    const oldImpact = income.incomeDate <= today ? Number(income.value) : 0;
+    const newImpact = effectiveDate <= today ? effectiveValue : 0;
+    const reduction = round2(oldImpact - newImpact);
+    if (reduction > 0) await assertSufficientBalance(userId, reduction, tx);
+
+    return tx.income.update({
+      where: { id: incomeId },
+      data: {
+        ...(payload.description && { description: payload.description }),
+        ...(payload.value !== undefined && { value: payload.value }),
+        ...(payload.categoryId && { categoryId: payload.categoryId }),
+        ...(payload.paymentMethod && { paymentMethod: payload.paymentMethod }),
+        ...(payload.origin && { origin: payload.origin }),
+        ...(payload.date && { incomeDate: payload.date }),
+        ...(payload.observation !== undefined && { observation: payload.observation }),
+      },
+      include: { category: true },
+    });
   });
 }
 
 async function deleteIncome(userId, incomeId) {
-  const income = await getOwnedIncomeOrThrow(userId, incomeId);
-  monthsService.assertMonthIsOpen(income.month);
-  // Seguro excluir fisicamente aqui: só é possível chegar a este ponto se
-  // o mês ainda está aberto — uma vez fechado, assertMonthIsOpen bloqueia
-  // qualquer exclusão, preservando o histórico imutável.
-  await prisma.income.delete({ where: { id: incomeId } });
+  const initial = await getOwnedIncomeOrThrow(userId, incomeId);
+  monthsService.assertMonthIsOpen(initial.month);
+
+  return prisma.$transaction(async (tx) => {
+    await lockUserBalance(tx, userId);
+    const income = await getOwnedIncomeOrThrow(userId, incomeId, tx);
+    monthsService.assertMonthIsOpen(income.month);
+
+    if (income.incomeDate <= todayUtcDate()) {
+      await assertSufficientBalance(userId, Number(income.value), tx);
+    }
+    return tx.income.delete({ where: { id: incomeId } });
+  });
 }
 
 async function deactivateRecurringTemplate(userId, templateId) {

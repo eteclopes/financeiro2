@@ -37,7 +37,7 @@ export const TUTORIAL_STEPS = [
     route: '/dashboard',
     element: '[data-tutorial="quick-actions"]',
     title: 'Ações rápidas e fechamento do mês',
-    description: 'Registre lançamentos rápidos sem sair do dashboard. Quando o mês terminar, use "Encerrar Mês" aqui — o app gera automaticamente as contas fixas, assinaturas e parcelas do mês seguinte.',
+    description: 'Registre lançamentos rápidos sem sair do dashboard. Quando o mês terminar, use "Encerrar Mês" aqui — o app gera automaticamente as contas fixas e parcelas do mês seguinte.',
     side: 'top',
   },
   {
@@ -59,13 +59,6 @@ export const TUTORIAL_STEPS = [
     element: '[data-tutorial="new-expense-button"]',
     title: 'Nova despesa',
     description: 'Ao cadastrar uma despesa fixa ou uma dívida, você escolhe a forma de pagamento — se for no cartão de crédito, ela entra direto na fatura e só desconta o saldo quando a fatura for paga.',
-    side: 'left',
-  },
-  {
-    route: '/subscriptions',
-    element: '[data-tutorial="new-subscription-button"]',
-    title: 'Assinaturas',
-    description: 'Netflix, academia, qualquer cobrança recorrente que não seja mensal fixa comum — inclusive anual ou em periodicidade personalizada. Pause quando quiser sem perder o histórico.',
     side: 'left',
   },
   {

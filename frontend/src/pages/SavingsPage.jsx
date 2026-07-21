@@ -3,6 +3,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { savingsApi } from '../lib/services';
 import { extractErrorMessage } from '../lib/api';
 import { formatCurrency, formatShortDate } from '../lib/format';
+import { localDateInputValue, apiDateToInput } from '../lib/date';
 import { Card, CardHeader, Badge, Button, EmptyState } from '../components/ui/index';
 import { Modal, ConfirmDialog, FormGroup, Input } from '../components/ui/Modal';
 import { useUIStore } from '../store/uiStore';
@@ -28,7 +29,7 @@ export default function SavingsPage() {
   const [data, setData]       = useState({ balance: 0, transactions: [], breakdown: null });
   const [loading, setLoading] = useState(true);
   const [modal, setModal]     = useState(null);
-  const [form, setForm]       = useState({ value:'', date: new Date().toISOString().slice(0,10), observation:'', origin:'balance' });
+  const [form, setForm]       = useState({ value:'', date: localDateInputValue(), observation:'', origin:'balance' });
   const [saving, setSaving]   = useState(false);
   const [editTxModal, setEditTxModal] = useState(null);
   const [editTxForm, setEditTxForm]   = useState({ value:'', date:'', observation:'' });
@@ -50,7 +51,7 @@ export default function SavingsPage() {
 
   function openModal(type) {
     setModal(type);
-    setForm({ value:'', date: new Date().toISOString().slice(0,10), observation:'', origin:'balance' });
+    setForm({ value:'', date: localDateInputValue(), observation:'', origin:'balance' });
   }
 
   async function handle() {
@@ -71,7 +72,7 @@ export default function SavingsPage() {
   function openEditTx(t) {
     setEditTxForm({
       value: String(t.value),
-      date: new Date(t.transactionDate).toISOString().slice(0,10),
+      date: apiDateToInput(t.transactionDate),
       observation: t.observation ?? '',
     });
     setEditTxModal(t);

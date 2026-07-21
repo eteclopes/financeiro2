@@ -12,7 +12,6 @@ const ROUTE_TITLES = {
   '/dashboard':          'Dashboard',
   '/incomes':            'Receitas',
   '/expenses':           'Despesas',
-  '/subscriptions':      'Assinaturas',
   '/cards':              'Cartões de Crédito',
   '/savings':            'Reserva Financeira',
   '/goals':              'Metas Financeiras',

@@ -11,7 +11,10 @@ jest.mock('../../src/config/prisma', () => {
 prismaMock = require('../../src/config/prisma');
 
 const { installDefaults } = require('../helpers/prismaMock');
-beforeEach(() => installDefaults(prismaMock));
+beforeEach(() => {
+  installDefaults(prismaMock);
+  prismaMock.income.aggregate.mockResolvedValue({ _sum: { value: 100000 } });
+});
 
 const savingsService = require('../../src/modules/savings/savings.service');
 

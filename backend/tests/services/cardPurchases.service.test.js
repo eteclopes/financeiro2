@@ -96,6 +96,18 @@ describe('createCardPurchase — fix de TOCTOU no limite do cartão', () => {
     });
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
+
+  test('REGRESSÃO: cartão desativado depois da pré-checagem é rejeitado após o lock', async () => {
+    cardsService.getOwnedCardOrThrow
+      .mockResolvedValueOnce(CARD)
+      .mockResolvedValueOnce({ ...CARD, active: false });
+
+    await expect(createCardPurchase(10n, basePayload())).rejects.toMatchObject({
+      code: 'CARD_INACTIVE',
+    });
+    expect(prismaMock.$executeRaw).toHaveBeenCalled();
+    expect(prismaMock.cardPurchase.create).not.toHaveBeenCalled();
+  });
 });
 
 describe('createCardPurchase — startingInstallment (compra já em andamento) (REGRESSÃO)', () => {

@@ -7,6 +7,7 @@ import { Card, Badge, Button, EmptyState, Skeleton, TabGroup } from '../componen
 import { Modal, ConfirmDialog, FormGroup, Input, Select } from '../components/ui/Modal';
 import { CategorySelect } from '../components/ui/CategorySelect';
 import { useUIStore } from '../store/uiStore';
+import { localDateInputValue, apiDateToInput } from '../lib/date';
 
 const PM_LABELS = { cash:'Dinheiro', pix:'PIX', debit:'Débito', credit:'Crédito', transfer:'Transferência' };
 const STATUS_V  = { pending:'warning', partial:'info', paid:'success', late:'danger', settled:'success' };
@@ -30,7 +31,7 @@ export default function ExpensesPage() {
 
   // ── Modal nova despesa variável ──
   const [varModal, setVarModal] = useState(false);
-  const [varForm, setVarForm]   = useState({ description:'', value:'', categoryId:'', date: today(), paymentMethod:'pix', paid:true });
+  const [varForm, setVarForm]   = useState({ description:'', value:'', categoryId:'', date: localDateInputValue(), paymentMethod:'pix', paid:true, cardId:'' });
 
   // ── Modal editar despesa variável ──
   const [editVarModal, setEditVarModal] = useState(null);
@@ -57,8 +58,6 @@ export default function ExpensesPage() {
   const [deleting, setDeleting]   = useState(false);
   const [saving, setSaving]       = useState(false);
 
-  function today() { return new Date().toISOString().slice(0,10); }
-
   const load = useCallback(async () => {
     if (!selectedMonthId) return;
     setLoading(true);
@@ -81,11 +80,11 @@ export default function ExpensesPage() {
 
   const tabs = [
     { value:'priority', label:'Prioridade', count: expenses.filter(e=>e.type==='priority').length },
-    { value:'fixed',    label:'Fixas',      count: expenses.filter(e=>e.type==='fixed').length },
+    { value:'fixed',    label:'Fixas',      count: expenses.filter(e=>e.fixedTemplateId).length },
     { value:'variable', label:'Variáveis',  count: expenses.filter(e=>e.type==='variable').length },
   ];
 
-  const filtered = expenses.filter((e) => e.type === tab);
+  const filtered = expenses.filter((e) => tab === 'fixed' ? !!e.fixedTemplateId : e.type === tab);
 
   // ── Handlers ────────────────────────────────────────────
   function openPay(e) { setPayModal(e); setPayAmount(String(e.value)); setPayMethod('pix'); }
@@ -107,7 +106,15 @@ export default function ExpensesPage() {
     setSaving(true);
     try {
       const cat = varForm.categoryId || (categories[0]?.id ?? '');
-      await expensesApi.createVariable({ ...varForm, value: parseFloat(varForm.value), categoryId: String(cat), monthId: selectedMonthId });
+      if (varForm.paymentMethod === 'credit' && !varForm.cardId) { toast.error('Selecione o cartão.'); return; }
+      const { cardId, ...rest } = varForm;
+      await expensesApi.createVariable({
+        ...rest,
+        value: parseFloat(varForm.value),
+        categoryId: String(cat),
+        monthId: selectedMonthId,
+        ...(varForm.paymentMethod === 'credit' ? { cardId } : {}),
+      });
       toast.success('Despesa variável criada.'); setVarModal(false); load();
     } catch (e) { toast.error(extractErrorMessage(e, 'Erro.')); }
     finally { setSaving(false); }
@@ -237,7 +244,7 @@ export default function ExpensesPage() {
   // numa variável comum, inserida com `{addButton}`.
   const addButton = (
     <Button data-tutorial="new-expense-button" size="sm" onClick={() => {
-      if (tab === 'variable') { setVarForm({ description:'', value:'', categoryId:'', date: today(), paymentMethod:'pix', paid:true }); setVarModal(true); }
+      if (tab === 'variable') { setVarForm({ description:'', value:'', categoryId:'', date: localDateInputValue(), paymentMethod:'pix', paid:true, cardId:'' }); setVarModal(true); }
       if (tab === 'fixed')    { setFixForm({ description:'', value:'', categoryId:'', dueDay:'10', paymentMethod:'transfer', cardId:'' }); setFixModal(true); }
       if (tab === 'priority') { setDebtForm({ description:'', categoryId:'', totalValue:'', installmentsCount:'1', flexiblePayment:false, dueDay:'10', startingInstallment:'1' }); setDebtModal(true); }
     }}>
@@ -406,7 +413,7 @@ export default function ExpensesPage() {
                             description: e.description,
                             value: String(e.value),
                             categoryId: e.categoryId != null ? String(e.categoryId) : '',
-                            dueDate: e.dueDate ? new Date(e.dueDate).toISOString().slice(0,10) : '',
+                            dueDate: apiDateToInput(e.dueDate),
                             observation: e.observation ?? '',
                           });
                         }}>Editar</Button>
@@ -437,7 +444,7 @@ export default function ExpensesPage() {
             </FormGroup>
             <FormGroup label="Forma de pagamento">
               <Select value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>
-                {Object.entries(PM_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                {Object.entries(PM_LABELS).filter(([v]) => v !== 'credit').map(([v,l]) => <option key={v} value={v}>{l}</option>)}
               </Select>
             </FormGroup>
             {payModal.type === 'priority' && (
@@ -477,14 +484,23 @@ export default function ExpensesPage() {
             />
           </FormGroup>
           <FormGroup label="Forma de pagamento">
-            <Select value={varForm.paymentMethod} onChange={(e) => setVarForm({...varForm,paymentMethod:e.target.value})}>
+            <Select value={varForm.paymentMethod} onChange={(e) => setVarForm({ ...varForm, paymentMethod:e.target.value, cardId: e.target.value === 'credit' ? varForm.cardId : '', paid: e.target.value === 'credit' ? true : varForm.paid })}>
               {Object.entries(PM_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
             </Select>
           </FormGroup>
-          <label className="flex items-center gap-2.5 text-sm cursor-pointer select-none">
+          {varForm.paymentMethod === 'credit' && (
+            <FormGroup label="Cartão" required>
+              <Select value={varForm.cardId} onChange={(e) => setVarForm({ ...varForm, cardId:e.target.value })}>
+                <option value="">Selecione...</option>
+                {cards.map((card) => <option key={card.id} value={card.id}>{card.name} — disponível {formatCurrency(card.availableLimit)}</option>)}
+              </Select>
+              <p className="text-xs text-muted mt-1.5">A compra entra na fatura e reduz o limite disponível imediatamente.</p>
+            </FormGroup>
+          )}
+          {varForm.paymentMethod !== 'credit' && <label className="flex items-center gap-2.5 text-sm cursor-pointer select-none">
             <input type="checkbox" checked={varForm.paid} onChange={(e) => setVarForm({...varForm,paid:e.target.checked})} className="w-4 h-4 rounded accent-primary" />
             <span className="text-slate-700 dark:text-zinc-300">Já foi pago</span>
-          </label>
+          </label>}
           <div className="flex gap-3 justify-end pt-1">
             <Button variant="outline" onClick={() => setVarModal(false)}>Cancelar</Button>
             <Button onClick={saveVariable} loading={saving}>Salvar</Button>

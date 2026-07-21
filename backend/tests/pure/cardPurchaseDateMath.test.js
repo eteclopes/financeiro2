@@ -3,7 +3,7 @@ jest.mock('../../src/modules/months/months.service');
 jest.mock('../../src/modules/expenses/expenses.service');
 jest.mock('../../src/modules/cards/cards.service');
 
-const { firstInvoiceReference, clampDay } = require('../../src/modules/cards/cardPurchases.service');
+const { firstInvoiceReference, clampDay, invoiceDates } = require('../../src/modules/cards/cardPurchases.service');
 
 describe('firstInvoiceReference', () => {
   // Regra textual do projeto: "compra dia 10, fechamento dia 20 -> fatura
@@ -49,5 +49,24 @@ describe('clampDay', () => {
   test('mês de 31 dias com fechamento configurado no dia 31', () => {
     const d = clampDay(2026, 1, 31);
     expect(d.getUTCDate()).toBe(31);
+  });
+});
+
+
+describe('invoiceDates — vencimento real da fatura', () => {
+  test('vencimento anterior ao fechamento cai no mês seguinte', () => {
+    const { closingDate, dueDate } = invoiceDates(7, 2026, 20, 5);
+    expect(closingDate.toISOString().slice(0, 10)).toBe('2026-07-20');
+    expect(dueDate.toISOString().slice(0, 10)).toBe('2026-08-05');
+  });
+
+  test('vencimento posterior ao fechamento permanece no mês da referência', () => {
+    const { dueDate } = invoiceDates(7, 2026, 10, 25);
+    expect(dueDate.toISOString().slice(0, 10)).toBe('2026-07-25');
+  });
+
+  test('virada de dezembro para janeiro preserva o ano correto', () => {
+    const { dueDate } = invoiceDates(12, 2026, 20, 5);
+    expect(dueDate.toISOString().slice(0, 10)).toBe('2027-01-05');
   });
 });

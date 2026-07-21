@@ -8,7 +8,6 @@ const scenarioInputMap = {
   }),
   save_monthly: z.object({ amount: z.coerce.number().positive() }),
   reduce_category: z.object({ amount: z.coerce.number().positive() }),
-  cancel_subscription: z.object({ amount: z.coerce.number().positive() }),
   increase_income: z.object({ amount: z.coerce.number().positive() }),
 };
 

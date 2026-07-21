@@ -21,6 +21,7 @@ beforeEach(() => {
   expensesService.dueDateFromDay.mockReturnValue(new Date());
   savingsService.getBalanceBreakdown.mockResolvedValue({ totalReserved: 0, movedFromBalance: 0, externalReported: 0 });
   prismaMock.income.aggregate.mockResolvedValue({ _sum: { value: 100000 } }); // saldo folgado por padrão
+  prismaMock.expense.findFirst.mockResolvedValue(makeExpense());
 });
 
 function makeDebt(overrides = {}) {
@@ -83,6 +84,7 @@ describe('applyPaymentToInstallment — ajuste da PRÓXIMA parcela (REGRESSÃO)'
 
   test('parcela já parcialmente paga não aceita novo pagamento (o ajuste já foi propagado à próxima)', async () => {
     prismaMock.debt.findFirst.mockResolvedValue(makeDebt());
+    prismaMock.expense.findFirst.mockResolvedValue(makeExpense({ status: 'partial' }));
 
     await expect(applyPaymentToInstallment(10n, makeExpense({ status: 'partial' }), 50, 'pix'))
       .rejects.toMatchObject({ code: 'INSTALLMENT_ALREADY_SETTLED' });
@@ -222,6 +224,22 @@ describe('debts.service — AuditLog', () => {
     expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ entity: 'debt', entityId: 5n, action: 'delete' }) })
     );
+  });
+
+  test('deleteDebt não apaga parcela parcial ou já paga', async () => {
+    prismaMock.debt.findFirst.mockResolvedValue({ id: 5n, userId: 10n, status: 'active' });
+    prismaMock.debt.update.mockResolvedValue({ id: 5n, status: 'settled' });
+
+    await deleteDebt(10n, 5n);
+
+    expect(prismaMock.expense.deleteMany).toHaveBeenCalledWith({
+      where: {
+        debtId: 5n,
+        status: { in: ['pending', 'late'] },
+        paidAmount: 0,
+        month: { status: 'open' },
+      },
+    });
   });
 
   test('dívida de outro usuário (404) não grava audit log nenhum', async () => {
