@@ -1,0 +1,410 @@
+/* FinanceHub guided tour — visual isolado do restante do design system. */
+.driver-popover.financehub-tour-popover {
+  --tour-card: rgb(255 255 255 / 0.97);
+  --tour-border: rgb(124 58 237 / 0.16);
+  --tour-title: #0f172a;
+  --tour-copy: #64748b;
+  --tour-muted: #94a3b8;
+  all: unset;
+  box-sizing: border-box;
+  position: fixed;
+  z-index: 1000000000;
+  width: min(390px, calc(100vw - 28px));
+  min-width: 0;
+  max-width: none;
+  overflow: visible;
+  padding: 25px 24px 20px;
+  border: 1px solid var(--tour-border);
+  border-radius: 24px;
+  color: var(--tour-title);
+  background:
+    radial-gradient(circle at 92% 3%, rgb(168 85 247 / 0.12), transparent 9rem),
+    radial-gradient(circle at 4% 105%, rgb(37 99 235 / 0.07), transparent 11rem),
+    var(--tour-card);
+  box-shadow:
+    0 30px 90px -28px rgb(15 23 42 / 0.48),
+    0 12px 30px -18px rgb(124 58 237 / 0.38),
+    inset 0 1px 0 rgb(255 255 255 / 0.9);
+  font-family: Inter, 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  transform-origin: center;
+}
+
+.dark .driver-popover.financehub-tour-popover {
+  --tour-card: rgb(21 21 29 / 0.97);
+  --tour-border: rgb(168 85 247 / 0.22);
+  --tour-title: #ffffff;
+  --tour-copy: #b3b3c6;
+  --tour-muted: #74748a;
+  background:
+    radial-gradient(circle at 93% 2%, rgb(124 58 237 / 0.25), transparent 10rem),
+    radial-gradient(circle at 0% 110%, rgb(37 99 235 / 0.1), transparent 12rem),
+    var(--tour-card);
+  box-shadow:
+    0 34px 110px -30px rgb(0 0 0 / 0.88),
+    0 16px 45px -26px rgb(124 58 237 / 0.72),
+    inset 0 1px 0 rgb(255 255 255 / 0.055);
+}
+
+.driver-popover.financehub-tour-popover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+  background-image: radial-gradient(rgb(124 58 237 / 0.16) 0.6px, transparent 0.6px);
+  background-size: 16px 16px;
+  mask-image: linear-gradient(135deg, black, transparent 62%);
+  opacity: 0.45;
+}
+
+.dark .driver-popover.financehub-tour-popover::before {
+  background-image: radial-gradient(rgb(255 255 255 / 0.13) 0.6px, transparent 0.6px);
+  opacity: 0.24;
+}
+
+.financehub-tour-progress-line {
+  position: absolute;
+  top: 0;
+  left: 22px;
+  right: 22px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 0 0 999px 999px;
+  background: rgb(124 58 237 / 0.09);
+}
+
+.financehub-tour-progress-line::after {
+  content: '';
+  display: block;
+  width: var(--tour-progress);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #7c3aed, #a855f7, #c084fc);
+  box-shadow: 0 0 14px rgb(168 85 247 / 0.6);
+  transition: width 360ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.financehub-tour-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 38px 15px 0;
+}
+
+.financehub-tour-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgb(124 58 237 / 0.16);
+  border-radius: 12px;
+  color: #6d28d9;
+  background: linear-gradient(145deg, #f5f3ff, #ede9fe);
+  box-shadow: 0 10px 24px -16px rgb(124 58 237 / 0.75);
+  font-size: 16px;
+  font-weight: 800;
+  animation: financehubTourIconEnter 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.dark .financehub-tour-icon {
+  border-color: rgb(168 85 247 / 0.24);
+  color: #d8b4fe;
+  background: linear-gradient(145deg, rgb(124 58 237 / 0.26), rgb(168 85 247 / 0.1));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 12px 28px -16px rgb(124 58 237 / 0.75);
+}
+
+.financehub-tour-kicker {
+  color: #7c3aed;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.17em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.dark .financehub-tour-kicker { color: #c084fc; }
+
+.driver-popover.financehub-tour-popover .driver-popover-title {
+  display: block;
+  margin: 0;
+  color: var(--tour-title);
+  font-size: clamp(20px, 3vw, 23px);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.16;
+}
+
+.driver-popover.financehub-tour-popover .driver-popover-description {
+  display: block;
+  margin: 10px 0 0;
+  color: var(--tour-copy);
+  font-size: 13.5px;
+  font-weight: 450;
+  line-height: 1.65;
+}
+
+.driver-popover.financehub-tour-popover .driver-popover-close-btn {
+  all: unset;
+  position: absolute;
+  top: 17px;
+  right: 17px;
+  z-index: 3;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  place-items: center;
+  border: 1px solid rgb(226 232 240 / 0.9);
+  border-radius: 11px;
+  color: #94a3b8;
+  background: rgb(255 255 255 / 0.72);
+  font-size: 20px;
+  line-height: 1;
+  transition: color 180ms ease, border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.dark .driver-popover.financehub-tour-popover .driver-popover-close-btn {
+  border-color: rgb(255 255 255 / 0.08);
+  color: #71717a;
+  background: rgb(255 255 255 / 0.035);
+}
+
+.driver-popover.financehub-tour-popover .driver-popover-close-btn:hover,
+.driver-popover.financehub-tour-popover .driver-popover-close-btn:focus-visible {
+  color: #7c3aed;
+  border-color: rgb(124 58 237 / 0.28);
+  background: #f5f3ff;
+  transform: rotate(4deg) scale(1.04);
+}
+
+.dark .driver-popover.financehub-tour-popover .driver-popover-close-btn:hover,
+.dark .driver-popover.financehub-tour-popover .driver-popover-close-btn:focus-visible {
+  color: #d8b4fe;
+  border-color: rgb(168 85 247 / 0.3);
+  background: rgb(124 58 237 / 0.14);
+}
+
+.financehub-tour-features {
+  display: grid;
+  gap: 7px;
+  margin-top: 17px;
+  padding: 13px;
+  border: 1px solid rgb(124 58 237 / 0.1);
+  border-radius: 15px;
+  background: rgb(245 243 255 / 0.68);
+}
+
+.dark .financehub-tour-features {
+  border-color: rgb(168 85 247 / 0.12);
+  background: rgb(124 58 237 / 0.08);
+}
+
+.financehub-tour-features span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--tour-copy);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.financehub-tour-features i {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 999px;
+  color: #15803d;
+  background: #dcfce7;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.dark .financehub-tour-features i { color: #86efac; background: rgb(22 163 74 / 0.14); }
+
+.driver-popover.financehub-tour-popover .driver-popover-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 22px;
+  padding-top: 17px;
+  border-top: 1px solid rgb(226 232 240 / 0.78);
+}
+
+.dark .driver-popover.financehub-tour-popover .driver-popover-footer {
+  border-color: rgb(255 255 255 / 0.07);
+}
+
+.driver-popover.financehub-tour-popover .driver-popover-progress-text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  color: var(--tour-muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+}
+
+.financehub-tour-progress-current {
+  color: #7c3aed;
+  font-size: 15px;
+  font-weight: 850;
+  letter-spacing: -0.03em;
+}
+
+.dark .financehub-tour-progress-current { color: #c084fc; }
+.financehub-tour-progress-divider { opacity: 0.5; }
+
+.driver-popover.financehub-tour-popover .driver-popover-navigation-btns {
+  display: flex;
+  flex: 1;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.driver-popover.financehub-tour-popover .driver-popover-navigation-btns button + button { margin-left: 0; }
+
+.driver-popover.financehub-tour-popover .driver-popover-footer-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  min-height: 38px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  font-size: 11.5px;
+  font-weight: 780;
+  line-height: 1;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.driver-popover.financehub-tour-popover .driver-popover-prev-btn {
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+  background: rgb(255 255 255 / 0.72);
+}
+
+.dark .driver-popover.financehub-tour-popover .driver-popover-prev-btn {
+  color: #a1a1aa;
+  border-color: rgb(255 255 255 / 0.09);
+  background: rgb(255 255 255 / 0.035);
+}
+
+.driver-popover.financehub-tour-popover .driver-popover-next-btn {
+  color: white;
+  border: 1px solid rgb(124 58 237 / 0.45);
+  background: linear-gradient(135deg, #7c3aed, #8b5cf6 58%, #a855f7);
+  box-shadow: 0 13px 28px -15px rgb(124 58 237 / 0.9);
+}
+
+.driver-popover.financehub-tour-popover .driver-popover-footer-btn:hover,
+.driver-popover.financehub-tour-popover .driver-popover-footer-btn:focus-visible {
+  transform: translateY(-1px);
+}
+
+.driver-popover.financehub-tour-popover .driver-popover-prev-btn:hover,
+.driver-popover.financehub-tour-popover .driver-popover-prev-btn:focus-visible {
+  color: #6d28d9;
+  border-color: rgb(124 58 237 / 0.28);
+  background: #f5f3ff;
+}
+
+.dark .driver-popover.financehub-tour-popover .driver-popover-prev-btn:hover,
+.dark .driver-popover.financehub-tour-popover .driver-popover-prev-btn:focus-visible {
+  color: #d8b4fe;
+  border-color: rgb(168 85 247 / 0.25);
+  background: rgb(124 58 237 / 0.11);
+}
+
+.driver-popover.financehub-tour-popover .driver-popover-next-btn:hover,
+.driver-popover.financehub-tour-popover .driver-popover-next-btn:focus-visible {
+  box-shadow: 0 17px 34px -15px rgb(124 58 237 / 1);
+  filter: saturate(1.08);
+}
+
+.driver-popover.financehub-tour-popover .driver-popover-btn-disabled,
+.driver-popover.financehub-tour-popover button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+  pointer-events: none;
+  transform: none;
+}
+
+.financehub-tour-button-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgb(255 255 255 / 0.4);
+  border-top-color: white;
+  border-radius: 999px;
+  animation: financehubTourSpin 700ms linear infinite;
+}
+
+.driver-popover.financehub-tour-popover.financehub-tour-loading {
+  opacity: 0.78;
+  transition: opacity 180ms ease;
+}
+
+/* Arrow follows the same glass card instead of Driver.js' default white. */
+.driver-popover.financehub-tour-popover .driver-popover-arrow { border-width: 7px; }
+.driver-popover.financehub-tour-popover .driver-popover-arrow-side-left { border-left-color: var(--tour-card); }
+.driver-popover.financehub-tour-popover .driver-popover-arrow-side-right { border-right-color: var(--tour-card); }
+.driver-popover.financehub-tour-popover .driver-popover-arrow-side-top { border-top-color: var(--tour-card); }
+.driver-popover.financehub-tour-popover .driver-popover-arrow-side-bottom { border-bottom-color: var(--tour-card); }
+
+/* Highlight sem alterar layout ou clicar acidentalmente no componente. */
+.driver-active .driver-active-element {
+  border-radius: 16px !important;
+  outline: 2px solid rgb(192 132 252 / 0.74) !important;
+  outline-offset: 5px !important;
+  box-shadow: 0 0 0 8px rgb(124 58 237 / 0.1), 0 18px 48px -25px rgb(124 58 237 / 0.55) !important;
+  transition: outline-color 220ms ease, box-shadow 220ms ease !important;
+}
+
+.driver-active .route-stage,
+.driver-active .page-content > div > * {
+  animation-play-state: paused !important;
+}
+
+.tutorial-route-transition .driver-popover.financehub-tour-popover {
+  pointer-events: none;
+}
+
+@keyframes financehubTourIconEnter {
+  from { opacity: 0; transform: rotate(-10deg) scale(0.76); }
+  to { opacity: 1; transform: rotate(0) scale(1); }
+}
+
+@keyframes financehubTourSpin { to { transform: rotate(360deg); } }
+
+@media (max-width: 640px) {
+  .driver-popover.financehub-tour-popover {
+    width: calc(100vw - 20px);
+    padding: 22px 19px 17px;
+    border-radius: 20px;
+  }
+  .financehub-tour-heading { margin-bottom: 12px; }
+  .driver-popover.financehub-tour-popover .driver-popover-title { font-size: 19px; }
+  .driver-popover.financehub-tour-popover .driver-popover-description { font-size: 13px; line-height: 1.55; }
+  .driver-popover.financehub-tour-popover .driver-popover-footer { margin-top: 18px; padding-top: 14px; }
+  .driver-popover.financehub-tour-popover .driver-popover-footer-btn { min-height: 36px; padding: 8px 12px; }
+  .financehub-tour-features { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .financehub-tour-icon,
+  .financehub-tour-button-spinner,
+  .financehub-tour-progress-line::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

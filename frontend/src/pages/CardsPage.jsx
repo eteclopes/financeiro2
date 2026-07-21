@@ -178,8 +178,9 @@ export default function CardsPage() {
         <Button onClick={() => setCardModal(true)}>+ Novo Cartão</Button>
       </div>
 
+      <div data-tutorial="cards-area">
       {cards.length === 0 ? (
-        <Card><EmptyState icon="💳" title="Nenhum cartão cadastrado" description="Adicione um cartão para controlar gastos e faturas."
+        <Card data-tutorial="cards-empty"><EmptyState icon="💳" title="Nenhum cartão cadastrado" description="Adicione um cartão para controlar gastos e faturas."
           action={<Button onClick={() => setCardModal(true)}>Adicionar cartão</Button>} /></Card>
       ) : (
         <>
@@ -288,6 +289,7 @@ export default function CardsPage() {
           )}
         </>
       )}
+      </div>
 
       {/* Modal Novo Cartão */}
       <Modal open={cardModal} onClose={() => setCardModal(false)} title="Novo Cartão" size="sm">

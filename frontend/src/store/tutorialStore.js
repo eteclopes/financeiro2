@@ -45,6 +45,12 @@ export const useTutorialStore = create((set, get) => ({
     set({ running: false, stepIndex: 0 });
   },
 
+  // Interrompe sem marcar como visto. Usado quando a página não conseguiu
+  // carregar a tempo; assim o usuário pode tentar novamente depois.
+  cancel() {
+    set({ running: false, stepIndex: 0 });
+  },
+
   setStepIndex(i) {
     set({ stepIndex: i });
   },

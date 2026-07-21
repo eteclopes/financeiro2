@@ -27,6 +27,7 @@ const ROUTE_TITLES = {
 
 export function AppLayout() {
   const initialize = useMonthStore((s) => s.initialize);
+  const monthStatus = useMonthStore((s) => s.status);
   const open = useUIStore((s) => s.sidebarOpen);
   const location = useLocation();
   const title = ROUTE_TITLES[location.pathname] ?? 'FinanceHub';
@@ -37,10 +38,27 @@ export function AppLayout() {
   useEffect(() => { initialize(); }, [initialize]);
 
   useEffect(() => {
-    if (hasSeenTutorial()) return;
-    const timer = setTimeout(() => startTutorial(), 900);
-    return () => clearTimeout(timer);
-  }, [hasSeenTutorial, startTutorial]);
+    if (monthStatus !== 'ready' || hasSeenTutorial()) return undefined;
+
+    let cancelled = false;
+    const launch = () => {
+      if (!cancelled) startTutorial();
+    };
+
+    // O Runner ainda confirma o carregamento da página e dos dados. Aqui,
+    // requestIdleCallback apenas evita abrir o tour durante o primeiro pico
+    // de renderização/hidratação do shell.
+    const usingIdleCallback = typeof window.requestIdleCallback === 'function';
+    const idleId = usingIdleCallback
+      ? window.requestIdleCallback(launch, { timeout: 1_500 })
+      : window.setTimeout(launch, 250);
+
+    return () => {
+      cancelled = true;
+      if (usingIdleCallback) window.cancelIdleCallback?.(idleId);
+      else window.clearTimeout(idleId);
+    };
+  }, [monthStatus, hasSeenTutorial, startTutorial]);
 
   useEffect(() => {
     const shell = shellRef.current;

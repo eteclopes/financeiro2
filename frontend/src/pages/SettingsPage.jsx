@@ -149,7 +149,7 @@ export default function SettingsPage() {
       {/* Ajuda */}
       <Card>
         <CardHeader title="Ajuda" subtitle="Precisa relembrar como alguma parte do app funciona?" />
-        <Button data-tutorial="tutorial-replay-button" variant="outline" onClick={() => { navigate('/dashboard'); setTimeout(startTutorial, 300); }}>
+        <Button data-tutorial="tutorial-replay-button" variant="outline" onClick={() => { navigate('/dashboard'); startTutorial(); }}>
           🔁 Ver tutorial novamente
         </Button>
       </Card>
