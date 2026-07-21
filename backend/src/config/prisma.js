@@ -1,8 +1,12 @@
 const { PrismaClient } = require('@prisma/client');
 const env = require('./env');
+const { normalizePrismaRuntimeUrl } = require('./databaseUrl');
 
-// Evita múltiplas instâncias do PrismaClient em hot-reload (nodemon) e
-// concentra toda a configuração de logging do banco em um único lugar.
+// O Prisma lê DATABASE_URL ao criar o client. Normalizar antes da instanciação
+// evita prepared statements incompatíveis com o Supabase Pooler. DIRECT_URL não
+// é alterada e continua sendo usada pelo Prisma Migrate no schema.prisma.
+process.env.DATABASE_URL = normalizePrismaRuntimeUrl(env.DATABASE_URL);
+
 const prisma = new PrismaClient({
   log: env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
 });

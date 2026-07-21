@@ -11,6 +11,7 @@ const routes      = require('./routes');
 const errorHandler = require('./middlewares/errorHandler');
 const AppError    = require('./utils/AppError');
 const { globalLimiter } = require('./middlewares/rateLimiters');
+const { parseConfiguredOrigins, createOriginPolicy } = require('./utils/corsOrigins');
 
 const app = express();
 
@@ -20,11 +21,29 @@ app.use(helmet({
   hsts: env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true } : false,
 }));
 
+const corsPolicy = createOriginPolicy({
+  configuredOrigins: parseConfiguredOrigins(`${env.CORS_ORIGIN},${env.FRONTEND_URL}`),
+  vercelProject: env.CORS_VERCEL_PROJECT,
+  vercelTeam: env.CORS_VERCEL_TEAM,
+});
+
 app.use(cors({
-  origin: env.CORS_ORIGIN,
+  origin(origin, callback) {
+    if (corsPolicy.isAllowed(origin)) {
+      // Retornar a origem recebida faz o middleware emitir um cabeçalho válido
+      // Access-Control-Allow-Origin, inclusive quando credentials=true.
+      return callback(null, origin || true);
+    }
+
+    if (env.NODE_ENV !== 'test') {
+      console.warn(`[CORS] Origem recusada: ${origin}`);
+    }
+    return callback(null, false);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204,
 }));
 
 // ── Rate limit global ────────────────────────────────────────────────────────

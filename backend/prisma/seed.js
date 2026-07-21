@@ -1,4 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
+const { normalizePrismaRuntimeUrl } = require('../src/config/databaseUrl');
+
+process.env.DATABASE_URL = normalizePrismaRuntimeUrl(process.env.DATABASE_URL);
 const prisma = new PrismaClient();
 
 const INCOME_CATEGORIES = [

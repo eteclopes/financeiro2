@@ -1,7 +1,9 @@
 import axios from 'axios';
 import { getAccessToken, setAccessToken } from './tokenStore';
 
-const DEFAULT_API_URL = 'http://localhost:3333/api';
+const DEFAULT_API_URL = import.meta.env.PROD
+  ? 'https://financeiro2-8kgt.onrender.com/api'
+  : 'http://localhost:3333/api';
 
 // Aceita tanto `https://backend.exemplo.com` quanto
 // `https://backend.exemplo.com/api`. Isso evita 404 em produção quando a

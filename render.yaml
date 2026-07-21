@@ -15,9 +15,13 @@ services:
       - key: DIRECT_URL
         sync: false
       - key: CORS_ORIGIN
-        sync: false
+        value: https://financeiro2-six.vercel.app
+      - key: CORS_VERCEL_PROJECT
+        value: financeiro2
+      - key: CORS_VERCEL_TEAM
+        value: eteclopes-projects
       - key: FRONTEND_URL
-        sync: false
+        value: https://financeiro2-six.vercel.app
       - key: APP_TIME_ZONE
         value: America/Sao_Paulo
       - key: JWT_ACCESS_SECRET

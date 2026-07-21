@@ -15,6 +15,10 @@ const envSchema = z.object({
   // mensagem clara, em vez de deixar o erro só aparecer no CLI do Prisma.
   DIRECT_URL: z.string().min(1, 'DIRECT_URL é obrigatória (conexão direta, sem pooler, usada pelo Prisma Migrate)'),
   CORS_ORIGIN: z.string().min(1, 'CORS_ORIGIN é obrigatória'),
+  // Opcionais: permitem os URLs automáticos de Preview da Vercel apenas para
+  // este projeto/equipe, sem abrir a API para qualquer domínio vercel.app.
+  CORS_VERCEL_PROJECT: z.string().default('financeiro2'),
+  CORS_VERCEL_TEAM: z.string().default('eteclopes-projects'),
   // 32+ caracteres é o mínimo recomendado para HS256 (256 bits de entropia
   // quando gerado com `openssl rand -hex 32`, por exemplo). 16 caracteres
   // era fraco demais para um segredo assinando tokens de sessão.

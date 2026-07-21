@@ -62,8 +62,8 @@ npm run dev
 
 Variáveis essenciais:
 
-- `DATABASE_URL`: conexão de runtime com PostgreSQL.
-- `DIRECT_URL`: conexão direta usada pelo Prisma Migrate.
+- `DATABASE_URL`: use o **Transaction Pooler** do Supabase, porta `6543`, com `?pgbouncer=true`.
+- `DIRECT_URL`: use a conexão direta ou o **Session Pooler**, porta `5432`, para o Prisma Migrate.
 - `JWT_ACCESS_SECRET`: segredo forte para autenticação.
 - `CORS_ORIGIN`: URL permitida do frontend.
 - `FRONTEND_URL`: URL usada nos links de recuperação de senha.
@@ -72,6 +72,23 @@ Variáveis essenciais:
 API local: `http://localhost:3333/api`
 
 Health check: `http://localhost:3333/health`
+
+### Prisma + Supabase no Render
+
+A aplicação usa duas conexões diferentes:
+
+```env
+DATABASE_URL=postgresql://postgres.PROJECT_REF:SENHA@aws-0-REGION.pooler.supabase.com:6543/postgres?pgbouncer=true
+DIRECT_URL=postgresql://postgres.PROJECT_REF:SENHA@aws-0-REGION.pooler.supabase.com:5432/postgres
+```
+
+`DATABASE_URL` é usada durante a execução da API. O código também adiciona
+`pgbouncer=true` automaticamente quando detecta um host `pooler.supabase.com`,
+evitando o erro PostgreSQL `26000: prepared statement does not exist`.
+
+`DIRECT_URL` é usada somente pelo Prisma CLI para `generate`, `migrate deploy`,
+`db pull` e operações equivalentes. Após alterar essas variáveis no Render, faça
+**Clear build cache & deploy**.
 
 ## Configuração local do frontend
 
@@ -127,3 +144,22 @@ Depois de alterar uma variável `VITE_*`, faça um novo deploy/build do frontend
 pois o Vite incorpora esse valor durante a compilação. A aplicação também
 normaliza a URL e adiciona `/api` automaticamente caso o domínio seja informado
 sem esse sufixo.
+
+## CORS no Render e previews da Vercel
+
+No backend do Render, configure as variáveis abaixo e faça um novo deploy:
+
+```env
+CORS_ORIGIN=https://financeiro2-six.vercel.app
+CORS_VERCEL_PROJECT=financeiro2
+CORS_VERCEL_TEAM=eteclopes-projects
+FRONTEND_URL=https://financeiro2-six.vercel.app
+```
+
+`CORS_ORIGIN` também aceita várias URLs separadas por vírgula. Não use apenas o
+hostname: prefira sempre a origem completa, começando por `https://`.
+
+Os endereços `*-git-*-eteclopes-projects.vercel.app` são previews. Caso estejam
+protegidos pelo login da Vercel, arquivos como o manifesto podem ser redirecionados
+para o SSO. Para teste público, use o domínio de produção ou desative a proteção
+para o preview específico nas configurações de Deployment Protection da Vercel.
