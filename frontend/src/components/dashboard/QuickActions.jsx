@@ -825,7 +825,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <FormGroup label="Valor do aporte" required>
-                  <Input type="number" min="0" step="0.01" value={contribForm.value} onChange={(event) => setContribForm({ ...contribForm, value: event.target.value })} placeholder="R$ 0,00" />
+                  <Input type="number" min="0" step="0.01" value={contribForm.value} onChange={(event) => setContribForm({ ...contribForm, value: event.target.value })} placeholder={formatCurrency(0)} />
                 </FormGroup>
                 <FormGroup label="Data">
                   <Input type="date" value={contribForm.date} onChange={(event) => setContribForm({ ...contribForm, date: event.target.value })} />

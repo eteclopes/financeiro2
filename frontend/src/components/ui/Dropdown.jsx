@@ -27,7 +27,7 @@ import { IconChevronL } from '../icons';
  * que todo código existente que faz `(e) => setX(e.target.value)` continue
  * funcionando sem nenhuma alteração.
  */
-export function Dropdown({ value, onChange, children, className = '', placeholder, disabled = false, variant = 'default' }) {
+export function Dropdown({ value, onChange, children, className = '', placeholder, disabled = false, variant = 'default', lang }) {
   const [open, setOpen] = useState(false);
   // placement: 'down' (padrão) ou 'up', decidido dinamicamente conforme o
   // espaço livre acima/abaixo do botão no momento em que a lista abre.
@@ -228,7 +228,7 @@ export function Dropdown({ value, onChange, children, className = '', placeholde
     : 'input-base flex items-center justify-between gap-2 text-left cursor-pointer disabled:cursor-not-allowed';
 
   return (
-    <div className={`relative ${className}`}>
+    <div lang={lang} className={`relative ${className}`}>
       <button
         ref={triggerRef}
         type="button"
@@ -257,6 +257,7 @@ export function Dropdown({ value, onChange, children, className = '', placeholde
           ref={listRef}
           id={listId}
           role="listbox"
+          lang={lang}
           style={{
             position: 'fixed',
             left: pos.left,

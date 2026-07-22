@@ -9,6 +9,9 @@ import { Modal, FormGroup, Input, Select } from '../components/ui/Modal';
 import { useUIStore } from '../store/uiStore';
 import { useThemeStore } from '../store/themeStore';
 import { ChoiceCards, SegmentedControl } from '../components/ui/Motion';
+import {
+  CURRENCY_OPTIONS, LANGUAGE_OPTIONS, REGION_OPTIONS, TIME_ZONE_OPTIONS, useLocaleStore,
+} from '../store/localeStore';
 
 export default function SettingsPage() {
   const user  = useAuthStore((s) => s.user);
@@ -18,6 +21,18 @@ export default function SettingsPage() {
   const requestTutorial = useTutorialStore((s) => s.request);
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
+  const language = useLocaleStore((s) => s.language);
+  const locale = useLocaleStore((s) => s.locale);
+  const currency = useLocaleStore((s) => s.currency);
+  const timeZone = useLocaleStore((s) => s.timeZone);
+  const countryCode = useLocaleStore((s) => s.countryCode);
+  const preferenceMode = useLocaleStore((s) => s.preferenceMode);
+  const detectingLocale = useLocaleStore((s) => s.detecting);
+  const setLanguage = useLocaleStore((s) => s.setLanguage);
+  const setLocale = useLocaleStore((s) => s.setLocale);
+  const setCurrency = useLocaleStore((s) => s.setCurrency);
+  const setTimeZone = useLocaleStore((s) => s.setTimeZone);
+  const detectAutomatically = useLocaleStore((s) => s.detectAutomatically);
   const [catType, setCatType]     = useState('expense');
   const [categories, setCategories] = useState([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
@@ -140,6 +155,53 @@ export default function SettingsPage() {
           { value:'light', label:'Modo claro', description:'Limpo, leve e com bastante contraste.', icon:'☀', tone:'choice-card-icon-warning' },
           { value:'dark', label:'Modo escuro', description:'Profundo, confortável e com brilho neon.', icon:'◐', tone:'choice-card-icon-primary' },
         ]} />
+      </Card>
+
+      {/* Idioma, região, moeda e fuso */}
+      <Card>
+        <CardHeader
+          title="Idioma e região"
+          subtitle="O primeiro acesso usa o país da conexão, o idioma do navegador e o fuso do dispositivo. Você pode ajustar tudo manualmente."
+          actions={countryCode ? <Badge variant="default">{countryCode}</Badge> : null}
+        />
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <FormGroup label="Idioma">
+            <Select value={language} onChange={(event) => setLanguage(event.target.value)}>
+              {LANGUAGE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.nativeLabel}</option>)}
+            </Select>
+          </FormGroup>
+
+          <FormGroup label="Região">
+            <Select value={locale} onChange={(event) => setLocale(event.target.value)}>
+              {REGION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label} · {option.example}</option>)}
+            </Select>
+          </FormGroup>
+
+          <FormGroup label="Moeda">
+            <Select value={currency} onChange={(event) => setCurrency(event.target.value)}>
+              {CURRENCY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </Select>
+          </FormGroup>
+
+          <FormGroup label="Fuso horário">
+            <Select value={timeZone} onChange={(event) => setTimeZone(event.target.value)}>
+              {!TIME_ZONE_OPTIONS.some((option) => option.value === timeZone) && <option value={timeZone}>{timeZone}</option>}
+              {TIME_ZONE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label} · {option.value}</option>)}
+            </Select>
+          </FormGroup>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-500 dark:border-white/[0.07] dark:bg-white/[0.025] dark:text-zinc-400">
+          <p>{preferenceMode === 'auto' ? 'Preferências detectadas automaticamente neste dispositivo.' : 'Preferências definidas manualmente.'}</p>
+          <p className="mt-1">A moeda altera apenas a exibição. Os valores já registrados não são convertidos.</p>
+        </div>
+
+        <div className="mt-4">
+          <Button variant="outline" onClick={detectAutomatically} loading={detectingLocale}>
+            Detectar automaticamente
+          </Button>
+        </div>
       </Card>
 
       {/* Editar nome */}

@@ -66,7 +66,7 @@ export default function PurchaseSimulatorPage() {
             </FormGroup>
             <FormGroup label="Valor total" required>
               <Input type="number" min="0" step="0.01" value={form.value}
-                onChange={(e) => setForm({...form, value:e.target.value})} placeholder="R$ 0,00" />
+                onChange={(e) => setForm({...form, value:e.target.value})} placeholder={formatCurrency(0)} />
             </FormGroup>
             <FormGroup label="Como pretende pagar?">
               <ChoiceCards columns={2} value={parseInt(form.installments) === 1 ? 'cash' : 'installments'} onChange={(mode) => setForm({ ...form, installments: mode === 'cash' ? '1' : (parseInt(form.installments) > 1 ? form.installments : '6') })} options={[

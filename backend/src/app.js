@@ -13,6 +13,7 @@ const AppError    = require('./utils/AppError');
 const { globalLimiter } = require('./middlewares/rateLimiters');
 const { parseConfiguredOrigins, createOriginPolicy } = require('./utils/corsOrigins');
 const billingController = require('./modules/billing/billing.controller');
+const { localizationContext } = require('./utils/requestContext');
 
 const app = express();
 
@@ -43,7 +44,7 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept-Language', 'X-Time-Zone', 'X-Currency'],
   optionsSuccessStatus: 204,
 }));
 
@@ -61,6 +62,10 @@ app.use(globalLimiter);
 
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
+
+// Contexto por requisição: datas como "hoje" respeitam o fuso do usuário.
+// O valor financeiro continua sendo armazenado como número; locale/moeda são apresentação.
+app.use(localizationContext);
 
 // ── Logging ──────────────────────────────────────────────────────────────────
 if (env.NODE_ENV !== 'test') {

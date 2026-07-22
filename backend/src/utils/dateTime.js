@@ -1,8 +1,14 @@
+const { getRequestTimeZone } = require('./requestContext');
+
 const DEFAULT_TIME_ZONE = process.env.APP_TIME_ZONE || 'America/Sao_Paulo';
 
-function getDateParts(date = new Date(), timeZone = DEFAULT_TIME_ZONE) {
+function resolvedTimeZone(timeZone) {
+  return timeZone || getRequestTimeZone() || DEFAULT_TIME_ZONE;
+}
+
+function getDateParts(date = new Date(), timeZone) {
   const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
+    timeZone: resolvedTimeZone(timeZone),
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -19,8 +25,8 @@ function utcDateFromParts(year, month, day) {
   return new Date(Date.UTC(year, month - 1, day));
 }
 
-function todayUtcDate(timeZone = DEFAULT_TIME_ZONE) {
-  const { year, month, day } = getDateParts(new Date(), timeZone);
+function todayUtcDate(timeZone) {
+  const { year, month, day } = getDateParts(new Date(), resolvedTimeZone(timeZone));
   return utcDateFromParts(year, month, day);
 }
 
@@ -33,8 +39,8 @@ function endOfUtcDate(date) {
   ));
 }
 
-function isFutureDate(date, timeZone = DEFAULT_TIME_ZONE) {
-  return date > endOfUtcDate(todayUtcDate(timeZone));
+function isFutureDate(date, timeZone) {
+  return date > endOfUtcDate(todayUtcDate(resolvedTimeZone(timeZone)));
 }
 
 function monthDateRange(year, month) {

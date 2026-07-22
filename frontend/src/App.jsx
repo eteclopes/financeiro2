@@ -3,6 +3,10 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { useThemeStore } from './store/themeStore';
 import { ToastContainer } from './components/ui/Toast';
+import { I18nBridge } from './i18n/I18nBridge';
+import { LocaleSwitcher } from './components/LocaleSwitcher';
+import { useLocaleStore } from './store/localeStore';
+import { formatCurrency } from './lib/format';
 import { AppLayout } from './components/layout/AppLayout';
 import { ProRoute } from './components/ProRoute';
 import { IconSun, IconMoon, IconTrend, IconWallet, IconCard } from './components/icons';
@@ -86,13 +90,16 @@ function AuthShell({ children }) {
         <div className="absolute inset-0 opacity-[0.28] dark:opacity-[0.1]" style={{ backgroundImage: 'radial-gradient(rgb(100 116 139 / 0.28) 0.7px, transparent 0.7px)', backgroundSize: '22px 22px' }} />
       </div>
 
-      <button
-        onClick={toggleTheme}
-        aria-label="Alternar tema"
-        className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-30 sm:right-5 grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white/80 text-slate-500 shadow-sm backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:text-primary dark:border-white/[0.08] dark:bg-white/[0.055] dark:text-zinc-400 dark:hover:text-primary-hover"
-      >
-        {theme === 'dark' ? <IconMoon size={17} /> : <IconSun size={17} />}
-      </button>
+      <div className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-30 flex items-center gap-2 sm:right-5">
+        <LocaleSwitcher compact className="bg-white/80 backdrop-blur-xl dark:bg-white/[0.055]" />
+        <button
+          onClick={toggleTheme}
+          aria-label="Alternar tema"
+          className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white/80 text-slate-500 shadow-sm backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:text-primary dark:border-white/[0.08] dark:bg-white/[0.055] dark:text-zinc-400 dark:hover:text-primary-hover"
+        >
+          {theme === 'dark' ? <IconMoon size={17} /> : <IconSun size={17} />}
+        </button>
+      </div>
 
       <div className="relative z-10 grid min-h-[100dvh] lg:grid-cols-[1.08fr_0.92fr]">
         <section className="relative hidden overflow-hidden border-r border-slate-200/70 px-10 py-10 dark:border-white/[0.06] lg:flex lg:flex-col xl:px-16 xl:py-14">
@@ -141,12 +148,12 @@ function AuthShell({ children }) {
             </div>
             <div className="auth-floating-chip -bottom-7 -left-10 hidden xl:flex">
               <span className="grid h-8 w-8 place-items-center rounded-xl bg-primary-subtle text-primary dark:bg-primary/10 dark:text-primary-hover">↗</span>
-              <span><strong className="block text-xs text-slate-800 dark:text-zinc-100">Meta avançou</strong><small className="text-[10px] text-slate-400 dark:text-zinc-500">+R$ 320,00</small></span>
+              <span><strong className="block text-xs text-slate-800 dark:text-zinc-100">Meta avançou</strong><small className="text-[10px] text-slate-400 dark:text-zinc-500">+{formatCurrency(320)}</small></span>
             </div>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-zinc-500">Saldo disponível</p>
-                <p className="mt-2 font-mono text-2xl font-bold text-slate-950 dark:text-white">R$ 8.420,50</p>
+                <p className="mt-2 font-mono text-2xl font-bold text-slate-950 dark:text-white">{formatCurrency(8420.5)}</p>
               </div>
               <span className="rounded-full bg-success-subtle px-2.5 py-1 text-[11px] font-bold text-success-dark dark:bg-success/10 dark:text-success-light">↗ 12,4%</span>
             </div>
@@ -180,6 +187,9 @@ function AuthShell({ children }) {
 }
 
 export default function App() {
+  // Faz as páginas recalcularem datas e moedas quando a preferência muda.
+  useLocaleStore((s) => `${s.language}:${s.locale}:${s.currency}:${s.timeZone}`);
+  const localeInitialized = useLocaleStore((s) => s.initialized);
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const forceSignOut = useAuthStore((s) => s.forceSignOut);
 
@@ -228,8 +238,21 @@ export default function App() {
     return () => window.removeEventListener('auth:session-expired', h);
   }, [forceSignOut]);
 
+  if (!localeInitialized) {
+    return (
+      <ErrorBoundary>
+        <I18nBridge />
+        <div className="app-shell flex min-h-[100dvh] flex-col items-center justify-center gap-4 p-6">
+          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-primary text-sm font-black tracking-[-0.08em] text-white shadow-glow animate-pulse-soft">FH</div>
+          <p className="text-sm font-semibold text-slate-600 dark:text-zinc-300">Preparando idioma e região...</p>
+        </div>
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
+      <I18nBridge />
       <Routes>
         <Route path="/login" element={<AuthShell><LoginPage /></AuthShell>} />
         <Route path="/register" element={<AuthShell><RegisterPage /></AuthShell>} />

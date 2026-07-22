@@ -147,7 +147,7 @@ export default function BudgetsPage() {
               ))}
             </Select>
           </FormGroup>
-          <FormGroup label="Limite mensal (R$)" required>
+          <FormGroup label="Limite mensal" required>
             <Input type="number" min="0.01" step="0.01" value={limitValue}
               onChange={(e) => setLimitValue(e.target.value)} placeholder="Ex: 800,00" />
           </FormGroup>

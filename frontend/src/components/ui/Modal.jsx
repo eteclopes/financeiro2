@@ -2,6 +2,7 @@ import { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from './index';
 import { Dropdown } from './Dropdown';
+import { useLocaleStore } from '../../store/localeStore.js';
 
 // ── Modal ──────────────────────────────────────────────────
 export function Modal({ open, onClose, title, children, size = 'md' }) {
@@ -162,20 +163,24 @@ export function FormGroup({ label, htmlFor, error, children, required, hint }) {
 }
 
 // ── Input / Select / Textarea ──────────────────────────────
-export function Input({ className = '', ...props }) {
-  return <input className={`input-base ${className}`} {...props} />;
+export function Input({ className = '', lang, inputMode, ...props }) {
+  const locale = useLocaleStore((state) => state.locale);
+  const localizedInputMode = inputMode ?? (props.type === 'number' && String(props.step ?? '').includes('.') ? 'decimal' : undefined);
+  return <input lang={lang ?? locale} inputMode={localizedInputMode} className={`input-base ${className}`} {...props} />;
 }
 
-export function Select({ children, className = '', ...props }) {
+export function Select({ children, className = '', lang, ...props }) {
+  const locale = useLocaleStore((state) => state.locale);
   return (
-    <Dropdown className={className} {...props}>
+    <Dropdown lang={lang ?? locale} className={className} {...props}>
       {children}
     </Dropdown>
   );
 }
 
-export function Textarea({ className = '', ...props }) {
-  return <textarea className={`input-base resize-y ${className}`} rows={3} {...props} />;
+export function Textarea({ className = '', lang, ...props }) {
+  const locale = useLocaleStore((state) => state.locale);
+  return <textarea lang={lang ?? locale} className={`input-base resize-y ${className}`} rows={3} {...props} />;
 }
 
 // ── Table ──────────────────────────────────────────────────

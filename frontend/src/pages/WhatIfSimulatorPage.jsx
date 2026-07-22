@@ -77,7 +77,7 @@ function ScenarioInputFields({ type, input, setInput, activeDebts }) {
   return (
     <FormGroup label={amountLabels[type] ?? 'Valor'}>
       <Input type="number" min="0" step="0.01" value={input.amount ?? ''}
-        onChange={(e) => setInput({ amount: parseFloat(e.target.value) })} placeholder="R$ 0,00" />
+        onChange={(e) => setInput({ amount: parseFloat(e.target.value) })} placeholder={formatCurrency(0)} />
     </FormGroup>
   );
 }

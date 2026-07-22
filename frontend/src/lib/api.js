@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getAccessToken, setAccessToken } from './tokenStore';
+import { getLocalePreferences } from '../store/localeStore';
 
 const DEFAULT_API_URL = import.meta.env.PROD
   ? 'https://financeiro2-8kgt.onrender.com/api'
@@ -25,6 +26,10 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  const preferences = getLocalePreferences();
+  config.headers['Accept-Language'] = preferences.locale || preferences.language;
+  config.headers['X-Time-Zone'] = preferences.timeZone;
+  config.headers['X-Currency'] = preferences.currency;
   return config;
 });
 
