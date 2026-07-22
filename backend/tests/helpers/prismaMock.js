@@ -25,25 +25,30 @@ function modelMock(methods) {
 
 function createPrismaMock() {
   const mock = {
-    user: modelMock(['findUnique', 'create', 'update']),
+    user: modelMock(['findUnique', 'create', 'update', 'upsert']),
     auditLog: modelMock(['create']),
     savingsTransaction: modelMock(['findFirst', 'findMany', 'create', 'update', 'delete', 'aggregate']),
-    card: modelMock(['findMany', 'findFirst', 'findUnique', 'create', 'update', 'delete']),
+    card: modelMock(['findMany', 'findFirst', 'findUnique', 'create', 'update', 'delete', 'count']),
     cardInvoice: modelMock(['findUnique', 'findFirst', 'findMany', 'create', 'update', 'updateMany', 'count', 'deleteMany']),
     cardPurchase: modelMock(['create', 'findMany', 'groupBy', 'deleteMany']),
     expense: modelMock(['findMany', 'findFirst', 'aggregate', 'groupBy', 'count', 'update', 'updateMany', 'create', 'delete', 'deleteMany']),
-    income: modelMock(['aggregate', 'groupBy', 'create', 'findFirst', 'findMany', 'update', 'delete']),
+    income: modelMock(['aggregate', 'groupBy', 'count', 'create', 'findFirst', 'findMany', 'update', 'delete']),
     incomeTemplate: modelMock(['count', 'findMany', 'aggregate', 'create', 'update', 'findFirst']),
     fixedExpenseTemplate: modelMock(['count', 'findMany', 'aggregate', 'create', 'update', 'updateMany', 'delete', 'findFirst']),
     debt: modelMock(['findMany', 'findFirst', 'aggregate', 'create', 'update', 'count']),
-    category: modelMock(['findMany', 'findFirst', 'update']),
+    category: modelMock(['findMany', 'findFirst', 'create', 'update', 'delete']),
     goal: modelMock(['findMany', 'create', 'findFirst', 'update', 'count']),
     goalContribution: modelMock(['create', 'findMany', 'aggregate']),
     simulation: modelMock(['findFirst', 'findMany', 'create', 'update', 'delete']),
+    simulationResult: modelMock(['createMany']),
+    financialHealthScore: modelMock(['findFirst', 'upsert']),
     alert: modelMock(['findMany', 'update', 'upsert']),
     month: modelMock(['findFirst', 'findUnique', 'findMany', 'create', 'update']),
-    refreshToken: modelMock(['findUnique', 'create', 'update', 'updateMany']),
-    passwordReset: modelMock(['findFirst', 'findUnique', 'create', 'update']),
+    refreshToken: modelMock(['findUnique', 'create', 'update', 'updateMany', 'deleteMany']),
+    passwordReset: modelMock(['findFirst', 'findUnique', 'create', 'update', 'deleteMany']),
+    billingPurchase: modelMock(['findUnique', 'findFirst', 'upsert', 'update', 'updateMany']),
+    stripeEvent: modelMock(['findUnique', 'create']),
+    dashboardPreference: modelMock(['findUnique', 'upsert']),
     $transaction: jest.fn(),
     $executeRaw: jest.fn(),
     $queryRaw: jest.fn(),
@@ -66,6 +71,26 @@ function installDefaults(mock) {
   mock.$executeRaw.mockResolvedValue(undefined);
   mock.$queryRaw.mockResolvedValue([]);
 
+  mock.user.findUnique.mockResolvedValue({
+    id: 1n,
+    email: 'teste@teste.com',
+    plan: 'basic',
+    planSource: 'basic',
+    planGrantedAt: null,
+    planExpiresAt: null,
+    stripeCustomerId: null,
+  });
+  mock.card.count.mockResolvedValue(0);
+  mock.billingPurchase.findUnique.mockResolvedValue(null);
+  mock.billingPurchase.findFirst.mockResolvedValue(null);
+  mock.billingPurchase.upsert.mockImplementation(({ create, update }) => Promise.resolve({ id: 444n, ...create, ...update }));
+  mock.billingPurchase.update.mockImplementation(({ where, data }) => Promise.resolve({ id: where.id, ...data }));
+  mock.billingPurchase.updateMany.mockResolvedValue({ count: 0 });
+  mock.stripeEvent.findUnique.mockResolvedValue(null);
+  mock.stripeEvent.create.mockImplementation(({ data }) => Promise.resolve({ id: 445n, ...data }));
+  mock.dashboardPreference.findUnique.mockResolvedValue(null);
+  mock.dashboardPreference.upsert.mockImplementation(({ create, update }) => Promise.resolve({ ...create, ...update }));
+
   mock.expense.findMany.mockResolvedValue([]);
   mock.expense.aggregate.mockResolvedValue({ _sum: { value: null, paidAmount: null } });
   mock.expense.groupBy.mockResolvedValue([]);
@@ -74,6 +99,7 @@ function installDefaults(mock) {
   mock.expense.delete.mockImplementation(({ where }) => Promise.resolve({ id: where.id }));
   mock.income.aggregate.mockResolvedValue({ _sum: { value: null } });
   mock.income.groupBy.mockResolvedValue([]);
+  mock.income.count.mockResolvedValue(0);
   mock.income.create.mockImplementation(({ data }) => Promise.resolve({ id: 666n, ...data }));
   mock.income.update.mockImplementation(({ where, data }) => Promise.resolve({ id: where.id, ...data }));
   mock.income.delete.mockImplementation(({ where }) => Promise.resolve({ id: where.id }));
@@ -95,6 +121,9 @@ function installDefaults(mock) {
   mock.debt.count.mockResolvedValue(0);
   mock.debt.create.mockImplementation(({ data }) => Promise.resolve({ id: 555n, ...data }));
   mock.category.findMany.mockResolvedValue([]);
+  mock.category.create.mockImplementation(({ data }) => Promise.resolve({ id: 222n, ...data }));
+  mock.category.update.mockImplementation(({ where, data }) => Promise.resolve({ id: where.id, ...data }));
+  mock.category.delete.mockImplementation(({ where }) => Promise.resolve({ id: where.id }));
   mock.goal.findMany.mockResolvedValue([]);
   mock.goal.count.mockResolvedValue(0);
   mock.goalContribution.findMany.mockResolvedValue([]);
@@ -104,6 +133,11 @@ function installDefaults(mock) {
   mock.savingsTransaction.aggregate.mockResolvedValue({ _sum: { value: null } });
   mock.savingsTransaction.findMany.mockResolvedValue([]);
   mock.auditLog.create.mockResolvedValue({});
+  mock.refreshToken.deleteMany.mockResolvedValue({ count: 0 });
+  mock.passwordReset.deleteMany.mockResolvedValue({ count: 0 });
+  mock.simulationResult.createMany.mockResolvedValue({ count: 0 });
+  mock.financialHealthScore.findFirst.mockResolvedValue(null);
+  mock.financialHealthScore.upsert.mockResolvedValue({});
   mock.cardInvoice.count.mockResolvedValue(0);
   mock.cardInvoice.findMany.mockResolvedValue([]);
   mock.cardInvoice.update.mockImplementation(({ where, data }) => Promise.resolve({ id: where.id, ...data }));

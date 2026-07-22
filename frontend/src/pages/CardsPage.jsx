@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { cardsApi, categoriesApi } from '../lib/services';
 import { extractErrorMessage } from '../lib/api';
 import { formatCurrency, formatShortDate } from '../lib/format';
@@ -7,6 +8,7 @@ import { Card, CardHeader, Badge, Button, EmptyState, ProgressBar } from '../com
 import { Modal, ConfirmDialog, FormGroup, Input, Select } from '../components/ui/Modal';
 import { CategorySelect } from '../components/ui/CategorySelect';
 import { useUIStore } from '../store/uiStore';
+import { useAuthStore } from '../store/authStore';
 import { ChoiceCards, AnimatedNumber } from '../components/ui/Motion';
 
 const COLORS = ['#7C3AED','#2563EB','#16A34A','#F59E0B','#DC2626','#A855F7','#06B6D4'];
@@ -32,6 +34,8 @@ export default function CardsPage() {
   const [editCardModal, setEditCardModal] = useState(null); // cartão sendo editado, ou null
   const [deactivateTarget, setDeactivateTarget] = useState(null);
   const [deactivating, setDeactivating] = useState(false);
+  const [activateTarget, setActivateTarget] = useState(null);
+  const [activating, setActivating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deletingCard, setDeletingCard] = useState(false);
   const [purchaseModal, setPurchaseModal] = useState(false);
@@ -45,6 +49,29 @@ export default function CardsPage() {
   const [purchaseForm, setPurchaseForm] = useState({ description:'', categoryId:'', totalValue:'', installmentsCount:'1', purchaseDate: localDateInputValue() });
 
   const toast = useUIStore((s) => s);
+  const user = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
+  const activeCards = cards.filter((card) => card.active !== false);
+  const activeCardsCount = activeCards.length;
+  const activeCardsLimit = user?.entitlements?.limits?.activeCards;
+  const isPro = Boolean(user?.isPro);
+  const totalCardLimit = activeCards.reduce((sum, card) => sum + Number(card.limitValue || 0), 0);
+  const totalCardUsed = activeCards.reduce((sum, card) => sum + Number(card.usedLimit || 0), 0);
+  const totalCardAvailable = Math.max(totalCardLimit - totalCardUsed, 0);
+  const consolidatedUsage = totalCardLimit > 0 ? Math.round((totalCardUsed / totalCardLimit) * 100) : 0;
+  const highestUsageCard = activeCards.reduce((highest, card) => {
+    const usage = Number(card.limitValue) > 0 ? Number(card.usedLimit || 0) / Number(card.limitValue) : 0;
+    return !highest || usage > highest.usage ? { card, usage } : highest;
+  }, null);
+
+  function openNewCard() {
+    if (Number.isFinite(activeCardsLimit) && activeCardsCount >= activeCardsLimit) {
+      toast.info(`O Plano Básico permite até ${activeCardsLimit} cartões ativos.`);
+      navigate('/plan');
+      return;
+    }
+    setCardModal(true);
+  }
 
   const loadCards = useCallback(async () => {
     setLoading(true);
@@ -123,6 +150,26 @@ export default function CardsPage() {
     finally { setDeactivating(false); }
   }
 
+
+  function requestActivate(card) {
+    if (Number.isFinite(activeCardsLimit) && activeCardsCount >= activeCardsLimit) {
+      toast.info(`O Plano Básico permite até ${activeCardsLimit} cartões ativos.`);
+      navigate('/plan');
+      return;
+    }
+    setActivateTarget(card);
+  }
+
+  async function handleActivate() {
+    setActivating(true);
+    try {
+      await cardsApi.activate(activateTarget.id);
+      toast.success('Cartão reativado e pronto para novas compras.');
+      setActivateTarget(null); loadCards();
+    } catch (e) { toast.error(extractErrorMessage(e, 'Erro ao reativar cartão.')); }
+    finally { setActivating(false); }
+  }
+
   async function handleDeleteCard() {
     setDeletingCard(true);
     try {
@@ -173,15 +220,40 @@ export default function CardsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white">Cartões de Crédito</h2>
-          <p className="text-sm text-muted mt-0.5">{cards.length} cartão(ões) cadastrado(s)</p>
+          <p className="text-sm text-muted mt-0.5">
+            {cards.length} cartão(ões) cadastrado(s)
+            {Number.isFinite(activeCardsLimit) ? ` · ${activeCardsCount}/${activeCardsLimit} ativos no Básico` : ' · cartões ativos ilimitados no Pro'}
+          </p>
         </div>
-        <Button onClick={() => setCardModal(true)}>+ Novo Cartão</Button>
+        <Button onClick={openNewCard}>+ Novo Cartão</Button>
       </div>
+
+      <Card className={isPro ? 'border-primary/20' : ''}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2"><h3 className="font-bold text-slate-950 dark:text-white">Visão consolidada dos cartões</h3><Badge variant="purple">PRO</Badge></div>
+            <p className="mt-1 text-xs text-muted">Compare limite, uso e risco de concentração entre os cartões ativos.</p>
+          </div>
+        </div>
+        {isPro ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl bg-subtle p-4 dark:bg-white/[0.04]"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Limite total</p><p className="mt-1 font-mono text-lg font-bold text-slate-950 dark:text-white">{formatCurrency(totalCardLimit)}</p></div>
+            <div className="rounded-2xl bg-subtle p-4 dark:bg-white/[0.04]"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Total utilizado</p><p className="mt-1 font-mono text-lg font-bold text-warning-dark dark:text-warning-light">{formatCurrency(totalCardUsed)}</p></div>
+            <div className="rounded-2xl bg-subtle p-4 dark:bg-white/[0.04]"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Disponível</p><p className="mt-1 font-mono text-lg font-bold text-success-dark dark:text-success-light">{formatCurrency(totalCardAvailable)}</p></div>
+            <div className="rounded-2xl bg-subtle p-4 dark:bg-white/[0.04]"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Uso consolidado</p><p className="mt-1 font-mono text-lg font-bold text-slate-950 dark:text-white">{consolidatedUsage}%</p><p className="mt-1 text-[11px] text-muted">{highestUsageCard ? `Maior uso: ${highestUsageCard.card.name} (${Math.round(highestUsageCard.usage * 100)}%)` : 'Cadastre um cartão ativo.'}</p></div>
+          </div>
+        ) : (
+          <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-primary/20 bg-primary-subtle p-4 dark:bg-primary/10 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-700 dark:text-zinc-300">No Básico você controla até dois cartões completamente. O Pro adiciona cartões ilimitados e análise consolidada.</p>
+            <Link to="/plan" className="shrink-0 text-sm font-bold text-primary-dark hover:underline dark:text-primary-light">Ver vantagens →</Link>
+          </div>
+        )}
+      </Card>
 
       <div data-tutorial="cards-area">
       {cards.length === 0 ? (
         <Card data-tutorial="cards-empty"><EmptyState icon="💳" title="Nenhum cartão cadastrado" description="Adicione um cartão para controlar gastos e faturas."
-          action={<Button onClick={() => setCardModal(true)}>Adicionar cartão</Button>} /></Card>
+          action={<Button onClick={openNewCard}>Adicionar cartão</Button>} /></Card>
       ) : (
         <>
           {/* Cards visuais */}
@@ -240,8 +312,10 @@ export default function CardsPage() {
                     ))}
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => openEditCard(selected)}>Editar</Button>
-                  {selected.active !== false && (
+                  {selected.active !== false ? (
                     <Button variant="ghost" size="sm" onClick={() => setDeactivateTarget(selected)}>Desativar</Button>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={() => requestActivate(selected)}>Reativar</Button>
                   )}
                   <Button variant="ghost" size="sm" className="text-danger" onClick={() => setDeleteTarget(selected)}>
                     {selected.hasHistory ? 'Excluir permanentemente' : 'Excluir'}
@@ -352,6 +426,17 @@ export default function CardsPage() {
         title="Desativar cartão"
         confirmLabel="Desativar"
         description={`"${deactivateTarget?.name}" deixará de aceitar novas compras (continua aparecendo na lista, marcado como desativado). Faturas e compras já registradas continuam salvas no histórico.`}
+      />
+
+
+      <ConfirmDialog
+        open={!!activateTarget}
+        onClose={() => setActivateTarget(null)}
+        onConfirm={handleActivate}
+        loading={activating}
+        title="Reativar cartão"
+        confirmLabel="Reativar"
+        description={`"${activateTarget?.name}" voltará a aceitar novas compras. No Plano Básico, ele ocupará uma das duas vagas de cartões ativos.`}
       />
 
       {/* Confirmação de exclusão real */}

@@ -2,7 +2,7 @@ jest.mock('../../src/config/prisma', () => require('../helpers/prismaMock').crea
 
 const prismaMock = require('../../src/config/prisma');
 const { installDefaults } = require('../helpers/prismaMock');
-const { listCards, computeUsedLimitsByCard, computeHistoryCountsByCard, createCard, deactivateCard, deleteCard } = require('../../src/modules/cards/cards.service');
+const { listCards, computeUsedLimitsByCard, computeHistoryCountsByCard, createCard, deactivateCard, activateCard, deleteCard } = require('../../src/modules/cards/cards.service');
 
 beforeEach(() => installDefaults(prismaMock));
 
@@ -112,6 +112,37 @@ describe('cards.service — AuditLog', () => {
   });
 });
 
+
+describe('activateCard — reativação respeita o plano', () => {
+  test('Plano Básico bloqueia reativação quando já existem dois cartões ativos', async () => {
+    prismaMock.card.findFirst.mockResolvedValue({ id: 9n, userId: 10n, active: false });
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 10n, email: 'basico@teste.com', plan: 'basic', planSource: 'basic',
+      planGrantedAt: null, planExpiresAt: null, stripeCustomerId: null,
+    });
+    prismaMock.card.count.mockResolvedValue(2);
+
+    await expect(activateCard(10n, 9n)).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'PLAN_LIMIT_REACHED',
+    });
+    expect(prismaMock.card.update).not.toHaveBeenCalled();
+  });
+
+  test('reativa cartão quando há vaga e registra auditoria', async () => {
+    prismaMock.card.findFirst.mockResolvedValue({ id: 9n, userId: 10n, active: false });
+    prismaMock.card.count.mockResolvedValue(1);
+    prismaMock.card.update.mockResolvedValue({ id: 9n, userId: 10n, active: true });
+
+    const result = await activateCard(10n, 9n);
+
+    expect(result.active).toBe(true);
+    expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ entity: 'card', entityId: 9n, action: 'activate' }) })
+    );
+  });
+});
+
 describe('deleteCard — exclusão de verdade (não apenas desativar)', () => {
   test('cartão vinculado a despesa fixa recorrente ativa: rejeita com 409 antes de checar qualquer outra coisa', async () => {
     prismaMock.card.findFirst.mockResolvedValue({ id: 7n, userId: 10n });
@@ -190,5 +221,50 @@ describe('deleteCard — exclusão de verdade (não apenas desativar)', () => {
         data: expect.objectContaining({ entity: 'card', entityId: 9n, action: 'delete' }),
       })
     );
+  });
+});
+
+describe('createCard — limite por plano', () => {
+  test('Plano Básico bloqueia o terceiro cartão ativo', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 10n,
+      email: 'basico@teste.com',
+      plan: 'basic',
+      planSource: 'basic',
+      planGrantedAt: null,
+      planExpiresAt: null,
+      stripeCustomerId: null,
+    });
+    prismaMock.card.count.mockResolvedValue(2);
+
+    await expect(createCard(10n, {
+      name: 'Terceiro', limitValue: 1000, closingDay: 20, dueDay: 5,
+    })).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'PLAN_LIMIT_REACHED',
+      details: expect.objectContaining({ resource: 'activeCards', limit: 2 }),
+    });
+    expect(prismaMock.card.create).not.toHaveBeenCalled();
+  });
+
+  test('Plano Pro não aplica limite de cartões ativos', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 10n,
+      email: 'pro@teste.com',
+      plan: 'pro',
+      planSource: 'manual_test',
+      planGrantedAt: new Date(),
+      planExpiresAt: null,
+      stripeCustomerId: null,
+    });
+    prismaMock.card.count.mockResolvedValue(20);
+    prismaMock.card.create.mockResolvedValue({ id: 99n, userId: 10n, name: 'Novo Pro' });
+
+    const card = await createCard(10n, {
+      name: 'Novo Pro', limitValue: 1000, closingDay: 20, dueDay: 5,
+    });
+
+    expect(card.id).toBe(99n);
+    expect(prismaMock.card.count).not.toHaveBeenCalled();
   });
 });

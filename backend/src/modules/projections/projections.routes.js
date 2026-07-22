@@ -2,11 +2,12 @@ const { Router } = require('express');
 const { z } = require('zod');
 const asyncHandler = require('../../utils/asyncHandler');
 const authenticate = require('../../middlewares/authenticate');
+const requirePro = require('../../middlewares/requirePro');
 const AppError = require('../../utils/AppError');
 const service = require('./projections.service');
 
 const router = Router();
-router.use(authenticate);
+router.use(authenticate, requirePro);
 
 const querySchema = z.object({
   monthId: z.coerce.bigint(),

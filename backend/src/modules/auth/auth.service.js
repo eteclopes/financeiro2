@@ -4,6 +4,7 @@ const env = require('../../config/env');
 const AppError = require('../../utils/AppError');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
 const { sendPasswordResetEmail } = require('../../utils/mailer');
+const { buildEntitlements } = require('../plans/plans.service');
 const {
   hashToken, generateOpaqueToken, signAccessToken,
   refreshTokenExpiryDate, passwordResetExpiryDate,
@@ -19,7 +20,19 @@ const BCRYPT_ROUNDS = 12;
 const DUMMY_PASSWORD_HASH = '$2a$12$RXUW.qmEXBzInhTZlg2mM.VsSzXz7.mx2Ym7fdqSQc5iXHat1EaKC';
 
 function publicUser(user) {
-  return { id: user.id, name: user.name, email: user.email, createdAt: user.createdAt };
+  const entitlements = buildEntitlements(user);
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    createdAt: user.createdAt,
+    plan: entitlements.plan,
+    isPro: entitlements.isPro,
+    planSource: entitlements.source,
+    planGrantedAt: entitlements.grantedAt,
+    planExpiresAt: entitlements.expiresAt,
+    entitlements,
+  };
 }
 
 function pruneExpiredTokens() {

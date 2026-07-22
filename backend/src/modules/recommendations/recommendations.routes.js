@@ -2,10 +2,11 @@ const { parseMonthId } = require('../../utils/parseParams');
 const { Router } = require('express');
 const asyncHandler = require('../../utils/asyncHandler');
 const authenticate = require('../../middlewares/authenticate');
+const requirePro = require('../../middlewares/requirePro');
 const service = require('./recommendations.service');
 
 const router = Router();
-router.use(authenticate);
+router.use(authenticate, requirePro);
 
 router.get(
   '/',

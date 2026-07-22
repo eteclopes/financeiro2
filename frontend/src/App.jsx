@@ -4,6 +4,7 @@ import { useAuthStore } from './store/authStore';
 import { useThemeStore } from './store/themeStore';
 import { ToastContainer } from './components/ui/Toast';
 import { AppLayout } from './components/layout/AppLayout';
+import { ProRoute } from './components/ProRoute';
 import { IconSun, IconMoon, IconTrend, IconWallet, IconCard } from './components/icons';
 
 import LoginPage from './pages/LoginPage';
@@ -24,6 +25,9 @@ import BudgetsPage from './pages/BudgetsPage';
 import InsightsPage from './pages/InsightsPage';
 import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
+import PlanPage from './pages/PlanPage';
+import CalculatorsPage from './pages/CalculatorsPage';
+import PlanningPage from './pages/PlanningPage';
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -239,14 +243,17 @@ export default function App() {
           <Route path="/cards" element={<ErrorBoundary><CardsPage /></ErrorBoundary>} />
           <Route path="/savings" element={<ErrorBoundary><SavingsPage /></ErrorBoundary>} />
           <Route path="/goals" element={<ErrorBoundary><GoalsPage /></ErrorBoundary>} />
-          <Route path="/simulator/purchase" element={<ErrorBoundary><PurchaseSimulatorPage /></ErrorBoundary>} />
-          <Route path="/simulator/what-if" element={<ErrorBoundary><WhatIfSimulatorPage /></ErrorBoundary>} />
+          <Route path="/simulator/purchase" element={<ErrorBoundary><ProRoute><PurchaseSimulatorPage /></ProRoute></ErrorBoundary>} />
+          <Route path="/simulator/what-if" element={<ErrorBoundary><ProRoute><WhatIfSimulatorPage /></ProRoute></ErrorBoundary>} />
           <Route path="/history" element={<ErrorBoundary><HistoryPage /></ErrorBoundary>} />
-          <Route path="/trends" element={<ErrorBoundary><TrendsPage /></ErrorBoundary>} />
+          <Route path="/trends" element={<ErrorBoundary><ProRoute><TrendsPage /></ProRoute></ErrorBoundary>} />
           <Route path="/budgets" element={<ErrorBoundary><BudgetsPage /></ErrorBoundary>} />
-          <Route path="/insights" element={<ErrorBoundary><InsightsPage /></ErrorBoundary>} />
+          <Route path="/insights" element={<ErrorBoundary><ProRoute><InsightsPage /></ProRoute></ErrorBoundary>} />
           <Route path="/reports" element={<ErrorBoundary><ReportsPage /></ErrorBoundary>} />
           <Route path="/settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
+          <Route path="/calculators" element={<ErrorBoundary><ProRoute><CalculatorsPage /></ProRoute></ErrorBoundary>} />
+          <Route path="/planning" element={<ErrorBoundary><ProRoute><PlanningPage /></ProRoute></ErrorBoundary>} />
+          <Route path="/plan" element={<ErrorBoundary><PlanPage /></ErrorBoundary>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

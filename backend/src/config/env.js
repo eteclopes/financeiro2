@@ -39,6 +39,17 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
   MAIL_FROM: z.string().default('FinançasPro <no-reply@financaspro.app>'),
   FRONTEND_URL: z.string().default('http://localhost:5173'),
+
+  // ── Plano Pro vitalício / Stripe Checkout ───────────────────────────
+  // Permanecem opcionais para o app continuar subindo enquanto a conta
+  // Stripe ainda não foi conectada. O endpoint de checkout informa
+  // claramente quando as três chaves abaixo ainda não estão configuradas.
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_PRO_LIFETIME_PRICE_ID: z.string().optional(),
+  STRIPE_API_BASE: z.string().url().default('https://api.stripe.com'),
+  STRIPE_API_VERSION: z.string().default('2026-06-24.dahlia'),
+  PRO_LIFETIME_PRICE_LABEL: z.string().default('Oferta vitalícia'),
 });
 
 const parsed = envSchema.safeParse(process.env);

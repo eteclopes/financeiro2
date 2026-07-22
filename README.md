@@ -121,7 +121,7 @@ cd frontend
 npm run build
 ```
 
-Nesta entrega, a suíte possui **21 arquivos de teste e 173 testes aprovados**, e o build de produção do frontend foi concluído com sucesso.
+A V10, usada como base, possuía uma suíte validada anteriormente. Nesta V11 foram adicionados testes para planos, Stripe, calculadoras, planejamento e preferências do Dashboard. Neste ambiente sem dependências instaladas, foram executadas verificações estáticas completas e **44 cenários funcionais isolados**; execute os dois comandos acima após `npm install` para a validação integral antes do deploy.
 
 ## Regras importantes de uso
 
@@ -163,3 +163,17 @@ Os endereços `*-git-*-eteclopes-projects.vercel.app` são previews. Caso esteja
 protegidos pelo login da Vercel, arquivos como o manifesto podem ser redirecionados
 para o SSO. Para teste público, use o domínio de produção ou desative a proteção
 para o preview específico nas configurações de Deployment Protection da Vercel.
+
+## Plano Pro Vitalício (V11)
+
+A V11 mantém o gestor financeiro no Plano Básico e adiciona uma camada Pro com simuladores, projeções, tendências, recomendações, relatórios, calculadoras e cartões ativos sem limite do plano.
+
+- Guia técnico: `RELATORIO-PLANO-PRO-V11.md`
+- Configuração do pagamento: `GUIA-STRIPE-PLANO-PRO-V11.md`
+- Criar conta Pro local de teste: `cd backend && npm run seed:pro-test`
+
+O Plano Básico permite até 2 cartões ativos. O limite é validado tanto no frontend quanto no backend.
+
+### Central de planejamento Pro
+
+A área `/planning` consolida cartões, faturas futuras e vencidas, dívidas e metas. As recomendações são somente leitura e não alteram lançamentos automaticamente. O Dashboard Pro também pode ser personalizado, com preferências persistidas no banco por usuário.

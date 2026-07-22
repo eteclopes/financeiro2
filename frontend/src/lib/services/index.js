@@ -67,6 +67,7 @@ export const cardsApi = {
   create: (data) => api.post('/cards', data),
   update: (id, data) => api.patch(`/cards/${id}`, data),
   deactivate: (id) => api.patch(`/cards/${id}/deactivate`),
+  activate: (id) => api.patch(`/cards/${id}/activate`),
   delete: (id) => api.delete(`/cards/${id}`),
   createPurchase: (cardId, data) => api.post(`/cards/${cardId}/purchases`, data),
   listInvoices: (cardId) => api.get(`/cards/${cardId}/invoices`),
@@ -94,6 +95,16 @@ export const goalsApi = {
 // ---- Dashboard ----
 export const dashboardApi = {
   get: (monthId) => api.get('/dashboard', { params: { monthId } }),
+};
+
+export const dashboardPreferencesApi = {
+  get: () => api.get('/dashboard/preferences'),
+  update: (data) => api.patch('/dashboard/preferences', data),
+};
+
+// ---- Relatórios Pro ----
+export const reportsApi = {
+  get: (monthId) => api.get('/reports', { params: { monthId } }),
 };
 
 // ---- Financial Health ----
@@ -134,3 +145,19 @@ export const alertsApi = {
 export const behavioralAnalysisApi = {
   get: (monthId, periods = 6) => api.get('/behavioral-analysis', { params: { monthId, periods } }),
 };
+
+// ---- Billing / Planos ----
+export const billingApi = {
+  status: () => api.get('/billing/status'),
+  createCheckout: () => api.post('/billing/checkout'),
+};
+
+// ---- Calculadoras Pro ----
+export const calculatorsApi = {
+  run: (calculator, data) => api.post(`/calculators/${calculator}`, data),
+};
+
+export const planningApi = {
+  get: (monthId) => api.get('/planning', { params: { monthId } }),
+};
+

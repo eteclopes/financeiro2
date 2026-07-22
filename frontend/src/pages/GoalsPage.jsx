@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useMonthStore } from '../store/monthStore';
 import { goalsApi } from '../lib/services';
 import { extractErrorMessage } from '../lib/api';
@@ -8,6 +9,7 @@ import { Card, Badge, Button, EmptyState, ProgressBar } from '../components/ui/i
 import { Modal, FormGroup, Input } from '../components/ui/Modal';
 import { useUIStore } from '../store/uiStore';
 import { useThemeStore } from '../store/themeStore';
+import { useAuthStore } from '../store/authStore';
 import { ToggleSwitch, AnimatedNumber } from '../components/ui/Motion';
 
 const SCORE_COLOR = (pct) => pct >= 75 ? '#16A34A' : pct >= 40 ? '#F59E0B' : '#3B82F6';
@@ -169,6 +171,11 @@ export default function GoalsPage() {
   const completed = goals.filter((g) => g.status === 'completed');
   const cancelled = goals.filter((g) => g.status === 'cancelled');
   const theme = useThemeStore((s) => s.theme);
+  const isPro = useAuthStore((s) => Boolean(s.user?.isPro));
+  const activeTargetTotal = active.reduce((sum, goal) => sum + Number(goal.targetValue || 0), 0);
+  const activeProgressTotal = active.reduce((sum, goal) => sum + Number(goal.progress || 0), 0);
+  const activeRemainingTotal = Math.max(activeTargetTotal - activeProgressTotal, 0);
+  const averageGoalProgress = activeTargetTotal > 0 ? Math.round((activeProgressTotal / activeTargetTotal) * 100) : 0;
 
   function openContribute(goal) {
     setContribTarget(goal);
@@ -189,6 +196,25 @@ export default function GoalsPage() {
         </div>
         <Button data-tutorial="new-goal-button" onClick={() => setGoalModal(true)}>+ Nova Meta</Button>
       </div>
+
+      {!loading && (
+        <Card className={isPro ? 'border-primary/20' : ''}>
+          <div className="flex items-center gap-2"><h3 className="font-bold text-slate-950 dark:text-white">Planejamento das metas</h3><Badge variant="purple">PRO</Badge></div>
+          {isPro ? (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl bg-subtle p-4 dark:bg-white/[0.04]"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Objetivos ativos</p><p className="mt-1 text-lg font-bold text-slate-950 dark:text-white">{active.length}</p></div>
+              <div className="rounded-2xl bg-subtle p-4 dark:bg-white/[0.04]"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Total planejado</p><p className="mt-1 font-mono text-lg font-bold text-slate-950 dark:text-white">{formatCurrency(activeTargetTotal)}</p></div>
+              <div className="rounded-2xl bg-subtle p-4 dark:bg-white/[0.04]"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Ainda falta</p><p className="mt-1 font-mono text-lg font-bold text-warning-dark dark:text-warning-light">{formatCurrency(activeRemainingTotal)}</p></div>
+              <div className="rounded-2xl bg-subtle p-4 dark:bg-white/[0.04]"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Progresso conjunto</p><p className="mt-1 text-lg font-bold text-success-dark dark:text-success-light">{averageGoalProgress}%</p></div>
+            </div>
+          ) : (
+            <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-primary/20 bg-primary-subtle p-4 dark:bg-primary/10 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-slate-700 dark:text-zinc-300">Criar metas, editar e aportar continua no Básico. O Pro resume todos os objetivos e ajuda a comparar seu progresso.</p>
+              <Link to="/plan" className="shrink-0 text-sm font-bold text-primary-dark hover:underline dark:text-primary-light">Ver planejamento Pro →</Link>
+            </div>
+          )}
+        </Card>
+      )}
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

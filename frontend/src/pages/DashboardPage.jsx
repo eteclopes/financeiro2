@@ -1,17 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import {
   BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 import { useMonthStore } from '../store/monthStore';
-import { dashboardApi, projectionsApi } from '../lib/services';
+import { dashboardApi, dashboardPreferencesApi, projectionsApi } from '../lib/services';
 import { extractErrorMessage } from '../lib/api';
 import { formatCurrency, formatShortDate } from '../lib/format';
-import { Card, CardHeader, Badge, ProgressBar, Skeleton, EmptyState } from '../components/ui/index';
-import { AnimatedNumber, SegmentedControl, Spotlight } from '../components/ui/Motion';
+import { Card, CardHeader, Badge, Button, ProgressBar, Skeleton, EmptyState } from '../components/ui/index';
+import { AnimatedNumber, SegmentedControl, Spotlight, ToggleSwitch } from '../components/ui/Motion';
 import { useUIStore } from '../store/uiStore';
 import { useThemeStore } from '../store/themeStore';
+import { useAuthStore } from '../store/authStore';
 import { QuickActions } from '../components/dashboard/QuickActions';
+import { Modal } from '../components/ui/Modal';
 import { IconWallet, IconPiggy, IconAlert } from '../components/icons';
 
 const COMMITMENT_COLOR = { saudavel: 'text-success-dark dark:text-success-light', atencao: 'text-warning-dark dark:text-warning-light', risco: 'text-warning-dark dark:text-warning-light', critico: 'text-danger-dark dark:text-danger-light' };
@@ -19,6 +22,18 @@ const COMMITMENT_BG    = { saudavel: 'bg-success-muted dark:bg-success/10', aten
 const STATUS_MAP       = { pending: { l:'Pendente',v:'warning' }, partial: { l:'Parcial',v:'info' }, late: { l:'Atrasado',v:'danger' }, paid: { l:'Pago',v:'success' } };
 const SCORE_COLOR      = (s) => s >= 75 ? '#16A34A' : s >= 50 ? '#F59E0B' : '#EF4444';
 const PIE_COLORS       = ['#7C3AED', '#2563EB', '#16A34A', '#F59E0B', '#DC2626', '#A855F7', '#06B6D4'];
+
+const DEFAULT_DASHBOARD_PREFERENCES = Object.freeze({
+  showSummaryChart: true,
+  showAlerts: true,
+  showRecommendations: true,
+  showCards: true,
+  showProjections: true,
+  showCategoryChart: true,
+  showGoals: true,
+  summaryChart: 'bars',
+  projectionView: 'area',
+});
 
 function ThemedTooltip({ active, payload, label }) {
   const theme = useThemeStore((s) => s.theme);
@@ -41,9 +56,15 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
   const errorToast = useUIStore((s) => s.error);
+  const successToast = useUIStore((s) => s.success);
   const theme = useThemeStore((s) => s.theme);
+  const isPro = useAuthStore((s) => Boolean(s.user?.isPro));
   const [summaryChart, setSummaryChart] = useState('bars');
   const [projectionView, setProjectionView] = useState('area');
+  const [preferences, setPreferences] = useState({ ...DEFAULT_DASHBOARD_PREFERENCES });
+  const [preferenceDraft, setPreferenceDraft] = useState({ ...DEFAULT_DASHBOARD_PREFERENCES });
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [savingPreferences, setSavingPreferences] = useState(false);
   // Recharts não lê variáveis CSS/Tailwind diretamente em props como
   // `stroke`/`fill` — por isso as cores de grade e eixo são derivadas do
   // tema aqui e passadas como valor literal para cada gráfico.
@@ -61,13 +82,23 @@ export default function DashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const [dash, p] = await Promise.all([
+      const [dash, p, pref] = await Promise.all([
         dashboardApi.get(requestedMonthId),
-        projectionsApi.get(requestedMonthId, 6).catch(() => ({ data: { projection: [] } })),
+        isPro
+          ? projectionsApi.get(requestedMonthId, 6).catch(() => ({ data: { projection: [] } }))
+          : Promise.resolve({ data: { projection: [] } }),
+        isPro
+          ? dashboardPreferencesApi.get().catch(() => ({ data: { preferences: DEFAULT_DASHBOARD_PREFERENCES } }))
+          : Promise.resolve({ data: { preferences: DEFAULT_DASHBOARD_PREFERENCES } }),
       ]);
       if (useMonthStore.getState().selectedMonthId !== requestedMonthId) return;
+      const loadedPreferences = { ...DEFAULT_DASHBOARD_PREFERENCES, ...(pref.data.preferences ?? {}) };
       setData(dash.data);
       setProj(p.data.projection ?? []);
+      setPreferences(loadedPreferences);
+      setPreferenceDraft(loadedPreferences);
+      setSummaryChart(loadedPreferences.summaryChart);
+      setProjectionView(loadedPreferences.projectionView);
     } catch (e) {
       if (useMonthStore.getState().selectedMonthId !== requestedMonthId) return;
       const msg = extractErrorMessage(e, 'Não foi possível carregar o dashboard.');
@@ -76,9 +107,33 @@ export default function DashboardPage() {
     } finally {
       if (useMonthStore.getState().selectedMonthId === requestedMonthId) setLoading(false);
     }
-  }, [selectedMonthId]);
+  }, [selectedMonthId, isPro]);
 
   useEffect(() => { load(); }, [load]);
+
+  const openPreferences = () => {
+    setPreferenceDraft({ ...preferences, summaryChart, projectionView });
+    setPreferencesOpen(true);
+  };
+
+  const savePreferences = async () => {
+    if (!isPro) return;
+    setSavingPreferences(true);
+    try {
+      const response = await dashboardPreferencesApi.update(preferenceDraft);
+      const saved = { ...DEFAULT_DASHBOARD_PREFERENCES, ...(response.data.preferences ?? preferenceDraft) };
+      setPreferences(saved);
+      setPreferenceDraft(saved);
+      setSummaryChart(saved.summaryChart);
+      setProjectionView(saved.projectionView);
+      setPreferencesOpen(false);
+      successToast('Dashboard personalizado e salvo.');
+    } catch (e) {
+      errorToast(extractErrorMessage(e, 'Não foi possível salvar a personalização.'));
+    } finally {
+      setSavingPreferences(false);
+    }
+  };
 
   const month = getSelected();
 
@@ -139,6 +194,15 @@ export default function DashboardPage() {
 
   return (
     <div data-tutorial-page-ready="dashboard" className="space-y-6 animate-page-enter">
+      {isPro && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/15 bg-primary-subtle/70 px-4 py-3 dark:bg-primary/10">
+          <div>
+            <p className="text-sm font-bold text-primary-dark dark:text-primary-light">Dashboard Pro personalizado</p>
+            <p className="text-xs text-slate-600 dark:text-zinc-400">Escolha seções e tipos de gráfico; as preferências ficam salvas na sua conta.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={openPreferences}>Personalizar Dashboard</Button>
+        </div>
+      )}
       {/* Saldo em destaque + demais valores */}
       <div data-tutorial="dashboard-summary" className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-4">
         {/* Hero: saldo atual */}
@@ -262,7 +326,8 @@ export default function DashboardPage() {
         </Card>
 
         {/* Alertas */}
-        <Card>
+        {preferences.showAlerts && (
+          <Card>
           <CardHeader title="Alertas" subtitle={`${activeAlerts.length} ativo(s)`} />
           {activeAlerts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -280,12 +345,20 @@ export default function DashboardPage() {
               ))}
             </ul>
           )}
-        </Card>
+          </Card>
+        )}
 
         {/* Recomendações */}
-        <Card>
-          <CardHeader title="Recomendações" />
-          {(data.recommendations ?? []).length === 0 ? (
+        {preferences.showRecommendations && (
+          <Card>
+          <CardHeader title="Recomendações" actions={!isPro ? <Badge variant="purple">PRO</Badge> : null} />
+          {!isPro ? (
+            <div className="rounded-2xl border border-primary/20 bg-primary-subtle p-4 dark:bg-primary/10">
+              <p className="text-sm font-bold text-primary-dark dark:text-primary-light">Dicas personalizadas com base nos seus dados</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-zinc-400">O Básico mantém alertas e controle completo. O Pro analisa padrões e sugere ações para melhorar seu mês.</p>
+              <Link to="/plan" className="mt-3 inline-flex text-xs font-bold text-primary-dark hover:underline dark:text-primary-light">Conhecer o Pro →</Link>
+            </div>
+          ) : (data.recommendations ?? []).length === 0 ? (
             <EmptyState icon="💡" title="Sem recomendações" description="Continue usando o sistema para gerar recomendações personalizadas." />
           ) : (
             <ul className="space-y-2">
@@ -297,7 +370,9 @@ export default function DashboardPage() {
               ))}
             </ul>
           )}
-        </Card>
+          </Card>
+        )}
+
       </div>
 
       {/* Comprometimento + Cartões + Vencimentos */}
@@ -326,7 +401,8 @@ export default function DashboardPage() {
           </Card>
         )}
 
-        <Card>
+        {preferences.showCards && (
+          <Card>
           <CardHeader title="Cartões de Crédito" />
           {(data.cards ?? []).length === 0
             ? <EmptyState icon="▣" title="Sem cartões" description="Cadastre um cartão de crédito." />
@@ -351,7 +427,8 @@ export default function DashboardPage() {
                   );
                 })}
               </div>}
-        </Card>
+          </Card>
+        )}
 
         <Card>
           <CardHeader title="Próximos Vencimentos" subtitle={`${data.pendingExpensesCount} pendente(s)`} />
@@ -379,7 +456,8 @@ export default function DashboardPage() {
 
       {/* Gráficos */}
       <div className="auto-grid-comfortable">
-        <Card className="lg:col-span-1">
+        {preferences.showSummaryChart && (
+          <Card className="lg:col-span-1">
           <CardHeader title="Receitas × Despesas" subtitle="Alterne a leitura do mês" actions={<SegmentedControl value={summaryChart} onChange={setSummaryChart} options={[{ value:'bars', label:'Barras', icon:'▥' }, { value:'area', label:'Fluxo', icon:'⌁' }]} />} />
           <div className="h-52">
             <ResponsiveContainer width="100%" height="100%">
@@ -410,12 +488,16 @@ export default function DashboardPage() {
               )}
             </ResponsiveContainer>
           </div>
-        </Card>
+          </Card>
+        )}
 
-        <Card className="lg:col-span-1">
-          <CardHeader title="Projeção 6 meses" subtitle="Líquido mensal e acumulado" actions={<SegmentedControl value={projectionView} onChange={setProjectionView} options={[{ value:'area', label:'Área' }, { value:'line', label:'Linhas' }]} />} />
+        {preferences.showProjections && (
+          <Card className="lg:col-span-1">
+          <CardHeader title="Projeção 6 meses" subtitle="Líquido mensal e acumulado" actions={isPro ? <SegmentedControl value={projectionView} onChange={setProjectionView} options={[{ value:'area', label:'Área' }, { value:'line', label:'Linhas' }]} /> : <Badge variant="purple">PRO</Badge>} />
           <div className="h-52">
-            {projData.length === 0
+            {!isPro
+              ? <div className="grid h-full place-items-center rounded-2xl border border-primary/20 bg-primary-subtle p-5 text-center dark:bg-primary/10"><div><Badge variant="purple">PRO</Badge><p className="mt-3 text-sm font-bold text-primary-dark dark:text-primary-light">Antecipe os próximos 6 meses</p><p className="mt-1 text-xs text-slate-600 dark:text-zinc-400">Veja saldo líquido e acumulado antes das decisões.</p><Link to="/plan" className="mt-3 inline-flex text-xs font-bold text-primary-dark hover:underline dark:text-primary-light">Liberar projeções →</Link></div></div>
+              : projData.length === 0
               ? <EmptyState icon="→" title="Sem dados de projeção" description="Feche o mês para gerar projeções futuras." />
               : <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={projData} margin={{ left: -20 }}>
@@ -443,9 +525,11 @@ export default function DashboardPage() {
                   </AreaChart>
                 </ResponsiveContainer>}
           </div>
-        </Card>
+          </Card>
+        )}
 
-        <Card className="lg:col-span-1">
+        {preferences.showCategoryChart && (
+          <Card className="lg:col-span-1">
           <CardHeader title="Por Categoria" subtitle="Próximos vencimentos" />
           <div className="h-52">
             {categoryPieData.length === 0
@@ -471,11 +555,12 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
-        </Card>
+          </Card>
+        )}
       </div>
 
       {/* Metas */}
-      {(data.goals ?? []).length > 0 && (
+      {preferences.showGoals && (data.goals ?? []).length > 0 && (
         <Card>
           <CardHeader title="Metas Ativas" />
           <div className="auto-grid-comfortable">
@@ -493,6 +578,60 @@ export default function DashboardPage() {
           </div>
         </Card>
       )}
+
+      <Modal open={preferencesOpen} onClose={() => setPreferencesOpen(false)} title="Personalizar Dashboard" size="lg">
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {[
+              ['showSummaryChart', 'Receitas × Despesas', 'Resumo visual do mês.'],
+              ['showAlerts', 'Alertas', 'Avisos de vencimento e risco.'],
+              ['showRecommendations', 'Recomendações', 'Sugestões financeiras Pro.'],
+              ['showCards', 'Cartões', 'Uso de limite no Dashboard.'],
+              ['showProjections', 'Projeções', 'Visão financeira dos próximos meses.'],
+              ['showCategoryChart', 'Categorias', 'Distribuição dos próximos vencimentos.'],
+              ['showGoals', 'Metas', 'Progresso das metas ativas.'],
+            ].map(([key, label, description]) => (
+              <ToggleSwitch
+                key={key}
+                checked={Boolean(preferenceDraft[key])}
+                onChange={(checked) => setPreferenceDraft((current) => ({ ...current, [key]: checked }))}
+                label={label}
+                description={description}
+              />
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 border-t border-border/70 pt-5 sm:grid-cols-2 dark:border-white/[0.07]">
+            <label className="block text-sm font-semibold text-slate-700 dark:text-zinc-300">
+              Gráfico de receitas e despesas
+              <select
+                className="input-base mt-1.5"
+                value={preferenceDraft.summaryChart}
+                onChange={(event) => setPreferenceDraft((current) => ({ ...current, summaryChart: event.target.value }))}
+              >
+                <option value="bars">Barras</option>
+                <option value="area">Fluxo em área</option>
+              </select>
+            </label>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-zinc-300">
+              Gráfico de projeção
+              <select
+                className="input-base mt-1.5"
+                value={preferenceDraft.projectionView}
+                onChange={(event) => setPreferenceDraft((current) => ({ ...current, projectionView: event.target.value }))}
+              >
+                <option value="area">Área</option>
+                <option value="line">Linhas</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="modal-actions">
+            <Button variant="outline" onClick={() => setPreferencesOpen(false)} disabled={savingPreferences}>Cancelar</Button>
+            <Button onClick={savePreferences} loading={savingPreferences}>Salvar personalização</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

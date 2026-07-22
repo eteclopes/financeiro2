@@ -24,6 +24,12 @@ const deactivateCard = asyncHandler(async (req, res) => {
   res.json({ card });
 });
 
+
+const activateCard = asyncHandler(async (req, res) => {
+  const card = await cardsService.activateCard(req.userId, parseBigIntParam(req.params.id, 'id'));
+  res.json({ card });
+});
+
 const deleteCard = asyncHandler(async (req, res) => {
   const result = await cardsService.deleteCard(req.userId, parseBigIntParam(req.params.id, 'id'));
   res.json(result);
@@ -56,6 +62,7 @@ module.exports = {
   createCard,
   updateCard,
   deactivateCard,
+  activateCard,
   deleteCard,
   createPurchase,
   listInvoices,

@@ -16,12 +16,15 @@ const NAV = [
   { to: '/savings', Icon: IconWallet, label: 'Reserva', group: 'main', tutorial: 'nav-savings' },
   { to: '/goals', Icon: IconGoal, label: 'Metas', group: 'main', tutorial: 'nav-goals' },
   { to: '/budgets', Icon: IconBudget, label: 'Orçamento', group: 'main', tutorial: 'nav-budgets' },
-  { to: '/simulator/purchase', Icon: IconSimulator, label: 'Simular compra', group: 'tools', tutorial: 'nav-purchase-simulator' },
-  { to: '/simulator/what-if', Icon: IconSimulator, label: 'Simulador E Se?', group: 'tools', tutorial: 'nav-what-if' },
+  { to: '/simulator/purchase', Icon: IconSimulator, label: 'Simular compra', group: 'tools', tutorial: 'nav-purchase-simulator', pro: true },
+  { to: '/simulator/what-if', Icon: IconSimulator, label: 'Simulador E Se?', group: 'tools', tutorial: 'nav-what-if', pro: true },
   { to: '/history', Icon: IconHistory, label: 'Histórico', group: 'tools', tutorial: 'nav-history' },
-  { to: '/trends', Icon: IconTrend, label: 'Tendências', group: 'tools', tutorial: 'nav-trends' },
-  { to: '/insights', Icon: IconBell, label: 'Alertas e dicas', group: 'tools', tutorial: 'nav-insights' },
+  { to: '/trends', Icon: IconTrend, label: 'Tendências', group: 'tools', tutorial: 'nav-trends', pro: true },
+  { to: '/insights', Icon: IconBell, label: 'Dicas inteligentes', group: 'tools', tutorial: 'nav-insights', pro: true },
   { to: '/reports', Icon: IconReport, label: 'Relatórios', group: 'tools', tutorial: 'nav-reports' },
+  { to: '/calculators', Icon: IconSimulator, label: 'Calculadoras', group: 'tools', pro: true },
+  { to: '/planning', Icon: IconTrend, label: 'Planejamento Pro', group: 'tools', pro: true },
+  { to: '/plan', Icon: IconTrend, label: 'Plano Pro', group: 'system' },
   { to: '/settings', Icon: IconSettings, label: 'Configurações', group: 'system', tutorial: 'nav-settings' },
 ];
 
@@ -104,7 +107,7 @@ export function Sidebar() {
                     <div className="mx-auto mb-3 h-px w-7 bg-slate-200 dark:bg-white/[0.07]" />
                   )}
                   <div className="space-y-1">
-                    {items.map(({ to, Icon, label, tutorial }) => (
+                    {items.map(({ to, Icon, label, tutorial, pro }) => (
                       <NavLink
                         key={to}
                         to={to}
@@ -118,7 +121,8 @@ export function Sidebar() {
                             <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg transition-all duration-200 ${isActive ? 'bg-primary/10 dark:bg-primary/20' : ''}`}>
                               <Icon size={18} strokeWidth={isActive ? 2.15 : 1.8} />
                             </span>
-                            <span className={`truncate transition-all duration-200 ${open ? 'opacity-100' : 'w-0 opacity-0'}`}>{label}</span>
+                            <span className={`min-w-0 flex-1 truncate transition-all duration-200 ${open ? 'opacity-100' : 'w-0 flex-none opacity-0'}`}>{label}</span>
+                            {pro && open && <span className="rounded-full bg-primary-subtle px-1.5 py-0.5 text-[9px] font-black tracking-wide text-primary-dark dark:bg-primary/15 dark:text-primary-hover">PRO</span>}
                           </>
                         )}
                       </NavLink>
@@ -136,7 +140,10 @@ export function Sidebar() {
               {user?.name?.[0]?.toUpperCase() ?? 'U'}
             </div>
             <div className={`min-w-0 flex-1 transition-all duration-200 ${open ? 'opacity-100' : 'w-0 flex-none opacity-0'}`}>
-              <p className="truncate text-xs font-bold text-slate-800 dark:text-zinc-100">{user?.name}</p>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <p className="truncate text-xs font-bold text-slate-800 dark:text-zinc-100">{user?.name}</p>
+                <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-black ${user?.isPro ? 'bg-success-subtle text-success-dark dark:bg-success/10 dark:text-success-light' : 'bg-slate-200 text-slate-600 dark:bg-white/10 dark:text-zinc-400'}`}>{user?.isPro ? 'PRO' : 'BÁSICO'}</span>
+              </div>
               <button onClick={handleLogout} className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-slate-400 transition-colors hover:text-danger dark:text-zinc-500 dark:hover:text-danger-light">
                 <IconLogout size={11} /> Sair da conta
               </button>

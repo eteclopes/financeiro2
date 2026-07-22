@@ -101,6 +101,25 @@ enum SimulationType {
   increase_income
 }
 
+enum PlanTier {
+  basic
+  pro
+}
+
+enum PlanSource {
+  basic
+  stripe_lifetime
+  manual_test
+}
+
+enum BillingPurchaseStatus {
+  pending
+  paid
+  failed
+  expired
+  refunded
+}
+
 // ---------------- MODELS ----------------
 
 model User {
@@ -108,6 +127,11 @@ model User {
   name         String   @db.VarChar(120)
   email        String   @unique @db.VarChar(190)
   passwordHash String   @map("password_hash") @db.VarChar(255)
+  plan         PlanTier @default(basic)
+  planSource   PlanSource @default(basic) @map("plan_source")
+  planGrantedAt DateTime? @map("plan_granted_at")
+  planExpiresAt DateTime? @map("plan_expires_at")
+  stripeCustomerId String? @unique @map("stripe_customer_id") @db.VarChar(255)
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -128,6 +152,8 @@ model User {
   financialHealthScores FinancialHealthScore[]
   auditLogs          AuditLog[]
   simulations        Simulation[]
+  billingPurchases   BillingPurchase[]
+  dashboardPreference DashboardPreference?
 
   @@map("users")
 }
@@ -531,3 +557,53 @@ model SimulationResult {
   @@unique([simulationId, monthIndex])
   @@map("simulation_results")
 }
+
+model DashboardPreference {
+  userId              BigInt   @id @map("user_id")
+  showSummaryChart    Boolean  @default(true) @map("show_summary_chart")
+  showAlerts          Boolean  @default(true) @map("show_alerts")
+  showRecommendations Boolean  @default(true) @map("show_recommendations")
+  showCards           Boolean  @default(true) @map("show_cards")
+  showProjections     Boolean  @default(true) @map("show_projections")
+  showCategoryChart   Boolean  @default(true) @map("show_category_chart")
+  showGoals           Boolean  @default(true) @map("show_goals")
+  summaryChart        String   @default("bars") @map("summary_chart") @db.VarChar(20)
+  projectionView      String   @default("area") @map("projection_view") @db.VarChar(20)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("dashboard_preferences")
+}
+
+model BillingPurchase {
+  id                BigInt                 @id @default(autoincrement())
+  userId            BigInt                 @map("user_id")
+  checkoutSessionId String                 @unique @map("checkout_session_id") @db.VarChar(255)
+  paymentIntentId   String?                @unique @map("payment_intent_id") @db.VarChar(255)
+  customerId        String?                @map("customer_id") @db.VarChar(255)
+  priceId           String                 @map("price_id") @db.VarChar(255)
+  amountTotal       Int?                   @map("amount_total")
+  currency          String?                @db.VarChar(12)
+  status            BillingPurchaseStatus  @default(pending)
+  paidAt            DateTime?              @map("paid_at")
+  refundedAt        DateTime?              @map("refunded_at")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@map("billing_purchases")
+}
+
+model StripeEvent {
+  id          BigInt   @id @default(autoincrement())
+  eventId     String   @unique @map("event_id") @db.VarChar(255)
+  type        String   @db.VarChar(120)
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@map("stripe_events")
+}
+

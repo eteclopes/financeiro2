@@ -11,9 +11,14 @@ const { getAverageRecentIncome } = require('../_shared/financialMetrics');
 const { getBalanceAsOf } = require('../_shared/balance');
 const { monthDateRange, todayUtcDate } = require('../../utils/dateTime');
 const { round2 } = require('../../utils/math');
+const { getUserPlan } = require('../plans/plans.service');
 
 async function getDashboard(userId, monthId) {
-  const month = await monthsService.getMonthOrThrow(userId, monthId);
+  const [month, planInfo] = await Promise.all([
+    monthsService.getMonthOrThrow(userId, monthId),
+    getUserPlan(userId),
+  ]);
+  const { entitlements } = planInfo;
   const { start, end } = monthDateRange(month.year, month.month);
   const dayBeforeStart = new Date(start.getTime() - 1);
   const today = todayUtcDate();
@@ -99,7 +104,9 @@ async function getDashboard(userId, monthId) {
     goalsService.listGoals(userId),
     financialHealthService.getOrComputeHealthScore(userId, monthId),
     alertsService.refreshAlerts(userId, monthId),
-    recommendationsService.generateRecommendations(userId, monthId),
+    entitlements.isPro
+      ? recommendationsService.generateRecommendations(userId, monthId)
+      : Promise.resolve({ recommendations: [] }),
     getAverageRecentIncome(userId, monthId, 3),
   ]);
 
@@ -128,6 +135,10 @@ async function getDashboard(userId, monthId) {
     financialHealthScore,
     alerts,
     recommendations: recommendations.recommendations,
+    proAccess: {
+      recommendations: entitlements.features.advancedRecommendations,
+      projections: entitlements.features.futureProjections,
+    },
     commitment: {
       ratio: commitmentRatio,
       band: commitmentBand,

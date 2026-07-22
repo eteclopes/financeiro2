@@ -16,6 +16,7 @@ router.get('/', controller.listCards);
 router.post('/', validate(createCardSchema), controller.createCard);
 router.patch('/:id', validate(updateCardSchema), controller.updateCard);
 router.patch('/:id/deactivate', controller.deactivateCard);
+router.patch('/:id/activate', controller.activateCard);
 router.delete('/:id', controller.deleteCard);
 
 router.post('/:id/purchases', validate(createCardPurchaseSchema), controller.createPurchase);

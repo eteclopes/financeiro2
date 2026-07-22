@@ -1,0 +1,14 @@
+=== Backend JavaScript syntax ===
+OK: 124 arquivos JS
+=== Frontend parse + relative imports ===
+OK: 55 arquivos; 0 erros; 0 imports relativos ausentes
+=== JSON manifests ===
+OK: package.json/package-lock.json
+=== Prisma schema/migration markers ===
+OK: schema e migração contêm planos, cobrança, eventos e preferências
+=== Access-control route markers ===
+OK: APIs avançadas protegidas; relatório básico acessível; ativação/desativação de cartões montadas
+=== Secret scan ===
+OK: nenhum segredo Stripe/chave privada real encontrado
+=== Runtime isolated checks ===
+Runtime checks passed: 44

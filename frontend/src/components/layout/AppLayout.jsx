@@ -28,6 +28,9 @@ const ROUTE_TITLES = {
   '/trends': 'Tendências',
   '/insights': 'Alertas e recomendações',
   '/reports': 'Relatórios',
+  '/calculators': 'Calculadoras financeiras',
+  '/planning': 'Central de planejamento',
+  '/plan': 'Plano Pro',
   '/settings': 'Configurações',
 };
 

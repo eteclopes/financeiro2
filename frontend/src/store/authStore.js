@@ -61,6 +61,12 @@ export const useAuthStore = create((set) => ({
     return data.user;
   },
 
+  async reloadUser() {
+    const { data } = await api.get('/auth/me');
+    set({ user: data.user, status: 'authenticated', error: null });
+    return data.user;
+  },
+
   async logout() {
     try { await api.post('/auth/logout'); } catch {}
     setAccessToken(null);

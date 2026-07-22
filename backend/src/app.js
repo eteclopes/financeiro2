@@ -12,6 +12,7 @@ const errorHandler = require('./middlewares/errorHandler');
 const AppError    = require('./utils/AppError');
 const { globalLimiter } = require('./middlewares/rateLimiters');
 const { parseConfiguredOrigins, createOriginPolicy } = require('./utils/corsOrigins');
+const billingController = require('./modules/billing/billing.controller');
 
 const app = express();
 
@@ -46,11 +47,18 @@ app.use(cors({
   optionsSuccessStatus: 204,
 }));
 
+// ── Webhook Stripe / body parsing ────────────────────────────────────────────
+// A assinatura do Stripe é calculada sobre os bytes originais. Por isso este
+// endpoint precisa ser montado ANTES do express.json e receber Buffer bruto.
+// Ele também fica antes do rate limit global: webhooks são servidor-servidor,
+// possuem assinatura criptográfica e precisam aceitar as retentativas do
+// Stripe sem risco de um pico da API bloquear a confirmação do pagamento.
+app.post('/api/billing/webhook', express.raw({ type: 'application/json', limit: '1mb' }), billingController.webhook);
+
 // ── Rate limit global ────────────────────────────────────────────────────────
 app.set('trust proxy', 1);
 app.use(globalLimiter);
 
-// ── Body parsing ─────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 

@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useMonthStore } from '../store/monthStore';
-import { dashboardApi } from '../lib/services';
+import { reportsApi, dashboardApi } from '../lib/services';
 import { formatCurrency, formatMonthLabel } from '../lib/format';
 import { Card, CardHeader, Badge, Button, ProgressBar } from '../components/ui/index';
 import { useUIStore } from '../store/uiStore';
 import { useThemeStore } from '../store/themeStore';
+import { useAuthStore } from '../store/authStore';
 
 export default function ReportsPage() {
   const selectedMonthId = useMonthStore((s) => s.selectedMonthId);
@@ -13,14 +15,15 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const toast = useUIStore((s) => s);
   const theme = useThemeStore((s) => s.theme);
+  const isPro = useAuthStore((s) => Boolean(s.user?.isPro));
 
   const load = useCallback(async () => {
     if (!selectedMonthId) return;
     setLoading(true);
-    try { const r = await dashboardApi.get(selectedMonthId); setData(r.data); }
+    try { const r = await reportsApi.get(selectedMonthId); setData(r.data); }
     catch { toast.error('Erro ao carregar relatório.'); }
     finally { setLoading(false); }
-  }, [selectedMonthId]);
+  }, [selectedMonthId, isPro]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -38,6 +41,48 @@ export default function ReportsPage() {
 
   const SCORE_COLOR = (s) => s >= 75 ? '#16A34A' : s >= 50 ? '#F59E0B' : '#EF4444';
 
+  function downloadCsv() {
+    // Planilhas podem interpretar células iniciadas por =, +, - ou @ como
+    // fórmulas, mesmo quando o valor está entre aspas. Prefixar texto
+    // potencialmente perigoso impede CSV Injection sem alterar números.
+    const escape = (value) => {
+      const raw = String(value ?? '');
+      const safe = typeof value === 'string' && /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+      return `"${safe.replaceAll('\"', '""')}"`;
+    };
+    const rows = [
+      ['Relatório FinanceHub', month ? formatMonthLabel(month) : ''],
+      [],
+      ['Indicador', 'Valor'],
+      ['Receita Total', data.incomeTotal],
+      ['Despesas Previstas', data.expensesPlanned],
+      ['Despesas Pagas', data.expensesPaid],
+      ['Saldo Atual', data.currentBalance],
+      ['Saldo Projetado', data.projectedBalance],
+      ['Dívida Ativa Total', data.totalActiveDebt],
+      ['Score de Saúde Financeira', health?.score ?? ''],
+      [],
+      ['Metas'],
+      ['Nome', 'Valor alvo', 'Acumulado', 'Progresso (%)', 'Prazo estimado (meses)'],
+      ...(data.goals ?? []).map((goal) => [goal.name, goal.targetValue, goal.progress, goal.percentage, goal.estimatedMonthsAtCurrentPace ?? '']),
+      [],
+      ['Cartões'],
+      ['Nome', 'Limite', 'Utilizado', 'Disponível', 'Ativo'],
+      ...(data.cards ?? []).map((card) => [card.name, card.limitValue, card.usedLimit, card.availableLimit, card.active === false ? 'Não' : 'Sim']),
+    ];
+    const csv = `\uFEFF${rows.map((row) => row.map(escape).join(';')).join('\n')}`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `financehub-relatorio-${month?.year ?? 'periodo'}-${String(month?.month ?? '').padStart(2, '0')}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    toast.success('Relatório CSV exportado.');
+  }
+
   return (
     <div data-tutorial-page-ready="reports" className="space-y-6 animate-page-enter" id="report-content">
       <div className="flex items-center justify-between flex-wrap gap-3 print:hidden">
@@ -45,8 +90,27 @@ export default function ReportsPage() {
           <h2 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 dark:text-white print:text-slate-900">Relatórios</h2>
           <p className="text-sm text-muted mt-0.5">{month ? formatMonthLabel(month) : ''}</p>
         </div>
-        <Button onClick={() => window.print()} variant="outline">Exportar PDF</Button>
+        {isPro ? (
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={downloadCsv} variant="outline">Exportar CSV</Button>
+            <Button onClick={() => window.print()} variant="outline">Exportar PDF</Button>
+          </div>
+        ) : (
+          <Badge variant="default">Relatório mensal gratuito</Badge>
+        )}
       </div>
+
+      {!isPro && (
+        <Card className="border-primary/20 print:hidden">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2"><p className="font-bold text-slate-950 dark:text-white">Relatórios avançados</p><Badge variant="purple">PRO</Badge></div>
+              <p className="mt-1 text-sm text-muted">Seu resumo mensal, saúde financeira, alertas, metas e cartões continuam no Básico. O Pro adiciona exportações e recomendações analíticas.</p>
+            </div>
+            <Link to="/plan" className="shrink-0 text-sm font-bold text-primary-dark hover:underline dark:text-primary-light">Conhecer o Pro →</Link>
+          </div>
+        </Card>
+      )}
 
       {/* ── Relatório Mensal ── */}
       <Card>

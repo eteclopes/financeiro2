@@ -114,6 +114,25 @@ export default function SettingsPage() {
       </Card>
 
 
+      {/* Plano */}
+      <Card>
+        <CardHeader
+          title="Plano da conta"
+          subtitle={user?.isPro ? 'Recursos avançados liberados.' : 'O Básico mantém o gestor completo; o Pro adiciona inteligência financeira.'}
+          actions={<Badge variant={user?.isPro ? 'success' : 'default'}>{user?.isPro ? 'PRO VITALÍCIO' : 'PLANO BÁSICO'}</Badge>}
+        />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted">
+            {user?.isPro
+              ? 'Simuladores, tendências, recomendações, relatórios e calculadoras estão disponíveis.'
+              : 'Você pode usar receitas, despesas, cartões, faturas, reserva, metas, histórico e orçamento normalmente.'}
+          </p>
+          <Button variant={user?.isPro ? 'outline' : 'primary'} onClick={() => navigate('/plan')}>
+            {user?.isPro ? 'Ver detalhes' : 'Conhecer o Pro'}
+          </Button>
+        </div>
+      </Card>
+
       {/* Aparência */}
       <Card>
         <CardHeader title="Aparência" subtitle="Escolha o tema que combina melhor com o ambiente." />

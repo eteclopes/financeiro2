@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const asyncHandler = require('../../utils/asyncHandler');
 const authenticate = require('../../middlewares/authenticate');
+const requirePro = require('../../middlewares/requirePro');
 const validate = require('../../middlewares/validate');
 const AppError = require('../../utils/AppError');
 const purchaseService = require('./purchaseSimulator.service');
@@ -10,7 +11,7 @@ const { previewSchema, saveSchema, scenarioInputMap } = require('./whatIfSimulat
 const { parseBigIntParam } = require('../../utils/parseParams');
 
 const router = Router();
-router.use(authenticate);
+router.use(authenticate, requirePro);
 
 // ---- Simulador de Compras (Módulo 3) ----
 

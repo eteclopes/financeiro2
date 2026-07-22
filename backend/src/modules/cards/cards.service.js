@@ -1,6 +1,7 @@
 const prisma = require('../../config/prisma');
 const AppError = require('../../utils/AppError');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
+const { getUserPlan } = require('../plans/plans.service');
 
 // Status que ainda "consomem" limite — uma vez paga, a parcela libera limite,
 // mesmo que o cartão físico real só libere no ciclo seguinte (simplificação
@@ -99,8 +100,30 @@ async function listCards(userId) {
   });
 }
 
+async function assertActiveCardSlot(userId, client) {
+  const { entitlements } = await getUserPlan(userId, client);
+  const activeLimit = entitlements.limits.activeCards;
+  if (!Number.isFinite(activeLimit)) return;
+  const activeCount = await client.card.count({ where: { userId, active: true } });
+  if (activeCount >= activeLimit) {
+    throw new AppError(
+      `O Plano Básico permite até ${activeLimit} cartões ativos. Arquive um cartão ou faça upgrade para o Pro.`,
+      403,
+      'PLAN_LIMIT_REACHED',
+      { resource: 'activeCards', limit: activeLimit, upgradePath: '/plan' }
+    );
+  }
+}
+
 async function createCard(userId, payload) {
-  const card = await prisma.card.create({ data: { userId, ...payload, active: true } });
+  const card = await prisma.$transaction(async (tx) => {
+    // Serializa criações e reativações simultâneas do mesmo usuário. Sem esse
+    // lock, duas requisições poderiam enxergar 1 cartão ativo e ambas ocupar
+    // a última vaga do Plano Básico.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${userId})`;
+    await assertActiveCardSlot(userId, tx);
+    return tx.card.create({ data: { userId, ...payload, active: true } });
+  });
   await recordAuditLog(userId, 'card', card.id, 'create', { newValue: card });
   return card;
 }
@@ -145,6 +168,26 @@ async function deactivateCard(userId, cardId) {
     return { before, updated };
   });
   await recordAuditLog(userId, 'card', cardId, 'deactivate', { oldValue: result.before, newValue: result.updated });
+  return result.updated;
+}
+
+
+async function activateCard(userId, cardId) {
+  const result = await prisma.$transaction(async (tx) => {
+    // Mantém a mesma serialização do createCard para que criar e reativar ao
+    // mesmo tempo nunca ultrapasse o limite do plano. O lock do cartão evita
+    // corrida com uma desativação/edição simultânea do mesmo registro.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${cardId})`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${userId})`;
+    const before = await getOwnedCardOrThrow(userId, cardId, tx);
+    if (before.active !== false) return { before, updated: before, changed: false };
+    await assertActiveCardSlot(userId, tx);
+    const updated = await tx.card.update({ where: { id: cardId }, data: { active: true } });
+    return { before, updated, changed: true };
+  });
+  if (result.changed) {
+    await recordAuditLog(userId, 'card', cardId, 'activate', { oldValue: result.before, newValue: result.updated });
+  }
   return result.updated;
 }
 
@@ -231,6 +274,7 @@ module.exports = {
   getOwnedCardOrThrow,
   updateCard,
   deactivateCard,
+  activateCard,
   deleteCard,
   computeUsedLimit,
   computeUsedLimitsByCard,

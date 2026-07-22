@@ -137,7 +137,13 @@ describe('updateProfile — edição do nome de exibição', () => {
     const result = await updateProfile(7n, { name: 'Novo Nome' });
 
     expect(prismaMock.user.update).toHaveBeenCalledWith({ where: { id: 7n }, data: { name: 'Novo Nome' } });
-    expect(result).toEqual({ id: 7n, name: 'Novo Nome', email: 'ana@teste.com', createdAt: result.createdAt });
+    expect(result).toMatchObject({
+      id: 7n,
+      name: 'Novo Nome',
+      email: 'ana@teste.com',
+      plan: 'basic',
+      isPro: false,
+    });
     expect(result.passwordHash).toBeUndefined();
   });
 

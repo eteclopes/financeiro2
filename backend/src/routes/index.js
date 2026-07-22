@@ -16,11 +16,19 @@ const simulatorsRoutes = require('../modules/simulators/simulators.routes');
 const recommendationsRoutes = require('../modules/recommendations/recommendations.routes');
 const behavioralAnalysisRoutes = require('../modules/behavioralAnalysis/behavioralAnalysis.routes');
 const historyRoutes = require('../modules/history/history.routes');
+const billingRoutes = require('../modules/billing/billing.routes');
+const calculatorsRoutes = require('../modules/calculators/calculators.routes');
+const reportsRoutes = require('../modules/reports/reports.routes');
+const planningRoutes = require('../modules/planning/planning.routes');
 const { heavyLimiter } = require('../middlewares/rateLimiters');
 
 const router = Router();
 
 router.use('/auth',               authRoutes);
+router.use('/billing',            billingRoutes);
+router.use('/calculators',        heavyLimiter, calculatorsRoutes);
+router.use('/reports',            heavyLimiter, reportsRoutes);
+router.use('/planning',           heavyLimiter, planningRoutes);
 router.use('/months',             monthsRoutes);
 router.use('/categories',         categoriesRoutes);
 router.use('/incomes',            incomesRoutes);
