@@ -189,14 +189,19 @@ export default function App() {
     const root = document.documentElement;
 
     const syncVisualViewport = () => {
-      const height = viewport?.height ?? window.innerHeight;
-      const offsetTop = viewport?.offsetTop ?? 0;
+      const keyboardOpen = viewport
+        ? window.innerWidth <= 1024 && window.innerHeight - viewport.height > 140
+        : false;
+
+      // Fora do teclado virtual, mudanças pequenas do visualViewport (barra do
+      // navegador mostrando/ocultando ou foco em checkbox) não devem deslocar
+      // o modal. Aplicar offsetTop nesses casos fazia o painel "pular" e podia
+      // cortar visualmente o cabeçalho ao alternar opções do formulário.
+      const height = keyboardOpen ? viewport.height : window.innerHeight;
+      const offsetTop = keyboardOpen ? viewport.offsetTop : 0;
+
       root.style.setProperty('--app-viewport-height', `${Math.round(height)}px`);
       root.style.setProperty('--app-viewport-offset-top', `${Math.round(offsetTop)}px`);
-
-      const keyboardOpen = viewport
-        ? window.innerHeight - viewport.height > 140
-        : false;
       document.body.dataset.keyboardOpen = keyboardOpen ? 'true' : 'false';
     };
 

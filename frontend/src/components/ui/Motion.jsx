@@ -119,23 +119,26 @@ export function SegmentedControl({ options, value, onChange, label = 'Selecionar
 }
 
 export function ToggleSwitch({ checked, onChange, label, description, disabled = false }) {
+  const descriptionId = useId();
+
   return (
-    <label className={`switch-row ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
-      <span className="min-w-0">
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-describedby={description ? descriptionId : undefined}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`switch-row ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+    >
+      <span className="min-w-0 text-left">
         <span className="block text-sm font-semibold text-slate-800 dark:text-zinc-200">{label}</span>
-        {description && <span className="mt-0.5 block text-xs text-slate-500 dark:text-zinc-500">{description}</span>}
+        {description && <span id={descriptionId} className="mt-0.5 block text-xs text-slate-500 dark:text-zinc-500">{description}</span>}
       </span>
-      <input
-        type="checkbox"
-        className="sr-only"
-        checked={checked}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
-      />
       <span className={`switch-track ${checked ? 'switch-track-on' : ''}`} aria-hidden="true">
         <span className="switch-thumb" />
       </span>
-    </label>
+    </button>
   );
 }
 

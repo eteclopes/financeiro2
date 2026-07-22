@@ -1185,3 +1185,102 @@ body[data-keyboard-open='true'] .modal-actions {
   from { opacity: 0; transform: translate3d(0, 18px, 0) scale(0.99); }
   to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
+
+/* ──────────────────────────────────────────────────────────
+   Modal stability pass V8 — conteúdo dinâmico sem saltos/cortes
+   ────────────────────────────────────────────────────────── */
+.modal-layer {
+  overflow: hidden;
+}
+
+.modal-panel {
+  /* O painel nunca participa da rolagem da página; somente o corpo interno. */
+  flex: 0 1 auto;
+  max-width: calc(100vw - 0.8rem);
+  contain: layout;
+}
+
+.modal-body {
+  min-height: 0;
+  overflow-anchor: none;
+  scrollbar-gutter: stable;
+}
+
+.switch-row {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.switch-row:focus-visible {
+  outline: 3px solid rgb(124 58 237 / 0.22);
+  outline-offset: 2px;
+  border-color: rgb(124 58 237 / 0.55);
+}
+
+.switch-row:disabled {
+  pointer-events: none;
+}
+
+@media (min-width: 640px) {
+  .modal-layer {
+    --modal-gutter-y: clamp(0.85rem, 3vh, 1.75rem);
+    align-items: flex-start;
+    padding-top: var(--modal-gutter-y);
+    padding-bottom: var(--modal-gutter-y);
+  }
+
+  /* Manter o topo ancorado evita a recentralização do painel quando campos,
+     mensagens de erro ou opções condicionais alteram a altura do formulário. */
+  .modal-panel {
+    margin-block: 0;
+    max-height: calc(var(--app-viewport-height, 100dvh) - var(--modal-gutter-y) - var(--modal-gutter-y));
+  }
+
+  .modal-panel.modal-size-sm {
+    max-height: min(620px, calc(var(--app-viewport-height, 100dvh) - var(--modal-gutter-y) - var(--modal-gutter-y)));
+  }
+
+  .modal-panel.modal-size-md {
+    max-height: min(700px, calc(var(--app-viewport-height, 100dvh) - var(--modal-gutter-y) - var(--modal-gutter-y)));
+  }
+
+  .modal-panel.modal-size-lg {
+    max-height: min(780px, calc(var(--app-viewport-height, 100dvh) - var(--modal-gutter-y) - var(--modal-gutter-y)));
+  }
+
+  .modal-panel.modal-size-xl {
+    max-height: min(860px, calc(var(--app-viewport-height, 100dvh) - var(--modal-gutter-y) - var(--modal-gutter-y)));
+  }
+}
+
+@media (max-width: 639px) {
+  .modal-layer {
+    --modal-mobile-gutter: max(0.4rem, env(safe-area-inset-top));
+    align-items: flex-start;
+    padding-top: var(--modal-mobile-gutter);
+    padding-bottom: max(0.4rem, env(safe-area-inset-bottom));
+  }
+
+  .modal-panel,
+  .modal-panel.modal-size-sm,
+  .modal-panel.modal-size-md,
+  .modal-panel.modal-size-lg,
+  .modal-panel.modal-size-xl {
+    max-height: calc(var(--app-viewport-height, 100dvh) - var(--modal-mobile-gutter) - max(0.4rem, env(safe-area-inset-bottom))) !important;
+    animation-name: modalStableSheetEnter;
+    transform-origin: top center;
+  }
+
+  .modal-header {
+    padding-top: max(0.68rem, env(safe-area-inset-top));
+  }
+}
+
+@keyframes modalStableSheetEnter {
+  from { opacity: 0; transform: translate3d(0, 10px, 0) scale(0.992); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
