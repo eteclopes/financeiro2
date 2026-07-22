@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMonthStore } from '../../store/monthStore';
 import { incomesApi, expensesApi, debtsApi, cardsApi, goalsApi, categoriesApi } from '../../lib/services';
 import { api, extractErrorMessage } from '../../lib/api';
@@ -69,18 +69,22 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
 
   const [incForm, setIncForm] = useState(createIncomeForm);
   const [incCats, setIncCats] = useState([]);
+  const [loadingIncCats, setLoadingIncCats] = useState(false);
 
   const [expenseKind, setExpenseKind] = useState('variable');
   const [expForm, setExpForm] = useState(createVariableForm);
   const [fixForm, setFixForm] = useState(createFixedForm);
   const [debtForm, setDebtForm] = useState(createDebtForm);
   const [expCats, setExpCats] = useState([]);
+  const [loadingExpCats, setLoadingExpCats] = useState(false);
 
   const [payTarget, setPayTarget] = useState(null);
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('pix');
 
   const [invoices, setInvoices] = useState([]);
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
+  const invoiceRequestId = useRef(0);
   const [invoiceTarget, setInvoiceTarget] = useState(null);
   const [invMethod, setInvMethod] = useState('pix');
 
@@ -93,58 +97,87 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   const activeCards = cards.filter((card) => card.active !== false);
   const activeGoals = goals.filter((goal) => !goal.status || goal.status === 'active');
 
-  async function openIncome() {
+  function openIncome() {
     const nextForm = createIncomeForm();
-    try {
-      const response = await categoriesApi.list('income');
-      const categories = response.data.categories ?? [];
-      setIncCats(categories);
-      nextForm.categoryId = defaultCategoryId(categories);
-    } catch {
-      setIncCats([]);
-    }
+    if (incCats.length > 0) nextForm.categoryId = defaultCategoryId(incCats);
+
+    // O modal abre primeiro; a rede nunca bloqueia a resposta visual do clique.
     setIncForm(nextForm);
     setModal('income');
+
+    if (incCats.length > 0 || loadingIncCats) return;
+    setLoadingIncCats(true);
+    categoriesApi.list('income')
+      .then((response) => {
+        const categories = response.data.categories ?? [];
+        setIncCats(categories);
+        const categoryId = defaultCategoryId(categories);
+        if (categoryId) {
+          setIncForm((current) => current.categoryId ? current : { ...current, categoryId });
+        }
+      })
+      .catch(() => setIncCats([]))
+      .finally(() => setLoadingIncCats(false));
   }
 
-  async function openExpense() {
+  function openExpense() {
     const variable = createVariableForm();
     const fixed = createFixedForm();
     const debt = createDebtForm();
-    try {
-      const response = await categoriesApi.list('expense');
-      const categories = response.data.categories ?? [];
-      const categoryId = defaultCategoryId(categories);
-      setExpCats(categories);
-      variable.categoryId = categoryId;
-      fixed.categoryId = categoryId;
-      debt.categoryId = categoryId;
-    } catch {
-      setExpCats([]);
+    const cachedCategoryId = defaultCategoryId(expCats);
+    if (cachedCategoryId) {
+      variable.categoryId = cachedCategoryId;
+      fixed.categoryId = cachedCategoryId;
+      debt.categoryId = cachedCategoryId;
     }
+
+    // Mantém a abertura instantânea e preenche as categorias assim que chegarem.
     setExpenseKind('variable');
     setExpForm(variable);
     setFixForm(fixed);
     setDebtForm(debt);
     setModal('expense');
+
+    if (expCats.length > 0 || loadingExpCats) return;
+    setLoadingExpCats(true);
+    categoriesApi.list('expense')
+      .then((response) => {
+        const categories = response.data.categories ?? [];
+        setExpCats(categories);
+        const categoryId = defaultCategoryId(categories);
+        if (!categoryId) return;
+        setExpForm((current) => current.categoryId ? current : { ...current, categoryId });
+        setFixForm((current) => current.categoryId ? current : { ...current, categoryId });
+        setDebtForm((current) => current.categoryId ? current : { ...current, categoryId });
+      })
+      .catch(() => setExpCats([]))
+      .finally(() => setLoadingExpCats(false));
   }
 
-  async function openFatura() {
-    const all = [];
-    for (const card of cards) {
-      try {
-        const response = await cardsApi.listInvoices(card.id);
-        (response.data.invoices ?? [])
-          .filter((invoice) => invoice.status !== 'paid')
-          .forEach((invoice) => all.push({ ...invoice, cardName: card.name }));
-      } catch {
-        // Um cartão com falha não impede o usuário de pagar as demais faturas.
-      }
-    }
-    setInvoices(all);
+  function openFatura() {
+    const requestId = ++invoiceRequestId.current;
+    setInvoices([]);
     setInvoiceTarget(null);
     setInvMethod('pix');
+    setLoadingInvoices(true);
     setModal('fatura');
+
+    // As faturas de todos os cartões são buscadas em paralelo. Antes, cada
+    // cartão esperava o anterior terminar, multiplicando o atraso percebido.
+    Promise.allSettled(cards.map(async (card) => {
+      const response = await cardsApi.listInvoices(card.id);
+      return (response.data.invoices ?? [])
+        .filter((invoice) => invoice.status !== 'paid')
+        .map((invoice) => ({ ...invoice, cardName: card.name }));
+    }))
+      .then((results) => {
+        if (requestId !== invoiceRequestId.current) return;
+        const all = results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
+        setInvoices(all);
+      })
+      .finally(() => {
+        if (requestId === invoiceRequestId.current) setLoadingInvoices(false);
+      });
   }
 
   async function openClose() {
@@ -439,7 +472,9 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
               categories={incCats}
               type="income"
               onCategoryCreated={(category) => setIncCats((current) => [...current, category])}
+              placeholder={loadingIncCats ? 'Carregando categorias...' : 'Selecione...'}
             />
+            {loadingIncCats && <p className="mt-1.5 text-xs text-muted">Carregando categorias sem bloquear o formulário...</p>}
           </FormGroup>
           <FormGroup label="Forma de recebimento">
             <ChoiceCards
@@ -501,7 +536,9 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                   categories={expCats}
                   type="expense"
                   onCategoryCreated={(category) => setExpCats((current) => [...current, category])}
+                  placeholder={loadingExpCats ? 'Carregando categorias...' : 'Selecione...'}
                 />
+                {loadingExpCats && <p className="mt-1.5 text-xs text-muted">Carregando categorias sem bloquear o formulário...</p>}
               </FormGroup>
               <FormGroup label="Forma de pagamento">
                 <ChoiceCards
@@ -571,7 +608,9 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                   categories={expCats}
                   type="expense"
                   onCategoryCreated={(category) => setExpCats((current) => [...current, category])}
+                  placeholder={loadingExpCats ? 'Carregando categorias...' : 'Selecione...'}
                 />
+                {loadingExpCats && <p className="mt-1.5 text-xs text-muted">Carregando categorias sem bloquear o formulário...</p>}
               </FormGroup>
               <FormGroup label="Forma de pagamento" required>
                 <ChoiceCards
@@ -621,7 +660,9 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                   categories={expCats}
                   type="expense"
                   onCategoryCreated={(category) => setExpCats((current) => [...current, category])}
+                  placeholder={loadingExpCats ? 'Carregando categorias...' : 'Selecione...'}
                 />
+                {loadingExpCats && <p className="mt-1.5 text-xs text-muted">Carregando categorias sem bloquear o formulário...</p>}
               </FormGroup>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <FormGroup label="Valor total" required>
@@ -716,7 +757,12 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
       {/* ── Pagar Fatura ── */}
       <Modal open={modal === 'fatura'} onClose={() => setModal(null)} title="Pagar Fatura do Cartão" size="sm">
         <div className="space-y-4">
-          {invoices.length === 0 ? (
+          {loadingInvoices ? (
+            <div className="py-5 text-center" aria-live="polite">
+              <p className="text-sm font-medium text-slate-700 dark:text-zinc-200">Buscando faturas...</p>
+              <p className="mt-1 text-xs text-muted">O formulário abriu imediatamente; os cartões estão sendo consultados em paralelo.</p>
+            </div>
+          ) : invoices.length === 0 ? (
             <p className="text-sm text-muted text-center py-4">Nenhuma fatura em aberto.</p>
           ) : (
             <>
