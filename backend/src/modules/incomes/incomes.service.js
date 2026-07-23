@@ -2,7 +2,6 @@ const prisma = require('../../config/prisma');
 const AppError = require('../../utils/AppError');
 const monthsService = require('../months/months.service');
 const { assertSufficientBalance, lockUserBalance } = require('../_shared/balance');
-const { todayUtcDate } = require('../../utils/dateTime');
 const { round2 } = require('../../utils/math');
 
 /**
@@ -113,12 +112,11 @@ async function updateIncome(userId, incomeId, payload) {
     const effectiveValue = payload.value !== undefined ? Number(payload.value) : Number(income.value);
     assertDateMatchesMonth(effectiveDate, income.month);
 
-    // Reduzir/apagar uma receita já disponível não pode deixar o caixa
-    // negativo depois de gastos que já foram registrados.
-    const today = todayUtcDate();
-    const oldImpact = income.incomeDate <= today ? Number(income.value) : 0;
-    const newImpact = effectiveDate <= today ? effectiveValue : 0;
-    const reduction = round2(oldImpact - newImpact);
+    // Toda receita salva impacta o saldo imediatamente. A data é apenas
+    // referência do lançamento dentro do mês selecionado; não agenda a
+    // liberação do dinheiro. Reduzir uma receita não pode deixar o caixa
+    // negativo depois de gastos já registrados.
+    const reduction = round2(Number(income.value) - effectiveValue);
     if (reduction > 0) await assertSufficientBalance(userId, reduction, tx);
 
     return tx.income.update({
@@ -146,9 +144,7 @@ async function deleteIncome(userId, incomeId) {
     const income = await getOwnedIncomeOrThrow(userId, incomeId, tx);
     monthsService.assertMonthIsOpen(income.month);
 
-    if (income.incomeDate <= todayUtcDate()) {
-      await assertSufficientBalance(userId, Number(income.value), tx);
-    }
+    await assertSufficientBalance(userId, Number(income.value), tx);
     return tx.income.delete({ where: { id: incomeId } });
   });
 }

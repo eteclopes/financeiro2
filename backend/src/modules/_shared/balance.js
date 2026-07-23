@@ -1,7 +1,6 @@
 const prisma = require('../../config/prisma');
 const AppError = require('../../utils/AppError');
 const { round2 } = require('../../utils/math');
-const { todayUtcDate } = require('../../utils/dateTime');
 
 async function getBalanceComponents(userId, client = prisma, asOf = null) {
   const dateFilter = asOf ? { lte: asOf } : undefined;
@@ -80,9 +79,11 @@ function calculateBalance(components) {
  * virada do mês: toda entrada e saída real participa do mesmo caixa.
  */
 async function getAvailableBalance(userId, client = prisma) {
-  // Dinheiro com data futura (por exemplo, uma receita recorrente já gerada
-  // para o próximo mês) ainda não está disponível para gastar hoje.
-  return calculateBalance(await getBalanceComponents(userId, client, todayUtcDate()));
+  // A data dos lançamentos é referência contábil/relatório. Quando uma
+  // operação real é salva, seu efeito no caixa é imediato. Por isso o saldo
+  // disponível considera todos os lançamentos já persistidos, inclusive uma
+  // receita recorrente gerada para o próximo mês.
+  return calculateBalance(await getBalanceComponents(userId, client));
 }
 
 async function getBalanceAsOf(userId, date, client = prisma) {

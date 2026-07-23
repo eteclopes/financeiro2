@@ -8,7 +8,7 @@ const alertsService = require('../alerts/alerts.service');
 const recommendationsService = require('../recommendations/recommendations.service');
 const { classifyCommitment } = require('../_shared/commitment');
 const { getAverageRecentIncome } = require('../_shared/financialMetrics');
-const { getBalanceAsOf } = require('../_shared/balance');
+const { getAvailableBalance, getBalanceAsOf } = require('../_shared/balance');
 const { monthDateRange, todayUtcDate } = require('../../utils/dateTime');
 const { round2 } = require('../../utils/math');
 const { getUserPlan } = require('../plans/plans.service');
@@ -75,7 +75,9 @@ async function getDashboard(userId, monthId) {
       _sum: { paidAmount: true },
     }),
     getBalanceAsOf(userId, dayBeforeStart),
-    getBalanceAsOf(userId, actualBalanceCutoff),
+    month.status === 'open'
+      ? getAvailableBalance(userId)
+      : getBalanceAsOf(userId, actualBalanceCutoff),
     getBalanceAsOf(userId, end),
   ]);
 

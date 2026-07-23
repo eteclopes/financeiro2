@@ -4,7 +4,7 @@ import { useMonthStore } from '../store/monthStore';
 import { goalsApi } from '../lib/services';
 import { extractErrorMessage } from '../lib/api';
 import { formatCurrency } from '../lib/format';
-import { localDateInputValue, apiDateToInput } from '../lib/date';
+import { ledgerMonthDateInputValue, ledgerMonthDateRange, apiDateToInput } from '../lib/date';
 import { Card, Badge, Button, EmptyState, ProgressBar } from '../components/ui/index';
 import { Modal, FormGroup, Input } from '../components/ui/Modal';
 import { useUIStore } from '../store/uiStore';
@@ -90,6 +90,7 @@ function GoalCard({ goal, theme, onContribute, onEdit, onCancel }) {
 
 export default function GoalsPage() {
   const selectedMonthId = useMonthStore((s) => s.selectedMonthId);
+  const selectedMonth = useMonthStore((s) => s.months.find((month) => String(month.id) === String(s.selectedMonthId)) ?? null);
   const [goals, setGoals]     = useState([]);
   const [loading, setLoading] = useState(true);
   const [goalModal, setGoalModal]       = useState(false);
@@ -100,7 +101,7 @@ export default function GoalsPage() {
   const [cancelling, setCancelling] = useState(false);
   const [goalForm, setGoalForm]   = useState({ name:'', description:'', targetValue:'', targetDate:'' });
   const [editGoalForm, setEditGoalForm] = useState({ name:'', description:'', targetValue:'', targetDate:'' });
-  const [contribForm, setContribForm] = useState({ value:'', date: localDateInputValue() });
+  const [contribForm, setContribForm] = useState(() => ({ value:'', date: ledgerMonthDateInputValue(selectedMonth) }));
   const [refundContributions, setRefundContributions] = useState(false);
   const toast = useUIStore((s) => s);
 
@@ -167,6 +168,7 @@ export default function GoalsPage() {
     finally { setCancelling(false); }
   }
 
+  const selectedMonthDateRange = ledgerMonthDateRange(selectedMonth);
   const active    = goals.filter((g) => g.status === 'active');
   const completed = goals.filter((g) => g.status === 'completed');
   const cancelled = goals.filter((g) => g.status === 'cancelled');
@@ -179,7 +181,7 @@ export default function GoalsPage() {
 
   function openContribute(goal) {
     setContribTarget(goal);
-    setContribForm({ value: '', date: localDateInputValue() });
+    setContribForm({ value: '', date: ledgerMonthDateInputValue(selectedMonth) });
   }
 
   function openCancel(goal) {
@@ -294,7 +296,7 @@ export default function GoalsPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Valor" required><Input type="number" min="0" step="0.01" value={contribForm.value} onChange={(e) => setContribForm({...contribForm,value:e.target.value})} /></FormGroup>
-            <FormGroup label="Data"><Input type="date" value={contribForm.date} onChange={(e) => setContribForm({...contribForm,date:e.target.value})} /></FormGroup>
+            <FormGroup label="Data"><Input type="date" min={selectedMonthDateRange.min} max={selectedMonthDateRange.max} value={contribForm.date} onChange={(e) => setContribForm({...contribForm,date:e.target.value})} /></FormGroup>
           </div>
           <p className="text-xs text-muted bg-subtle dark:bg-white/[0.04] p-3 rounded-xl">O valor será descontado do saldo atual do mês selecionado no sistema.</p>
           <div className="modal-actions">

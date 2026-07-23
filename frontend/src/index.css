@@ -1284,3 +1284,27 @@ body[data-keyboard-open='true'] .modal-actions {
   from { opacity: 0; transform: translate3d(0, 10px, 0) scale(0.992); }
   to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
+
+/* ──────────────────────────────────────────────────────────
+   Feedback acima dos modais — erros sempre visíveis
+   ────────────────────────────────────────────────────────── */
+.toast-layer {
+  position: fixed;
+  right: 0.75rem;
+  bottom: calc(5.8rem + env(safe-area-inset-bottom));
+  z-index: 1000;
+}
+
+@media (min-width: 640px) {
+  .toast-layer {
+    right: 1.5rem;
+    bottom: 1.5rem;
+  }
+}
+
+/* Durante um formulário aberto, o aviso vai para o topo. Assim ele não fica
+   escondido pelo painel nem cobre os botões fixos de salvar/cancelar. */
+body[data-modal-open='true'] .toast-layer {
+  top: calc(0.75rem + env(safe-area-inset-top));
+  bottom: auto;
+}

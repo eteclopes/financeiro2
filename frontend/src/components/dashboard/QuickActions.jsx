@@ -3,7 +3,7 @@ import { useMonthStore } from '../../store/monthStore';
 import { incomesApi, expensesApi, debtsApi, cardsApi, goalsApi, categoriesApi } from '../../lib/services';
 import { api, extractErrorMessage } from '../../lib/api';
 import { formatCurrency } from '../../lib/format';
-import { localDateInputValue } from '../../lib/date';
+import { ledgerMonthDateInputValue, ledgerMonthDateRange } from '../../lib/date';
 import { Button } from '../ui/index';
 import { ChoiceCards, ToggleSwitch } from '../ui/Motion';
 import { Modal, FormGroup, Input, Select } from '../ui/Modal';
@@ -35,13 +35,12 @@ const EXPENSE_KIND_OPTIONS = [
   { value: 'debt', label: 'Dívida', icon: '≋', description: 'Parcelamento ou financiamento', tone: 'choice-card-icon-warning' },
 ];
 
-const today = () => localDateInputValue();
-const createIncomeForm = () => ({
+const createIncomeForm = (month) => ({
   description: '', value: '', categoryId: '', paymentMethod: 'pix',
-  origin: 'digital', date: today(), observation: '', recurring: false,
+  origin: 'digital', date: ledgerMonthDateInputValue(month), observation: '', recurring: false,
 });
-const createVariableForm = () => ({
-  description: '', value: '', categoryId: '', date: today(),
+const createVariableForm = (month) => ({
+  description: '', value: '', categoryId: '', date: ledgerMonthDateInputValue(month),
   paymentMethod: 'pix', paid: true, cardId: '', observation: '',
 });
 const createFixedForm = () => ({
@@ -60,6 +59,7 @@ function defaultCategoryId(categories = []) {
 
 export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goals = [], monthStatus }) {
   const selectedMonthId = useMonthStore((s) => s.selectedMonthId);
+  const selectedMonth = useMonthStore((s) => s.months.find((month) => String(month.id) === String(s.selectedMonthId)) ?? null);
   const refreshMonths   = useMonthStore((s) => s.refreshMonths);
   const selectMonth     = useMonthStore((s) => s.selectMonth);
   const toast           = useUIStore((s) => s);
@@ -67,12 +67,12 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   const [modal, setModal]   = useState(null);
   const [saving, setSaving] = useState(false);
 
-  const [incForm, setIncForm] = useState(createIncomeForm);
+  const [incForm, setIncForm] = useState(() => createIncomeForm(selectedMonth));
   const [incCats, setIncCats] = useState([]);
   const [loadingIncCats, setLoadingIncCats] = useState(false);
 
   const [expenseKind, setExpenseKind] = useState('variable');
-  const [expForm, setExpForm] = useState(createVariableForm);
+  const [expForm, setExpForm] = useState(() => createVariableForm(selectedMonth));
   const [fixForm, setFixForm] = useState(createFixedForm);
   const [debtForm, setDebtForm] = useState(createDebtForm);
   const [expCats, setExpCats] = useState([]);
@@ -89,7 +89,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   const [invMethod, setInvMethod] = useState('pix');
 
   const [goalTarget, setGoalTarget] = useState(null);
-  const [contribForm, setContribForm] = useState({ value: '', date: today() });
+  const [contribForm, setContribForm] = useState(() => ({ value: '', date: ledgerMonthDateInputValue(selectedMonth) }));
 
   const [preview, setPreview] = useState(null);
   const [closing, setClosing] = useState(false);
@@ -98,7 +98,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   const activeGoals = goals.filter((goal) => !goal.status || goal.status === 'active');
 
   function openIncome() {
-    const nextForm = createIncomeForm();
+    const nextForm = createIncomeForm(selectedMonth);
     if (incCats.length > 0) nextForm.categoryId = defaultCategoryId(incCats);
 
     // O modal abre primeiro; a rede nunca bloqueia a resposta visual do clique.
@@ -121,7 +121,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   }
 
   function openExpense() {
-    const variable = createVariableForm();
+    const variable = createVariableForm(selectedMonth);
     const fixed = createFixedForm();
     const debt = createDebtForm();
     const cachedCategoryId = defaultCategoryId(expCats);
@@ -410,12 +410,14 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     }
   }
 
+  const selectedMonthDateRange = ledgerMonthDateRange(selectedMonth);
+
   const ACTIONS = [
     { Icon: IconIncome, label: 'Receita', iconBg: 'bg-primary-muted dark:bg-primary/20', iconColor: 'text-primary-dark dark:text-primary-light', onClick: openIncome },
     { Icon: IconExpense, label: 'Despesa', iconBg: 'bg-danger-muted dark:bg-danger/20', iconColor: 'text-danger-dark dark:text-danger-light', onClick: openExpense },
     { Icon: IconCheck, label: 'Pagar conta', iconBg: 'bg-info-muted dark:bg-info/20', iconColor: 'text-info-dark dark:text-info-light', onClick: () => { setPayTarget(null); setPayAmount(''); setPayMethod('pix'); setModal('pay'); } },
     { Icon: IconCard, label: 'Fatura', iconBg: 'bg-warning-muted dark:bg-warning/20', iconColor: 'text-warning-dark dark:text-warning-light', onClick: openFatura },
-    { Icon: IconGoal, label: 'Meta', iconBg: 'bg-purple-100 dark:bg-accentpurple/20', iconColor: 'text-purple-700 dark:text-accentpurple-light', onClick: () => { setGoalTarget(null); setContribForm({ value: '', date: today() }); setModal('goal'); } },
+    { Icon: IconGoal, label: 'Meta', iconBg: 'bg-purple-100 dark:bg-accentpurple/20', iconColor: 'text-purple-700 dark:text-accentpurple-light', onClick: () => { setGoalTarget(null); setContribForm({ value: '', date: ledgerMonthDateInputValue(selectedMonth) }); setModal('goal'); } },
     ...(monthStatus === 'open'
       ? [{ Icon: IconAlert, label: 'Fechar mês', iconBg: 'bg-gray-100 dark:bg-white/10', iconColor: 'text-gray-600 dark:text-zinc-300', onClick: openClose }]
       : []
@@ -461,7 +463,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
               <Input type="number" min="0" step="0.01" value={incForm.value} onChange={(event) => setIncForm({ ...incForm, value: event.target.value })} placeholder="0,00" />
             </FormGroup>
             <FormGroup label="Data" required>
-              <Input type="date" value={incForm.date} onChange={(event) => setIncForm({ ...incForm, date: event.target.value })} />
+              <Input type="date" min={selectedMonthDateRange.min} max={selectedMonthDateRange.max} value={incForm.date} onChange={(event) => setIncForm({ ...incForm, date: event.target.value })} />
             </FormGroup>
           </div>
           <FormGroup label="Categoria" required>
@@ -525,7 +527,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                   <Input type="number" min="0" step="0.01" value={expForm.value} onChange={(event) => setExpForm({ ...expForm, value: event.target.value })} />
                 </FormGroup>
                 <FormGroup label="Data" required>
-                  <Input type="date" value={expForm.date} onChange={(event) => setExpForm({ ...expForm, date: event.target.value })} />
+                  <Input type="date" min={selectedMonthDateRange.min} max={selectedMonthDateRange.max} value={expForm.date} onChange={(event) => setExpForm({ ...expForm, date: event.target.value })} />
                 </FormGroup>
               </div>
               <FormGroup label="Categoria" required>
@@ -828,7 +830,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                   <Input type="number" min="0" step="0.01" value={contribForm.value} onChange={(event) => setContribForm({ ...contribForm, value: event.target.value })} placeholder={formatCurrency(0)} />
                 </FormGroup>
                 <FormGroup label="Data">
-                  <Input type="date" value={contribForm.date} onChange={(event) => setContribForm({ ...contribForm, date: event.target.value })} />
+                  <Input type="date" min={selectedMonthDateRange.min} max={selectedMonthDateRange.max} value={contribForm.date} onChange={(event) => setContribForm({ ...contribForm, date: event.target.value })} />
                 </FormGroup>
               </div>
               <p className="text-xs text-muted bg-subtle dark:bg-white/[0.04] p-3 rounded-xl">

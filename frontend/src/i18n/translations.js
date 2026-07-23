@@ -69,6 +69,35 @@ const EXACT = {
   'Simulador de Compras': { en: 'Purchase Simulator', es: 'Simulador de compras', ru: 'Симулятор покупок', fr: 'Simulateur d’achat', de: 'Kaufsimulator' },
   'Simulador "E Se?"': { en: 'What-if Simulator', es: 'Simulador «¿Y si?»', ru: 'Симулятор «Что если?»', fr: 'Simulateur « Et si ? »', de: 'Was-wäre-wenn-Simulator' },
   'Ações Rápidas': { en: 'Quick Actions', es: 'Acciones rápidas', ru: 'Быстрые действия', fr: 'Actions rapides', de: 'Schnellaktionen' },
+  'Receita': { en: 'Income', es: 'Ingreso', ru: 'Доход' },
+  'Despesa': { en: 'Expense', es: 'Gasto', ru: 'Расход' },
+  'Meta': { en: 'Goal', es: 'Meta', ru: 'Цель' },
+  'Pagar conta': { en: 'Pay bill', es: 'Pagar cuenta', ru: 'Оплатить счёт' },
+  'Fechar mês': { en: 'Close month', es: 'Cerrar mes', ru: 'Закрыть месяц' },
+  'Pago': { en: 'Paid', es: 'Pagado', ru: 'Оплачено' },
+  'Pendente': { en: 'Pending', es: 'Pendiente', ru: 'Ожидает оплаты' },
+  'Parcial': { en: 'Partial', es: 'Parcial', ru: 'Частично' },
+  'Atrasado': { en: 'Overdue', es: 'Atrasado', ru: 'Просрочено' },
+  'Conta': { en: 'Account', es: 'Cuenta', ru: 'Аккаунт' },
+  'Faturas': { en: 'Bills', es: 'Facturas', ru: 'Счета' },
+  'Categorias': { en: 'Categories', es: 'Categorías', ru: 'Категории' },
+  'Valor': { en: 'Amount', es: 'Importe', ru: 'Сумма' },
+  'Data': { en: 'Date', es: 'Fecha', ru: 'Дата' },
+  'Forma': { en: 'Method', es: 'Forma', ru: 'Способ' },
+  'Origem': { en: 'Source', es: 'Origen', ru: 'Источник' },
+  'Recorrente': { en: 'Recurring', es: 'Recurrente', ru: 'Регулярный' },
+  'Total': { en: 'Total', es: 'Total', ru: 'Итого' },
+  'Entrada': { en: 'Down payment', es: 'Entrada', ru: 'Первоначальный взнос' },
+  'Parcelas': { en: 'Installments', es: 'Cuotas', ru: 'Платежи' },
+  'Fechar': { en: 'Close', es: 'Cerrar', ru: 'Закрыть' },
+  'Limite mensal': { en: 'Monthly limit', es: 'Límite mensual', ru: 'Месячный лимит' },
+  'Gráfico de receitas e despesas': { en: 'Income and expense chart', es: 'Gráfico de ingresos y gastos', ru: 'График доходов и расходов' },
+  'Gráfico de projeção': { en: 'Projection chart', es: 'Gráfico de proyección', ru: 'График прогноза' },
+  'Escolha o idioma da interface. A alteração é aplicada imediatamente.': { en: 'Choose the interface language. The change is applied immediately.', es: 'Elige el idioma de la interfaz. El cambio se aplica de inmediato.', ru: 'Выберите язык интерфейса. Изменение применяется сразу.' },
+  'Seu dinheiro em uma visão': { en: 'Your money in one', es: 'Tu dinero en una visión', ru: 'Ваши деньги —' },
+  'simples e poderosa.': { en: 'simple, powerful view.', es: 'simple y potente.', ru: 'просто и наглядно.' },
+  '📅 Aguardar até': { en: '📅 Wait until', es: '📅 Esperar hasta', ru: '📅 Подождать до' },
+  'Total:': { en: 'Total:', es: 'Total:', ru: 'Итого:' },
   'Registre rapidamente sem sair do dashboard': { en: 'Record transactions without leaving the dashboard', es: 'Registra movimientos sin salir del panel', ru: 'Добавляйте операции, не покидая панель', fr: 'Enregistrez des opérations sans quitter le tableau de bord', de: 'Buchungen erfassen, ohne das Dashboard zu verlassen' },
   'Nova Receita': { en: 'New Income', es: 'Nuevo ingreso', ru: 'Новый доход', fr: 'Nouveau revenu', de: 'Neue Einnahme' },
   'Nova Despesa': { en: 'New Expense', es: 'Nuevo gasto', ru: 'Новый расход', fr: 'Nouvelle dépense', de: 'Neue Ausgabe' },
@@ -530,6 +559,181 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function translateDynamicText(source, language) {
+  const choose = (translations) => translations[language] ?? null;
+  let match;
+
+  match = source.match(/^(\d+) ativo\(s\)$/);
+  if (match) return choose({ en: `${match[1]} active`, es: `${match[1]} activos`, ru: `${match[1]} активных` });
+
+  match = source.match(/^(\d+) resolvido\(s\)$/);
+  if (match) return choose({ en: `${match[1]} resolved`, es: `${match[1]} resueltos`, ru: `${match[1]} решённых` });
+
+  match = source.match(/^(\d+) pendente\(s\)$/);
+  if (match) return choose({ en: `${match[1]} pending`, es: `${match[1]} pendientes`, ru: `${match[1]} ожидают` });
+
+  match = source.match(/^(\d+) ativo\(s\) · (\d+) resolvido\(s\)$/);
+  if (match) return choose({
+    en: `${match[1]} active · ${match[2]} resolved`,
+    es: `${match[1]} activos · ${match[2]} resueltos`,
+    ru: `${match[1]} активных · ${match[2]} решённых`,
+  });
+
+  match = source.match(/^(\d+) meta\(s\) ativa\(s\) analisada\(s\)$/);
+  if (match) return choose({
+    en: `${match[1]} active goal(s) analyzed`,
+    es: `${match[1]} meta(s) activa(s) analizada(s)`,
+    ru: `Проанализировано активных целей: ${match[1]}`,
+  });
+
+  match = source.match(/^· aproximadamente (\d+) parcela\(s\)$/);
+  if (match) return choose({
+    en: `· approximately ${match[1]} installment(s)`,
+    es: `· aproximadamente ${match[1]} cuota(s)`,
+    ru: `· примерно платежей: ${match[1]}`,
+  });
+
+  match = source.match(/^(\d+) no mês$/);
+  if (match) return choose({ en: `${match[1]} this month`, es: `${match[1]} este mes`, ru: `${match[1]} за месяц` });
+
+  match = source.match(/^Excluir "(.+)"\? Esta ação não pode ser desfeita\.$/);
+  if (match) return choose({
+    en: `Delete "${match[1]}"? This action cannot be undone.`,
+    es: `¿Eliminar "${match[1]}"? Esta acción no se puede deshacer.`,
+    ru: `Удалить «${match[1]}»? Это действие нельзя отменить.`,
+  });
+
+  match = source.match(/^"(.+)" não será mais gerada automaticamente nos próximos meses\. As receitas já lançadas em meses anteriores \(incluindo este\) continuam como estão\.$/);
+  if (match) return choose({
+    en: `"${match[1]}" will no longer be generated automatically in future months. Income already recorded in previous months (including this one) remains unchanged.`,
+    es: `«${match[1]}» ya no se generará automáticamente en los próximos meses. Los ingresos ya registrados en meses anteriores (incluido este) permanecen sin cambios.`,
+    ru: `«${match[1]}» больше не будет создаваться автоматически в следующих месяцах. Уже добавленные доходы за прошлые месяцы (включая текущий) останутся без изменений.`,
+  });
+
+  match = source.match(/^Cancelar "(.+)"$/);
+  if (match) return choose({ en: `Cancel "${match[1]}"`, es: `Cancelar «${match[1]}»`, ru: `Отменить «${match[1]}»` });
+
+  match = source.match(/^(.+) serão devolvidos ao mês atual\.$/);
+  if (match) return choose({
+    en: `${match[1]} will be returned to the current month.`,
+    es: `${match[1]} se devolverán al mes actual.`,
+    ru: `${match[1]} будут возвращены в текущий месяц.`,
+  });
+
+  match = source.match(/^Excluir este (depósito|saque) de (.+)\? O saldo guardado volta a ser o que era antes dele\.$/);
+  if (match) {
+    const kind = match[1] === 'depósito'
+      ? choose({ en: 'deposit', es: 'depósito', ru: 'пополнение' })
+      : choose({ en: 'withdrawal', es: 'retiro', ru: 'снятие' });
+    return choose({
+      en: `Delete this ${kind} of ${match[2]}? The saved balance will return to its previous value.`,
+      es: `¿Eliminar este ${kind} de ${match[2]}? El saldo ahorrado volverá a su valor anterior.`,
+      ru: `Удалить это ${kind} на сумму ${match[2]}? Баланс накоплений вернётся к предыдущему значению.`,
+    });
+  }
+
+  match = source.match(/^O Plano Básico permite até (\d+) cartões ativos\.$/);
+  if (match) return choose({
+    en: `The Basic Plan allows up to ${match[1]} active cards.`,
+    es: `El Plan Básico permite hasta ${match[1]} tarjetas activas.`,
+    ru: `Базовый тариф позволяет использовать до ${match[1]} активных карт.`,
+  });
+
+  match = source.match(/^Cartão excluído junto com (\d+) compra\(s\) e (\d+) despesa\(s\) associadas\.$/);
+  if (match) return choose({
+    en: `Card deleted together with ${match[1]} purchase(s) and ${match[2]} associated expense(s).`,
+    es: `Tarjeta eliminada junto con ${match[1]} compra(s) y ${match[2]} gasto(s) asociado(s).`,
+    ru: `Карта удалена вместе с покупками (${match[1]}) и связанными расходами (${match[2]}).`,
+  });
+
+  match = source.match(/^· (\d+)\/(\d+) ativos no Básico$/);
+  if (match) return choose({
+    en: `· ${match[1]}/${match[2]} active on Basic`,
+    es: `· ${match[1]}/${match[2]} activas en Básico`,
+    ru: `· ${match[1]}/${match[2]} активны на базовом тарифе`,
+  });
+
+  match = source.match(/^Editar Cartão — (.+)$/);
+  if (match) return choose({ en: `Edit Card — ${match[1]}`, es: `Editar tarjeta — ${match[1]}`, ru: `Изменить карту — ${match[1]}` });
+
+  match = source.match(/^Nova Compra — (.+)$/);
+  if (match) return choose({ en: `New Purchase — ${match[1]}`, es: `Nueva compra — ${match[1]}`, ru: `Новая покупка — ${match[1]}` });
+
+  match = source.match(/^"(.+)" deixará de aceitar novas compras \(continua aparecendo na lista, marcado como desativado\)\. Faturas e compras já registradas continuam salvas no histórico\.$/);
+  if (match) return choose({
+    en: `"${match[1]}" will stop accepting new purchases (it will remain in the list as inactive). Existing bills and purchases remain in history.`,
+    es: `«${match[1]}» dejará de aceptar nuevas compras (seguirá en la lista como inactiva). Las facturas y compras existentes permanecerán en el historial.`,
+    ru: `«${match[1]}» перестанет принимать новые покупки (карта останется в списке как неактивная). Существующие счета и покупки сохранятся в истории.`,
+  });
+
+  match = source.match(/^"(.+)" voltará a aceitar novas compras\. No Plano Básico, ele ocupará uma das duas vagas de cartões ativos\.$/);
+  if (match) return choose({
+    en: `"${match[1]}" will accept new purchases again. On the Basic Plan, it will use one of the two active-card slots.`,
+    es: `«${match[1]}» volverá a aceptar nuevas compras. En el Plan Básico, ocupará uno de los dos espacios de tarjetas activas.`,
+    ru: `«${match[1]}» снова сможет принимать покупки. На базовом тарифе карта займёт одно из двух мест для активных карт.`,
+  });
+
+  match = source.match(/^"(.+)" será excluído permanentemente\. Este cartão ainda não tem nenhuma compra ou fatura registrada, então nada além dele será apagado\.$/);
+  if (match) return choose({
+    en: `"${match[1]}" will be permanently deleted. This card has no recorded purchases or bills, so no other data will be removed.`,
+    es: `«${match[1]}» se eliminará permanentemente. Esta tarjeta no tiene compras ni facturas registradas, por lo que no se eliminarán otros datos.`,
+    ru: `«${match[1]}» будет удалена навсегда. У карты нет покупок или счетов, поэтому другие данные удалены не будут.`,
+  });
+
+  match = source.match(/^"(.+)" tem compras e faturas registradas\. Excluir vai apagar o cartão E todo esse histórico \(incluindo despesas já lançadas\) para sempre — isso pode mudar totais de meses passados\. Se algum lançamento estiver em um mês já encerrado, a exclusão será bloqueada e você pode usar "Desativar" em vez disso\.$/);
+  if (match) return choose({
+    en: `"${match[1]}" has recorded purchases and bills. Deleting it will permanently remove the card and all related history (including recorded expenses), which may change past monthly totals. If any entry belongs to a closed month, deletion will be blocked; use "Deactivate" instead.`,
+    es: `«${match[1]}» tiene compras y facturas registradas. Eliminarla borrará permanentemente la tarjeta y todo su historial relacionado (incluidos gastos registrados), lo que puede cambiar totales de meses anteriores. Si algún movimiento pertenece a un mes cerrado, la eliminación se bloqueará; usa «Desactivar».`,
+    ru: `У карты «${match[1]}» есть покупки и счета. Удаление навсегда сотрёт карту и всю связанную историю (включая внесённые расходы), что может изменить итоги прошлых месяцев. Если операция относится к закрытому месяцу, удаление будет заблокировано; используйте «Деактивировать».`,
+  });
+
+  match = source.match(/^Nenhuma despesa (de prioridade|fixa|variável)$/);
+  if (match) {
+    const kind = {
+      'de prioridade': { en: 'priority', es: 'prioritarios', ru: 'приоритетных' },
+      fixa: { en: 'fixed', es: 'fijos', ru: 'постоянных' },
+      variável: { en: 'variable', es: 'variables', ru: 'переменных' },
+    }[match[1]];
+    return choose({ en: `No ${kind.en} expenses`, es: `No hay gastos ${kind.es}`, ru: `Нет ${kind.ru} расходов` });
+  }
+
+  match = source.match(/^A despesa "(.+)" será removida agora deste mês e não será mais gerada nos próximos\. O histórico passado permanece\.$/);
+  if (match) return choose({
+    en: `The expense "${match[1]}" will be removed from this month and will no longer be generated in future months. Past history remains unchanged.`,
+    es: `El gasto «${match[1]}» se eliminará de este mes y dejará de generarse en los próximos. El historial anterior permanecerá sin cambios.`,
+    ru: `Расход «${match[1]}» будет удалён из текущего месяца и больше не будет создаваться в следующих месяцах. Прошлая история сохранится.`,
+  });
+
+  match = source.match(/^A dívida "(.+)" será encerrada: a parcela deste mês \(se não pago\) será removida agora e não haverá novas parcelas\. Parcelas já pagas permanecem no histórico\.$/);
+  if (match) return choose({
+    en: `The debt "${match[1]}" will be closed: this month's installment (if unpaid) will be removed and no new installments will be created. Paid installments remain in history.`,
+    es: `La deuda «${match[1]}» se cerrará: la cuota de este mes (si no está pagada) se eliminará y no se crearán nuevas cuotas. Las cuotas pagadas permanecerán en el historial.`,
+    ru: `Долг «${match[1]}» будет закрыт: платёж за текущий месяц (если он не оплачен) удалится, новые платежи создаваться не будут. Оплаченные платежи сохранятся в истории.`,
+  });
+
+  match = source.match(/^Editar (Depósito|Retirada)$/);
+  if (match) {
+    const kind = match[1] === 'Depósito'
+      ? choose({ en: 'Deposit', es: 'depósito', ru: 'пополнение' })
+      : choose({ en: 'Withdrawal', es: 'retiro', ru: 'снятие' });
+    return choose({ en: `Edit ${kind}`, es: `Editar ${kind}`, ru: `Изменить: ${kind}` });
+  }
+
+  match = source.match(/^Nome da nova categoria de (despesa|receita)\.\.\.$/);
+  if (match) {
+    const kind = match[1] === 'despesa'
+      ? choose({ en: 'expense', es: 'gasto', ru: 'расходов' })
+      : choose({ en: 'income', es: 'ingreso', ru: 'доходов' });
+    return choose({
+      en: `New ${kind} category name...`,
+      es: `Nombre de la nueva categoría de ${kind}...`,
+      ru: `Название новой категории ${kind}...`,
+    });
+  }
+
+  return null;
+}
+
 function replaceTerms(source, language) {
   let result = source;
   let changed = false;
@@ -560,14 +764,22 @@ export function translateStaticText(value, language = 'pt') {
   const source = normalize(raw);
   if (!source) return value;
 
-  // Apenas textos provenientes do código do app entram na tradução automática.
-  // Isso evita alterar nome do usuário, descrição de uma compra ou categoria criada por ele.
+  const dynamic = translateDynamicText(source, language);
+  if (dynamic != null) return `${leading}${dynamic}${trailing}`;
+
+  // Traduções exatas têm prioridade. Isso garante que rótulos curtos e
+  // dinâmicos (por exemplo, os botões Receita e Fatura do Dashboard) sejam
+  // traduzidos mesmo quando não aparecerem na lista gerada de frases estáticas.
+  const exact = EXACT[source]?.[language];
+  if (exact != null) return `${leading}${exact}${trailing}`;
+
+  // O glossário por termos continua limitado a textos reconhecidos como parte
+  // da interface, evitando traduzir descrições e nomes digitados pelo usuário.
   const isStatic = UI_PHRASES.has(source);
-  const isCountPattern = /^\d+[\s\u00a0]+(?:alerta\(s\)|mês|meses|dia|dias|parcela|parcelas|cartão|cartões)/i.test(source);
+  const isCountPattern = /^\d+[\s\u00a0]+(?:alerta\(s\)|ativo\(s\)|resolvido\(s\)|pendente\(s\)|meta\(s\)|mês|meses|dia|dias|parcela\(s\)|parcela|parcelas|cartão|cartões)/i.test(source);
   if (!isStatic && !isCountPattern) return value;
 
-  const exact = EXACT[source]?.[language];
-  const translated = exact || replaceTerms(source, language);
+  const translated = replaceTerms(source, language);
   return `${leading}${translated}${trailing}`;
 }
 

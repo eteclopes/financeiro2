@@ -7,7 +7,7 @@ import { Card, Badge, Button, EmptyState, Skeleton, TabGroup, ProgressBar } from
 import { Modal, ConfirmDialog, FormGroup, Input, Select } from '../components/ui/Modal';
 import { CategorySelect } from '../components/ui/CategorySelect';
 import { useUIStore } from '../store/uiStore';
-import { localDateInputValue, apiDateToInput } from '../lib/date';
+import { ledgerMonthDateInputValue, ledgerMonthDateRange, apiDateToInput } from '../lib/date';
 import { ChoiceCards, ToggleSwitch } from '../components/ui/Motion';
 
 const PM_LABELS = { cash:'Dinheiro', pix:'PIX', debit:'Débito', credit:'Crédito', transfer:'Transferência' };
@@ -23,6 +23,7 @@ const STATUS_L  = { pending:'Pendente', partial:'Parcial', paid:'Pago', late:'At
 
 export default function ExpensesPage() {
   const selectedMonthId = useMonthStore((s) => s.selectedMonthId);
+  const selectedMonth = useMonthStore((s) => s.months.find((month) => String(month.id) === String(s.selectedMonthId)) ?? null);
   const [tab, setTab]       = useState('priority');
   const [expenses, setExpenses] = useState([]);
   const [debts, setDebts]   = useState([]);
@@ -39,7 +40,7 @@ export default function ExpensesPage() {
 
   // ── Modal nova despesa variável ──
   const [varModal, setVarModal] = useState(false);
-  const [varForm, setVarForm]   = useState({ description:'', value:'', categoryId:'', date: localDateInputValue(), paymentMethod:'pix', paid:true, cardId:'' });
+  const [varForm, setVarForm]   = useState(() => ({ description:'', value:'', categoryId:'', date: ledgerMonthDateInputValue(selectedMonth), paymentMethod:'pix', paid:true, cardId:'' }));
 
   // ── Modal editar despesa variável ──
   const [editVarModal, setEditVarModal] = useState(null);
@@ -250,9 +251,11 @@ export default function ExpensesPage() {
   // mais simples: como não precisa de props próprias, basta parar de
   // tratar como um componente (JSX `<Tag />`) e guardar o elemento pronto
   // numa variável comum, inserida com `{addButton}`.
+  const selectedMonthDateRange = ledgerMonthDateRange(selectedMonth);
+
   const addButton = (
     <Button data-tutorial="new-expense-button" size="sm" onClick={() => {
-      if (tab === 'variable') { setVarForm({ description:'', value:'', categoryId:'', date: localDateInputValue(), paymentMethod:'pix', paid:true, cardId:'' }); setVarModal(true); }
+      if (tab === 'variable') { setVarForm({ description:'', value:'', categoryId:'', date: ledgerMonthDateInputValue(selectedMonth), paymentMethod:'pix', paid:true, cardId:'' }); setVarModal(true); }
       if (tab === 'fixed')    { setFixForm({ description:'', value:'', categoryId:'', dueDay:'10', paymentMethod:'transfer', cardId:'' }); setFixModal(true); }
       if (tab === 'priority') { setDebtForm({ description:'', categoryId:'', totalValue:'', installmentsCount:'1', flexiblePayment:false, dueDay:'10', startingInstallment:'1' }); setDebtModal(true); }
     }}>
@@ -504,7 +507,7 @@ export default function ExpensesPage() {
               <Input type="number" min="0" step="0.01" value={varForm.value} onChange={(e) => setVarForm({...varForm,value:e.target.value})} />
             </FormGroup>
             <FormGroup label="Data" required>
-              <Input type="date" value={varForm.date} onChange={(e) => setVarForm({...varForm,date:e.target.value})} />
+              <Input type="date" min={selectedMonthDateRange.min} max={selectedMonthDateRange.max} value={varForm.date} onChange={(e) => setVarForm({...varForm,date:e.target.value})} />
             </FormGroup>
           </div>
           <FormGroup label="Categoria">
@@ -635,7 +638,7 @@ export default function ExpensesPage() {
               <Input type="number" min="0" step="0.01" value={editVarForm.value} onChange={(e) => setEditVarForm({...editVarForm,value:e.target.value})} />
             </FormGroup>
             <FormGroup label="Data" required>
-              <Input type="date" value={editVarForm.dueDate} onChange={(e) => setEditVarForm({...editVarForm,dueDate:e.target.value})} />
+              <Input type="date" min={selectedMonthDateRange.min} max={selectedMonthDateRange.max} value={editVarForm.dueDate} onChange={(e) => setEditVarForm({...editVarForm,dueDate:e.target.value})} />
             </FormGroup>
           </div>
           <FormGroup label="Categoria">

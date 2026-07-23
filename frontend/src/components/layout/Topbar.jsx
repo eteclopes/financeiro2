@@ -8,7 +8,6 @@ import { formatMonthLabel } from '../../lib/format';
 import { alertsApi } from '../../lib/services';
 import { Dropdown } from '../ui/Dropdown';
 import { IconMenu, IconBell, IconSun, IconMoon, IconChevronL, IconChevronR } from '../icons';
-import { LocaleSwitcher } from '../LocaleSwitcher';
 
 const SEVERITY_DOT = { critical: 'bg-danger', warning: 'bg-warning', info: 'bg-info' };
 
@@ -173,7 +172,6 @@ export function Topbar({ title }) {
         )}
       </div>
 
-      <LocaleSwitcher compact />
 
       <button
         onClick={toggleTheme}

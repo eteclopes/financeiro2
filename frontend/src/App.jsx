@@ -4,7 +4,6 @@ import { useAuthStore } from './store/authStore';
 import { useThemeStore } from './store/themeStore';
 import { ToastContainer } from './components/ui/Toast';
 import { I18nBridge } from './i18n/I18nBridge';
-import { LocaleSwitcher } from './components/LocaleSwitcher';
 import { useLocaleStore } from './store/localeStore';
 import { formatCurrency } from './lib/format';
 import { AppLayout } from './components/layout/AppLayout';
@@ -91,7 +90,6 @@ function AuthShell({ children }) {
       </div>
 
       <div className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-30 flex items-center gap-2 sm:right-5">
-        <LocaleSwitcher compact className="bg-white/80 backdrop-blur-xl dark:bg-white/[0.055]" />
         <button
           onClick={toggleTheme}
           aria-label="Alternar tema"

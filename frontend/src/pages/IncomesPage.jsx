@@ -3,7 +3,7 @@ import { useMonthStore } from '../store/monthStore';
 import { incomesApi, categoriesApi } from '../lib/services';
 import { extractErrorMessage } from '../lib/api';
 import { formatCurrency, formatShortDate } from '../lib/format';
-import { localDateInputValue } from '../lib/date';
+import { ledgerMonthDateInputValue, ledgerMonthDateRange } from '../lib/date';
 import { Card, Badge, Button, EmptyState, Skeleton } from '../components/ui/index';
 import { Modal, ConfirmDialog, FormGroup, Input, Select } from '../components/ui/Modal';
 import { CategorySelect } from '../components/ui/CategorySelect';
@@ -22,20 +22,21 @@ const ORIGIN_OPTIONS = [
   { value:'physical', label:'Físico', icon:'●', description:'Dinheiro em mãos', tone:'choice-card-icon-warning' },
 ];
 
-const EMPTY_FORM = {
+const createEmptyForm = (month) => ({
   description:'', value:'', categoryId:'', paymentMethod:'pix',
-  origin:'digital', date: localDateInputValue(),
+  origin:'digital', date: ledgerMonthDateInputValue(month),
   observation:'', recurring: false,
-};
+});
 
 export default function IncomesPage() {
   const selectedMonthId = useMonthStore((s) => s.selectedMonthId);
+  const selectedMonth = useMonthStore((s) => s.months.find((month) => String(month.id) === String(s.selectedMonthId)) ?? null);
   const [incomes, setIncomes]       = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading]       = useState(true);
   const [modalOpen, setModalOpen]   = useState(false);
   const [editing, setEditing]       = useState(null);
-  const [form, setForm]             = useState(EMPTY_FORM);
+  const [form, setForm]             = useState(() => createEmptyForm(selectedMonth));
   const [saving, setSaving]         = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting]     = useState(false);
@@ -59,7 +60,7 @@ export default function IncomesPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  function openCreate() { setEditing(null); setForm(EMPTY_FORM); setModalOpen(true); }
+  function openCreate() { setEditing(null); setForm(createEmptyForm(selectedMonth)); setModalOpen(true); }
   function openEdit(income) {
     setEditing(income);
     setForm({
@@ -115,6 +116,7 @@ export default function IncomesPage() {
   }
 
   const total = incomes.reduce((s, i) => s + Number(i.value), 0);
+  const selectedMonthDateRange = ledgerMonthDateRange(selectedMonth);
 
   return (
     <div data-tutorial-page-ready={!loading ? 'incomes' : undefined} className="space-y-5 animate-page-enter">
@@ -184,7 +186,7 @@ export default function IncomesPage() {
               <Input type="number" min="0" step="0.01" value={form.value} onChange={(e) => setForm({...form,value:e.target.value})} placeholder="0,00" />
             </FormGroup>
             <FormGroup label="Data" required>
-              <Input type="date" value={form.date} onChange={(e) => setForm({...form,date:e.target.value})} />
+              <Input type="date" min={selectedMonthDateRange.min} max={selectedMonthDateRange.max} value={form.date} onChange={(e) => setForm({...form,date:e.target.value})} />
             </FormGroup>
           </div>
           <FormGroup label="Categoria" required>

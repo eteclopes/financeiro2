@@ -9,6 +9,16 @@ beforeEach(() => {
 });
 
 describe('getAvailableBalance', () => {
+  test('receitas entram imediatamente no saldo, sem filtro pela data informada', async () => {
+    prismaMock.income.aggregate.mockResolvedValue({ _sum: { value: 2500 } });
+
+    expect(await getAvailableBalance(10n)).toBe(2500);
+    expect(prismaMock.income.aggregate).toHaveBeenCalledWith({
+      where: { userId: 10n },
+      _sum: { value: true },
+    });
+  });
+
   test('renda total menos despesas já pagas (não pendentes)', async () => {
     prismaMock.income.aggregate.mockResolvedValue({ _sum: { value: 5000 } });
     prismaMock.expense.aggregate.mockResolvedValue({ _sum: { paidAmount: 3200 } });

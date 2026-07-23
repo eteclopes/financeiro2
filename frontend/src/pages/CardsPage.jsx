@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { cardsApi, categoriesApi } from '../lib/services';
 import { extractErrorMessage } from '../lib/api';
 import { formatCurrency, formatShortDate } from '../lib/format';
-import { localDateInputValue } from '../lib/date';
+import { ledgerMonthDateInputValue, ledgerMonthDateRange } from '../lib/date';
+import { useMonthStore } from '../store/monthStore';
 import { Card, CardHeader, Badge, Button, EmptyState, ProgressBar } from '../components/ui/index';
 import { Modal, ConfirmDialog, FormGroup, Input, Select } from '../components/ui/Modal';
 import { CategorySelect } from '../components/ui/CategorySelect';
@@ -22,6 +23,7 @@ const PAYMENT_OPTIONS = [
 ];
 
 export default function CardsPage() {
+  const selectedMonth = useMonthStore((s) => s.months.find((month) => String(month.id) === String(s.selectedMonthId)) ?? null);
   const [cards, setCards]     = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -46,8 +48,9 @@ export default function CardsPage() {
 
   const [cardForm, setCardForm] = useState({ name:'', color: COLORS[0], limitValue:'', closingDay:'20', dueDay:'27' });
   const [editCardForm, setEditCardForm] = useState({ name:'', color: COLORS[0], limitValue:'', closingDay:'', dueDay:'' });
-  const [purchaseForm, setPurchaseForm] = useState({ description:'', categoryId:'', totalValue:'', installmentsCount:'1', purchaseDate: localDateInputValue() });
+  const [purchaseForm, setPurchaseForm] = useState(() => ({ description:'', categoryId:'', totalValue:'', installmentsCount:'1', purchaseDate: ledgerMonthDateInputValue(selectedMonth) }));
 
+  const selectedMonthDateRange = ledgerMonthDateRange(selectedMonth);
   const toast = useUIStore((s) => s);
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
@@ -323,7 +326,7 @@ export default function CardsPage() {
                   {selected.active === false ? (
                     <span className="text-xs text-muted italic">Não aceita novas compras</span>
                   ) : (
-                    <Button size="sm" onClick={() => { setPurchaseForm({ description:'', categoryId:'', totalValue:'', installmentsCount:'1', startingInstallment:'1', purchaseDate: localDateInputValue() }); setPurchaseModal(true); }}>
+                    <Button size="sm" onClick={() => { setPurchaseForm({ description:'', categoryId:'', totalValue:'', installmentsCount:'1', startingInstallment:'1', purchaseDate: ledgerMonthDateInputValue(selectedMonth) }); setPurchaseModal(true); }}>
                       + Compra
                     </Button>
                   )}
@@ -471,7 +474,7 @@ export default function CardsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <FormGroup label="Valor total" required><Input type="number" min="0" step="0.01" value={purchaseForm.totalValue} onChange={(e) => setPurchaseForm({...purchaseForm,totalValue:e.target.value})} /></FormGroup>
             <FormGroup label="Parcelas"><Input type="number" min="1" max="48" value={purchaseForm.installmentsCount} onChange={(e) => setPurchaseForm({...purchaseForm,installmentsCount:e.target.value})} /></FormGroup>
-            <FormGroup label="Data"><Input type="date" value={purchaseForm.purchaseDate} onChange={(e) => setPurchaseForm({...purchaseForm,purchaseDate:e.target.value})} /></FormGroup>
+            <FormGroup label="Data"><Input type="date" min={selectedMonthDateRange.min} max={selectedMonthDateRange.max} value={purchaseForm.purchaseDate} onChange={(e) => setPurchaseForm({...purchaseForm,purchaseDate:e.target.value})} /></FormGroup>
           </div>
           {purchaseForm.totalValue && parseInt(purchaseForm.installmentsCount) > 0 && (
             <div className="bg-primary-subtle border border-primary/20 rounded-xl p-3 text-sm">

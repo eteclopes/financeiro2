@@ -24,6 +24,44 @@ export function localDateInputValue(date = new Date()) {
   }
 }
 
+function normalizeLedgerMonth(month) {
+  const year = Number(month?.year);
+  const monthNumber = Number(month?.month);
+  if (!Number.isInteger(year) || !Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) {
+    return null;
+  }
+  return { year, month: monthNumber };
+}
+
+/**
+ * Cria a data padrão dentro do mês financeiro selecionado no sistema.
+ * O ano/mês nunca vêm do relógio do computador. Apenas o dia local é usado
+ * como conveniência e é limitado ao último dia do mês selecionado.
+ */
+export function ledgerMonthDateInputValue(month, referenceDate = new Date()) {
+  const normalized = normalizeLedgerMonth(month);
+  if (!normalized) return localDateInputValue(referenceDate);
+
+  const reference = localDateInputValue(referenceDate);
+  const preferredDay = Number(reference.slice(8, 10)) || 1;
+  const lastDay = new Date(Date.UTC(normalized.year, normalized.month, 0)).getUTCDate();
+  const day = Math.min(Math.max(preferredDay, 1), lastDay);
+
+  return `${normalized.year}-${String(normalized.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/** Limites canônicos para impedir datas fora do mês financeiro escolhido. */
+export function ledgerMonthDateRange(month) {
+  const normalized = normalizeLedgerMonth(month);
+  if (!normalized) return { min: undefined, max: undefined };
+  const prefix = `${normalized.year}-${String(normalized.month).padStart(2, '0')}`;
+  const lastDay = new Date(Date.UTC(normalized.year, normalized.month, 0)).getUTCDate();
+  return {
+    min: `${prefix}-01`,
+    max: `${prefix}-${String(lastDay).padStart(2, '0')}`,
+  };
+}
+
 /** Converte um campo DATE da API para o valor canônico de input date. */
 export function apiDateToInput(value) {
   if (!value) return '';

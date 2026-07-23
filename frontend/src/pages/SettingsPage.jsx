@@ -165,31 +165,67 @@ export default function SettingsPage() {
           actions={countryCode ? <Badge variant="default">{countryCode}</Badge> : null}
         />
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormGroup label="Idioma">
-            <Select value={language} onChange={(event) => setLanguage(event.target.value)}>
-              {LANGUAGE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.nativeLabel}</option>)}
-            </Select>
-          </FormGroup>
+        <div className="space-y-5">
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-700 dark:text-zinc-200">Idioma</p>
+                <p className="mt-0.5 text-xs text-muted">Escolha o idioma da interface. A alteração é aplicada imediatamente.</p>
+              </div>
+              <Badge variant="default">{language.toUpperCase()}</Badge>
+            </div>
 
-          <FormGroup label="Região">
-            <Select value={locale} onChange={(event) => setLocale(event.target.value)}>
-              {REGION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label} · {option.example}</option>)}
-            </Select>
-          </FormGroup>
+            <div role="radiogroup" aria-label="Idioma" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {LANGUAGE_OPTIONS.map((option) => {
+                const selected = language === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setLanguage(option.value)}
+                    className={`group relative flex min-h-16 items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${selected
+                      ? 'border-primary/50 bg-primary-subtle text-primary-dark shadow-sm dark:border-primary/40 dark:bg-primary/10 dark:text-primary-light'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-primary/25 hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.025] dark:text-zinc-200 dark:hover:bg-white/[0.045]'
+                    }`}
+                  >
+                    <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[10px] font-black tracking-wider ${selected
+                      ? 'bg-primary text-white'
+                      : 'bg-slate-100 text-slate-500 dark:bg-white/[0.07] dark:text-zinc-400'
+                    }`}>
+                      {option.value.toUpperCase()}
+                    </span>
+                    <span data-i18n-ignore="true" className="min-w-0 truncate text-sm font-semibold">{option.nativeLabel}</span>
+                    {selected && <span aria-hidden="true" className="absolute right-2 top-2 grid h-4 w-4 place-items-center rounded-full bg-primary text-[9px] text-white">✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-          <FormGroup label="Moeda">
-            <Select value={currency} onChange={(event) => setCurrency(event.target.value)}>
-              {CURRENCY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </Select>
-          </FormGroup>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <FormGroup label="Região">
+              <Select value={locale} onChange={(event) => setLocale(event.target.value)}>
+                {REGION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label} · {option.example}</option>)}
+              </Select>
+            </FormGroup>
 
-          <FormGroup label="Fuso horário">
-            <Select value={timeZone} onChange={(event) => setTimeZone(event.target.value)}>
-              {!TIME_ZONE_OPTIONS.some((option) => option.value === timeZone) && <option value={timeZone}>{timeZone}</option>}
-              {TIME_ZONE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label} · {option.value}</option>)}
-            </Select>
-          </FormGroup>
+            <FormGroup label="Moeda">
+              <Select value={currency} onChange={(event) => setCurrency(event.target.value)}>
+                {CURRENCY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </Select>
+            </FormGroup>
+
+            <div className="sm:col-span-2">
+              <FormGroup label="Fuso horário">
+                <Select value={timeZone} onChange={(event) => setTimeZone(event.target.value)}>
+                  {!TIME_ZONE_OPTIONS.some((option) => option.value === timeZone) && <option value={timeZone}>{timeZone}</option>}
+                  {TIME_ZONE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label} · {option.value}</option>)}
+                </Select>
+              </FormGroup>
+            </div>
+          </div>
         </div>
 
         <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-500 dark:border-white/[0.07] dark:bg-white/[0.025] dark:text-zinc-400">
