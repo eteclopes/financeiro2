@@ -136,7 +136,7 @@ export function Topbar({ title }) {
         </button>
 
         {notifOpen && (
-          <div className="absolute right-0 top-full z-[100] mt-3 max-h-[430px] w-[min(360px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-slate-200 bg-white/95 py-2 shadow-modal backdrop-blur-xl animate-scale-in origin-top-right dark:border-white/[0.08] dark:bg-[#1B1B26]/95">
+          <div className="notification-panel z-[100] overflow-y-auto rounded-2xl border border-slate-200 bg-white/95 py-2 shadow-modal backdrop-blur-xl animate-scale-in origin-top-right dark:border-white/[0.08] dark:bg-[#1B1B26]/95">
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-white/[0.07]">
               <div>
                 <p className="text-sm font-bold text-slate-950 dark:text-white">Notificações</p>

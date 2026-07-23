@@ -296,10 +296,10 @@ async function applyPaymentToInstallment(userId, expense, amount, paymentMethod)
  * mesmo sem rota própria — fechamento mensal vai importar esta função
  * diretamente em vez de duplicar a lógica.
  */
-async function generateNextInstallment(debt, month, client = prisma) {
+async function generateNextInstallment(debt, month, client = prisma, options = {}) {
   if (debt.status === 'settled') return null;
 
-  const installmentsGenerated = await client.expense.count({ where: { debtId: debt.id } });
+  const installmentsGenerated = options.installmentsGenerated ?? await client.expense.count({ where: { debtId: debt.id } });
   const installmentsRemaining = debt.installmentsCount - installmentsGenerated;
   if (installmentsRemaining <= 0 || Number(debt.remainingBalance) <= 0.009) {
     await client.debt.update({ where: { id: debt.id }, data: { status: 'settled', pendingCarryOver: 0 } });

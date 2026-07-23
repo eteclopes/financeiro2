@@ -155,7 +155,7 @@ export default function TrendsPage() {
           <p className="text-xs text-muted mt-0.5">Ordenado do maior para o menor crescimento no período</p>
         </div>
         <div className="data-table-scroll">
-          <table className="w-full text-sm">
+          <table className="responsive-stack-table w-full text-sm">
             <thead className="bg-subtle/60 dark:bg-white/[0.03]">
               <tr>{['Categoria', 'Último mês', 'Variação', 'Tendência'].map((h) => (
                 <th key={h} className="table-header">{h}</th>
@@ -166,15 +166,15 @@ export default function TrendsPage() {
                 <tr><td colSpan={4} className="py-8 text-center text-muted text-sm">Sem despesas categorizadas no período.</td></tr>
               ) : data.categoryTrends.map((c) => (
                 <tr key={c.categoryId} className="hover:bg-subtle/40 dark:hover:bg-white/[0.03] transition-colors">
-                  <td className="table-cell font-semibold text-slate-800 dark:text-zinc-200">
+                  <td data-label="Categoria" className="table-cell font-semibold text-slate-800 dark:text-zinc-200">
                     {c.categoryName}
                     {c.excessive && <Badge variant="danger" className="ml-2">crescimento alto</Badge>}
                   </td>
-                  <td className="table-cell font-mono tabular-nums">{formatCurrency(c.lastValue)}</td>
-                  <td className="table-cell font-mono tabular-nums">
+                  <td data-label="Último mês" className="table-cell font-mono tabular-nums">{formatCurrency(c.lastValue)}</td>
+                  <td data-label="Variação" className="table-cell font-mono tabular-nums">
                     {c.growthPercent != null ? `${c.growthPercent > 0 ? '+' : ''}${c.growthPercent.toFixed(1)}%` : '—'}
                   </td>
-                  <td className="table-cell"><TrendChip direction={c.trend} /></td>
+                  <td data-label="Tendência" className="table-cell"><TrendChip direction={c.trend} /></td>
                 </tr>
               ))}
             </tbody>

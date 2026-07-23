@@ -1,4 +1,11 @@
 export const EXTENDED_EXACT = {
+
+  'Reparar mês': { en: 'Repair month', es: 'Reparar mes', ru: 'Восстановить месяц' },
+  'Reparar mês seguinte': { en: 'Repair next month', es: 'Reparar el mes siguiente', ru: 'Восстановить следующий месяц' },
+  'Verificar e reparar': { en: 'Check and repair', es: 'Verificar y reparar', ru: 'Проверить и восстановить' },
+  'Mês seguinte reparado e sincronizado!': { en: 'Next month repaired and synchronized!', es: '¡Mes siguiente reparado y sincronizado!', ru: 'Следующий месяц восстановлен и синхронизирован!' },
+  'O mês já está encerrado, mas há lançamentos faltando no mês seguinte. A reparação é idempotente e não duplica o que já existe.': { en: 'The month is already closed, but entries are missing from the next month. Repair is idempotent and does not duplicate existing entries.', es: 'El mes ya está cerrado, pero faltan movimientos en el mes siguiente. La reparación es idempotente y no duplica lo que ya existe.', ru: 'Месяц уже закрыт, но в следующем месяце не хватает операций. Восстановление идемпотентно и не создаёт дубликаты.' },
+  'O mês seguinte já está sincronizado. A verificação pode ser executada novamente sem duplicar lançamentos.': { en: 'The next month is already synchronized. You can run the check again without duplicating entries.', es: 'El mes siguiente ya está sincronizado. Puedes repetir la verificación sin duplicar movimientos.', ru: 'Следующий месяц уже синхронизирован. Проверку можно повторить без создания дубликатов.' },
   'A meta será arquivada. Esta ação não pode ser desfeita.': {
     en: 'The goal will be archived. This action cannot be undone.',
     es: 'La meta se archivará. Esta acción no se puede deshacer.',

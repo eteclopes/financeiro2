@@ -3,25 +3,15 @@ const AppError = require('../../utils/AppError');
 const { round2 } = require('../../utils/math');
 const { todayUtcDate } = require('../../utils/dateTime');
 
-function clampDay(year, month, day) {
-  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  return new Date(Date.UTC(year, month - 1, Math.min(Number(day), lastDay)));
-}
-
-function addMonths(month, year, delta) {
-  const value = new Date(Date.UTC(year, month - 1 + delta, 1));
-  return { month: value.getUTCMonth() + 1, year: value.getUTCFullYear() };
-}
+const { clampDay, resolveInvoiceForPurchase } = require('../../utils/cardCycle');
+const { addMonths } = require('../../utils/monthMath');
 
 function estimateCardPurchaseWindow(card, purchaseDate = todayUtcDate()) {
-  const day = purchaseDate.getUTCDate();
-  const current = { month: purchaseDate.getUTCMonth() + 1, year: purchaseDate.getUTCFullYear() };
-  const reference = day <= Number(card.closingDay) ? current : addMonths(current.month, current.year, 1);
-  const dueReference = Number(card.dueDay) <= Number(card.closingDay)
-    ? addMonths(reference.month, reference.year, 1)
-    : reference;
-  const closingDate = clampDay(reference.year, reference.month, card.closingDay);
-  const dueDate = clampDay(dueReference.year, dueReference.month, card.dueDay);
+  const { closingDate, dueDate } = resolveInvoiceForPurchase(
+    purchaseDate,
+    Number(card.closingDay),
+    Number(card.dueDay)
+  );
   const daysUntilDue = Math.max(Math.ceil((dueDate.getTime() - purchaseDate.getTime()) / 86_400_000), 0);
   return { closingDate, dueDate, daysUntilDue };
 }

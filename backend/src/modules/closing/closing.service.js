@@ -6,178 +6,283 @@ const debtsService = require('../debts/debts.service');
 const { addMonths } = require('../../utils/monthMath');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
 
+const CLOSE_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 30_000,
+};
+
+function bigintKey(value) {
+  return value == null ? null : String(value);
+}
+
+async function getGenerationSnapshot(client, userId, nextMonth, next) {
+  const [incomeTemplates, fixedTemplates, activeDebts, existingIncomes, existingFixed, existingDebtExpenses] =
+    await Promise.all([
+      client.incomeTemplate.findMany({ where: { userId, active: true } }),
+      client.fixedExpenseTemplate.findMany({ where: { userId, active: true } }),
+      client.debt.findMany({ where: { userId, status: 'active' } }),
+      client.income.findMany({
+        where: { userId, monthId: nextMonth.id, templateId: { not: null } },
+        select: { templateId: true },
+      }),
+      client.expense.findMany({
+        where: {
+          userId,
+          deletedAt: null,
+          fixedTemplateId: { not: null },
+          competenceMonth: next.month,
+          competenceYear: next.year,
+        },
+        select: { fixedTemplateId: true },
+      }),
+      client.expense.findMany({
+        where: { userId, monthId: nextMonth.id, deletedAt: null, debtId: { not: null } },
+        select: { debtId: true },
+      }),
+    ]);
+
+  const existingIncomeIds = new Set(existingIncomes.map((row) => bigintKey(row.templateId)).filter(Boolean));
+  const existingFixedIds = new Set(existingFixed.map((row) => bigintKey(row.fixedTemplateId)).filter(Boolean));
+  const existingDebtIds = new Set(existingDebtExpenses.map((row) => bigintKey(row.debtId)).filter(Boolean));
+
+  return {
+    incomeTemplates,
+    fixedTemplates,
+    activeDebts,
+    missingIncomeTemplates: incomeTemplates.filter((template) => !existingIncomeIds.has(bigintKey(template.id))),
+    missingFixedTemplates: fixedTemplates.filter((template) => !existingFixedIds.has(bigintKey(template.id))),
+    missingDebts: activeDebts.filter((debt) => !existingDebtIds.has(bigintKey(debt.id))),
+  };
+}
+
 /**
- * Resumo exibido antes do fechamento, para confirmação do usuário.
- * Não fecha nada — apenas leitura.
+ * Resumo exibido antes do fechamento/reparo. Para mês fechado, os números
+ * representam somente o que ainda está faltando no mês seguinte.
  */
 async function getClosingPreview(userId, monthId) {
   const month = await monthsService.getMonthOrThrow(userId, monthId);
+  const next = addMonths(Number(month.month), Number(month.year), 1);
+  const nextMonth = await prisma.month.findUnique({
+    where: { userId_month_year: { userId, month: next.month, year: next.year } },
+  });
 
-  const [pendingExpenses, pendingExpensesSum, openInvoices, activeGoalsCount, activeIncomeTemplates, activeFixedTemplates, activeDebts] =
-    await Promise.all([
-      prisma.expense.count({
-        where: { userId, monthId, deletedAt: null, status: { in: ['pending', 'partial', 'late'] } },
-      }),
-      prisma.expense.aggregate({
-        where: { userId, monthId, deletedAt: null, status: { in: ['pending', 'partial', 'late'] } },
-        _sum: { value: true },
-      }),
-      prisma.cardInvoice.count({ where: { monthId, status: { not: 'paid' } } }),
-      prisma.goal.count({ where: { userId, status: 'active' } }),
+  const [pendingExpenses, pendingExpensesSum, openInvoices, activeGoalsCount] = await Promise.all([
+    prisma.expense.count({
+      where: { userId, monthId, deletedAt: null, status: { in: ['pending', 'partial', 'late'] } },
+    }),
+    prisma.expense.aggregate({
+      where: { userId, monthId, deletedAt: null, status: { in: ['pending', 'partial', 'late'] } },
+      _sum: { value: true },
+    }),
+    prisma.cardInvoice.count({ where: { monthId, card: { userId }, status: { not: 'paid' } } }),
+    prisma.goal.count({ where: { userId, status: 'active' } }),
+  ]);
+
+  let missingCounts;
+  let totalCounts;
+  if (nextMonth) {
+    const snapshot = await getGenerationSnapshot(prisma, userId, nextMonth, next);
+    missingCounts = {
+      recurringIncomes: snapshot.missingIncomeTemplates.length,
+      fixedExpenses: snapshot.missingFixedTemplates.length,
+      debtInstallments: snapshot.missingDebts.length,
+    };
+    totalCounts = {
+      recurringIncomes: snapshot.incomeTemplates.length,
+      fixedExpenses: snapshot.fixedTemplates.length,
+      debtInstallments: snapshot.activeDebts.length,
+    };
+  } else {
+    const [recurringIncomes, fixedExpenses, debtInstallments] = await Promise.all([
       prisma.incomeTemplate.count({ where: { userId, active: true } }),
       prisma.fixedExpenseTemplate.count({ where: { userId, active: true } }),
       prisma.debt.count({ where: { userId, status: 'active' } }),
     ]);
+    missingCounts = { recurringIncomes, fixedExpenses, debtInstallments };
+    totalCounts = { ...missingCounts };
+  }
 
   return {
     month,
+    repairMode: month.status === 'closed',
+    needsRepair: Object.values(missingCounts).some((count) => count > 0),
     pendingExpensesCount: pendingExpenses,
     pendingExpensesTotal: Number(pendingExpensesSum._sum.value ?? 0),
     openInvoicesCount: openInvoices,
     activeGoalsCount,
-    willGenerateNextMonth: {
-      recurringIncomes: activeIncomeTemplates,
-      fixedExpenses: activeFixedTemplates,
-      debtInstallments: activeDebts,
-    },
+    willGenerateNextMonth: missingCounts,
+    totalActiveTemplates: totalCounts,
   };
 }
 
-async function closeMonth(userId, monthId) {
-  return prisma.$transaction(async (tx) => {
-    // SELECT ... FOR UPDATE trava a linha do mês até o fim da transação.
-    // Se duas requisições de fechamento chegarem juntas (duplo clique, retry
-    // de rede), a segunda espera a primeira terminar e então enxerga
-    // status='closed', falhando de forma segura em vez de duplicar geração
-    // de receitas/despesas/parcelas — este é o ponto de maior risco de bug
-    // de duplicação do sistema inteiro (ver arquitetura-etapas-1-2.md §14).
-    const locked = await tx.$queryRaw`SELECT id, status, month, year FROM months WHERE id = ${monthId} AND user_id = ${userId} FOR UPDATE`;
-    const raw = locked[0];
-    if (!raw) throw new AppError("Mês não encontrado.", 404, "MONTH_NOT_FOUND");
-    const current = { id: raw.id, status: raw.status, month: Number(raw.month), year: Number(raw.year) };
+async function generateNextMonthEntries(tx, userId, current, nextMonth, next) {
+  const snapshot = await getGenerationSnapshot(tx, userId, nextMonth, next);
+  const generated = { incomes: 0, fixedExpenses: 0, debtInstallments: 0 };
 
-    if (current.status === 'closed') {
-      throw new AppError('Este mês já foi encerrado.', 409, 'MONTH_ALREADY_CLOSED');
-    }
+  if (snapshot.missingIncomeTemplates.length > 0) {
+    const result = await tx.income.createMany({
+      data: snapshot.missingIncomeTemplates.map((template) => ({
+        userId,
+        monthId: nextMonth.id,
+        templateId: template.id,
+        description: template.description,
+        value: template.value,
+        categoryId: template.categoryId,
+        paymentMethod: template.paymentMethod,
+        origin: template.paymentMethod === 'cash' ? 'physical' : 'digital',
+        incomeDate: expensesService.dueDateFromDay(nextMonth, template.incomeDay ?? 1),
+      })),
+    });
+    generated.incomes = result.count;
+  }
 
-    await tx.month.update({ where: { id: monthId }, data: { status: 'closed', closedAt: new Date() } });
+  const cardTemplateIds = snapshot.missingFixedTemplates
+    .filter((template) => template.paymentMethod === 'credit')
+    .map((template) => template.cardId)
+    .filter(Boolean);
+  const cards = cardTemplateIds.length > 0
+    ? await tx.card.findMany({ where: { id: { in: cardTemplateIds }, userId } })
+    : [];
+  const cardsById = new Map(cards.map((card) => [bigintKey(card.id), card]));
+  const commonFixed = [];
+  const cardPurchasesService = require('../cards/cardPurchases.service');
 
-    const next = addMonths(current.month, current.year, 1);
-    const nextMonth = await monthsService.getOrCreateMonth(userId, next.month, next.year, tx);
-
-    const generated = { incomes: 0, fixedExpenses: 0, debtInstallments: 0 };
-
-    // ---- Receitas recorrentes ----
-    const incomeTemplates = await tx.incomeTemplate.findMany({ where: { userId, active: true } });
-    for (const template of incomeTemplates) {
-      const alreadyGenerated = await tx.income.findFirst({
-        where: { templateId: template.id, monthId: nextMonth.id },
-      });
-      if (alreadyGenerated) continue; // idempotência extra, além do lock acima
-
-      await tx.income.create({
-        data: {
-          userId,
-          monthId: nextMonth.id,
-          templateId: template.id,
-          description: template.description,
-          value: template.value,
-          categoryId: template.categoryId,
-          paymentMethod: template.paymentMethod,
-          origin: 'digital',
-          incomeDate: expensesService.dueDateFromDay(nextMonth, template.incomeDay ?? 1),
-        },
-      });
-      generated.incomes += 1;
-    }
-
-    // ---- Despesas fixas recorrentes ----
-    const fixedTemplates = await tx.fixedExpenseTemplate.findMany({ where: { userId, active: true } });
-    for (const template of fixedTemplates) {
-      const alreadyGenerated = await tx.expense.findFirst({
-        where: { fixedTemplateId: template.id, competenceMonth: next.month, competenceYear: next.year },
-      });
-      if (alreadyGenerated) continue;
-
-      const dueDate = expensesService.dueDateFromDay(nextMonth, template.dueDay);
-
-      if (template.paymentMethod === 'credit') {
-        if (!template.cardId) {
-          throw new AppError(
-            `A despesa fixa "${template.description}" está configurada como crédito sem um cartão válido.`,
-            409,
-            'FIXED_EXPENSE_CARD_REQUIRED'
-          );
-        }
-        const card = await tx.card.findUnique({ where: { id: template.cardId } });
-        if (!card || !card.active) {
-          throw new AppError(
-            `O cartão da despesa fixa "${template.description}" está indisponível. Edite a despesa antes de encerrar o mês.`,
-            409,
-            'FIXED_EXPENSE_CARD_INACTIVE'
-          );
-        }
-        const cardPurchasesService = require('../cards/cardPurchases.service');
-        await cardPurchasesService.createFixedCardCharge({
-          userId,
-          card,
-          template,
-          month: nextMonth,
-          dueDate,
-          client: tx,
-        });
-        generated.fixedExpenses += 1;
-        continue;
+  for (const template of snapshot.missingFixedTemplates) {
+    const dueDate = expensesService.dueDateFromDay(nextMonth, template.dueDay);
+    if (template.paymentMethod === 'credit') {
+      const card = template.cardId ? cardsById.get(bigintKey(template.cardId)) : null;
+      if (!card || !card.active) {
+        throw new AppError(
+          `O cartão da despesa fixa "${template.description}" está indisponível. Edite a despesa antes de encerrar ou reparar o mês.`,
+          409,
+          'FIXED_EXPENSE_CARD_INACTIVE'
+        );
       }
-
-      await tx.expense.create({
-        data: {
-          userId,
-          monthId: nextMonth.id,
-          type: 'fixed',
-          description: template.description,
-          categoryId: template.categoryId,
-          dueDate,
-          competenceMonth: next.month,
-          competenceYear: next.year,
-          value: template.value,
-          status: 'pending',
-          fixedTemplateId: template.id,
-          paymentMethod: template.paymentMethod,
-        },
+      await cardPurchasesService.createFixedCardCharge({
+        userId,
+        card,
+        template,
+        month: nextMonth,
+        dueDate,
+        client: tx,
       });
       generated.fixedExpenses += 1;
+    } else {
+      commonFixed.push({
+        userId,
+        monthId: nextMonth.id,
+        type: 'fixed',
+        description: template.description,
+        categoryId: template.categoryId,
+        dueDate,
+        competenceMonth: next.month,
+        competenceYear: next.year,
+        value: template.value,
+        status: 'pending',
+        fixedTemplateId: template.id,
+        paymentMethod: template.paymentMethod,
+      });
     }
+  }
 
-    // ---- Próxima parcela de cada dívida ativa ----
-    // Compras parceladas no cartão NÃO entram aqui: todas as parcelas já
-    // foram geradas de uma vez no momento da compra (ver cardPurchases.service.js).
-    const activeDebts = await tx.debt.findMany({ where: { userId, status: 'active' } });
-    for (const debt of activeDebts) {
-      const alreadyGenerated = await tx.expense.findFirst({ where: { debtId: debt.id, monthId: nextMonth.id } });
-      if (alreadyGenerated) continue;
+  if (commonFixed.length > 0) {
+    const result = await tx.expense.createMany({ data: commonFixed, skipDuplicates: true });
+    generated.fixedExpenses += result.count;
+  }
 
-      const created = await debtsService.generateNextInstallment(debt, nextMonth, tx);
+  if (snapshot.missingDebts.length > 0) {
+    const debtIds = snapshot.missingDebts.map((debt) => debt.id);
+    const counts = await tx.expense.groupBy({
+      by: ['debtId'],
+      where: { debtId: { in: debtIds }, deletedAt: null },
+      _count: { _all: true },
+    });
+    const countByDebt = new Map(counts.map((row) => [bigintKey(row.debtId), row._count._all]));
+
+    for (const debt of snapshot.missingDebts) {
+      const created = await debtsService.generateNextInstallment(debt, nextMonth, tx, {
+        installmentsGenerated: countByDebt.get(bigintKey(debt.id)) ?? 0,
+      });
       if (created) generated.debtInstallments += 1;
     }
+  }
 
-
-    // ---- O que NÃO precisa de ação aqui ----
-    // Pendências do mês que está fechando (despesas não pagas e faturas não
-    // pagas) permanecem vinculadas a ele — não são copiadas/duplicadas no
-    // próximo mês, apenas continuam aparecendo como "Atrasado" até o
-    // usuário pagá-las. Saldo guardado e metas são entidades contínuas, não
-    // mensais, e não precisam de nenhum transporte.
-
-    return {
-      closedMonth: { id: monthId, month: current.month, year: current.year },
-      nextMonth,
-      generated,
-    };
-  }).then(async (result) => {
-    await recordAuditLog(userId, 'month', monthId, 'close', { newValue: result.closedMonth });
-    return result;
-  });
+  return { generated, expected: {
+    incomes: snapshot.incomeTemplates.length,
+    fixedExpenses: snapshot.fixedTemplates.length,
+    debtInstallments: snapshot.activeDebts.length,
+  } };
 }
 
-module.exports = { getClosingPreview, closeMonth };
+async function closeMonth(userId, monthId) {
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      // Um lock por usuário serializa fechamento, reparo e retries. O lock da
+      // linha do mês protege também contra duas chamadas do mesmo mês.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${userId})`;
+      const locked = await tx.$queryRaw`
+        SELECT id, status, month, year
+        FROM months
+        WHERE id = ${monthId} AND user_id = ${userId}
+        FOR UPDATE
+      `;
+      const raw = locked[0];
+      if (!raw) throw new AppError('Mês não encontrado.', 404, 'MONTH_NOT_FOUND');
+
+      const current = {
+        id: raw.id,
+        status: raw.status,
+        month: Number(raw.month),
+        year: Number(raw.year),
+      };
+      const repaired = current.status === 'closed';
+      const next = addMonths(current.month, current.year, 1);
+      const nextMonth = await monthsService.getOrCreateMonth(userId, next.month, next.year, tx);
+      const generation = await generateNextMonthEntries(tx, userId, current, nextMonth, next);
+
+      // O status só muda DEPOIS que todas as recorrências foram geradas. Se a
+      // transação falhar ou expirar, o mês continua aberto e pode ser tentado
+      // novamente sem ficar "fechado pela metade".
+      if (!repaired) {
+        await tx.month.update({
+          where: { id: monthId },
+          data: { status: 'closed', closedAt: new Date() },
+        });
+      }
+
+      return {
+        closedMonth: { id: monthId, month: current.month, year: current.year },
+        nextMonth,
+        repaired,
+        generated: generation.generated,
+        expected: generation.expected,
+      };
+    }, CLOSE_TRANSACTION_OPTIONS);
+  } catch (error) {
+    if (error?.code === 'P2028') {
+      throw new AppError(
+        'O fechamento demorou além do limite seguro e foi cancelado. Nenhuma geração parcial deve ser considerada concluída; tente novamente.',
+        503,
+        'MONTH_CLOSE_TIMEOUT'
+      );
+    }
+    throw error;
+  }
+
+  await recordAuditLog(
+    userId,
+    'month',
+    monthId,
+    result.repaired ? 'repair_close' : 'close',
+    { newValue: result.closedMonth }
+  );
+  return result;
+}
+
+module.exports = {
+  getClosingPreview,
+  closeMonth,
+  generateNextMonthEntries,
+  CLOSE_TRANSACTION_OPTIONS,
+};

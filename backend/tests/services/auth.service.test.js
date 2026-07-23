@@ -179,6 +179,24 @@ describe('refresh token — rotação atômica', () => {
     expect(result.refreshToken).toBeDefined();
   });
 
+  test('segunda aba dentro da janela de concorrência recebe nova sessão em vez de 401', async () => {
+    const revokedAt = new Date(Date.now() - 1000);
+    prismaMock.refreshToken.findUnique
+      .mockResolvedValueOnce({
+        id: 50n, userId: 7n, revokedAt: null, expiresAt: new Date(Date.now() + 60_000),
+      })
+      .mockResolvedValueOnce({
+        id: 50n, userId: 7n, revokedAt, expiresAt: new Date(Date.now() + 60_000),
+      });
+    prismaMock.refreshToken.updateMany.mockResolvedValue({ count: 0 });
+    prismaMock.refreshToken.create.mockResolvedValue({});
+
+    const result = await refresh('c'.repeat(96));
+
+    expect(result.accessToken).toBeDefined();
+    expect(result.refreshToken).toBeDefined();
+  });
+
   test('segunda tentativa concorrente é rejeitada quando o token já foi consumido', async () => {
     prismaMock.refreshToken.findUnique.mockResolvedValue({
       id: 50n,

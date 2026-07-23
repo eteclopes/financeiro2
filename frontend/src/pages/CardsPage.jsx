@@ -333,19 +333,19 @@ export default function CardsPage() {
                 <EmptyState icon="🧾" title="Sem faturas" description="As faturas serão geradas automaticamente conforme você registrar compras." />
               ) : (
                 <div className="data-table-scroll">
-                  <table className="w-full text-sm">
+                  <table className="responsive-stack-table w-full text-sm">
                     <thead className="bg-subtle/60 dark:bg-white/[0.03]"><tr>
                       {['Referência','Fechamento','Vencimento','Total','Status',''].map(h=><th key={h} className="table-header">{h}</th>)}
                     </tr></thead>
                     <tbody className="divide-y divide-border/60 dark:divide-white/[0.06]">
                       {invoices.map((inv) => (
                         <tr key={inv.id} className="hover:bg-subtle/40 dark:hover:bg-white/[0.03] transition-colors">
-                          <td className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{String(inv.referenceMonth).padStart(2,'0')}/{inv.referenceYear}</td>
-                          <td className="table-cell text-muted">{formatShortDate(inv.closingDate)}</td>
-                          <td className="table-cell text-muted">{formatShortDate(inv.dueDate)}</td>
-                          <td className="table-cell font-mono tabular-nums font-bold text-slate-800 dark:text-zinc-200">{formatCurrency(inv.totalValue)}</td>
-                          <td className="table-cell"><Badge variant={STATUS_V[inv.status]}>{STATUS_L[inv.status]}</Badge></td>
-                          <td className="table-cell">
+                          <td data-label="Referência" className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{String(inv.referenceMonth).padStart(2,'0')}/{inv.referenceYear}</td>
+                          <td data-label="Fechamento" className="table-cell text-muted">{formatShortDate(inv.closingDate)}</td>
+                          <td data-label="Vencimento" className="table-cell text-muted">{formatShortDate(inv.dueDate)}</td>
+                          <td data-label="Total" className="table-cell font-mono tabular-nums font-bold text-slate-800 dark:text-zinc-200">{formatCurrency(inv.totalValue)}</td>
+                          <td data-label="Status" className="table-cell"><Badge variant={STATUS_V[inv.status]}>{STATUS_L[inv.status]}</Badge></td>
+                          <td data-label="Ações" className="table-cell">
                             {inv.status !== 'paid' && (
                               <Button size="sm" onClick={() => { setPayTarget(inv); setInvMethod('pix'); }}>Pagar</Button>
                             )}
@@ -470,6 +470,13 @@ export default function CardsPage() {
             <FormGroup label="Parcelas"><Input type="number" min="1" max="48" value={purchaseForm.installmentsCount} onChange={(e) => setPurchaseForm({...purchaseForm,installmentsCount:e.target.value})} /></FormGroup>
             <FormGroup label="Data"><Input type="date" min={selectedMonthDateRange.min} max={selectedMonthDateRange.max} value={purchaseForm.purchaseDate} onChange={(e) => setPurchaseForm({...purchaseForm,purchaseDate:e.target.value})} /></FormGroup>
           </div>
+          {selected && (
+            <div className="rounded-xl border border-info/20 bg-info-subtle p-3 text-xs leading-relaxed text-info-dark dark:bg-info/10 dark:text-info-light">
+              {Number(selected.dueDay) > Number(selected.closingDay)
+                ? `Este cartão fecha no dia ${selected.closingDay}. Compras feitas depois desse dia entram na fatura seguinte e vencem no dia ${selected.dueDay} do mês seguinte.`
+                : `Este cartão fecha no dia ${selected.closingDay}. Compras feitas depois desse dia entram na fatura seguinte, com vencimento no dia ${selected.dueDay} após o próximo fechamento.`}
+            </div>
+          )}
           {purchaseForm.totalValue && parseInt(purchaseForm.installmentsCount) > 0 && (
             <div className="bg-primary-subtle border border-primary/20 rounded-xl p-3 text-sm">
               <span className="text-primary-dark font-medium">{purchaseForm.installmentsCount}x de </span>

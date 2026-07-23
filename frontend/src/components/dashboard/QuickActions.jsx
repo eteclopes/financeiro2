@@ -389,7 +389,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     setClosing(true);
     try {
       const { data } = await api.post(`/months/${selectedMonthId}/close`);
-      toast.success('Mês encerrado com sucesso!');
+      toast.success(data?.repaired ? 'Mês seguinte reparado e sincronizado!' : 'Mês encerrado com sucesso!');
       setModal(null);
       await refreshMonths();
       if (data?.nextMonth?.id) selectMonth(data.nextMonth.id);
@@ -408,10 +408,13 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     { Icon: IconCheck, label: 'Pagar conta', iconBg: 'bg-info-muted dark:bg-info/20', iconColor: 'text-info-dark dark:text-info-light', onClick: () => { setPayTarget(null); setPayAmount(''); setPayMethod('pix'); setModal('pay'); } },
     { Icon: IconCard, label: 'Fatura', iconBg: 'bg-warning-muted dark:bg-warning/20', iconColor: 'text-warning-dark dark:text-warning-light', onClick: openFatura },
     { Icon: IconGoal, label: 'Meta', iconBg: 'bg-purple-100 dark:bg-accentpurple/20', iconColor: 'text-purple-700 dark:text-accentpurple-light', onClick: () => { setGoalTarget(null); setContribForm({ value: '', date: ledgerMonthDateInputValue(selectedMonth) }); setModal('goal'); } },
-    ...(monthStatus === 'open'
-      ? [{ Icon: IconAlert, label: 'Fechar mês', iconBg: 'bg-gray-100 dark:bg-white/10', iconColor: 'text-gray-600 dark:text-zinc-300', onClick: openClose }]
-      : []
-    ),
+    {
+      Icon: IconAlert,
+      label: monthStatus === 'open' ? 'Fechar mês' : 'Reparar mês',
+      iconBg: 'bg-gray-100 dark:bg-white/10',
+      iconColor: 'text-gray-600 dark:text-zinc-300',
+      onClick: openClose,
+    },
   ];
 
   const expenseSaveLabel = expenseKind === 'fixed'
@@ -835,7 +838,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
       </Modal>
 
       {/* ── Fechar Mês ── */}
-      <Modal open={modal === 'close'} onClose={() => setModal(null)} title="Fechar Mês" size="sm">
+      <Modal open={modal === 'close'} onClose={() => setModal(null)} title={preview?.repairMode ? 'Reparar mês seguinte' : 'Fechar Mês'} size="sm">
         <div className="space-y-4">
           {!preview ? (
             <p className="text-sm text-muted">Carregando resumo...</p>
@@ -855,10 +858,18 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
               ))}
             </div>
           )}
-          <p className="text-xs text-muted">Pendências não pagas permanecem no histórico — nada é perdido ou duplicado.</p>
+          <p className="text-xs text-muted">
+            {preview?.repairMode
+              ? (preview.needsRepair
+                ? 'O mês já está encerrado, mas há lançamentos faltando no mês seguinte. A reparação é idempotente e não duplica o que já existe.'
+                : 'O mês seguinte já está sincronizado. A verificação pode ser executada novamente sem duplicar lançamentos.')
+              : 'Pendências não pagas permanecem no histórico — nada é perdido ou duplicado.'}
+          </p>
           <div className="modal-actions">
             <Button variant="outline" onClick={() => setModal(null)}>Cancelar</Button>
-            <Button variant="danger" onClick={closeMonth} loading={closing} disabled={!preview}>Encerrar Mês</Button>
+            <Button variant={preview?.repairMode ? 'primary' : 'danger'} onClick={closeMonth} loading={closing} disabled={!preview}>
+              {preview?.repairMode ? 'Verificar e reparar' : 'Encerrar Mês'}
+            </Button>
           </div>
         </div>
       </Modal>

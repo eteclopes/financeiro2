@@ -427,7 +427,7 @@ export default function SavingsPage() {
           <EmptyState icon="🏦" title="Sem movimentações" description="Escolha uma caixinha e faça o primeiro depósito." />
         ) : (
           <div className="data-table-scroll">
-            <table className="w-full text-sm">
+            <table className="responsive-stack-table w-full text-sm">
               <thead className="bg-subtle/60 dark:bg-white/[0.03]"><tr>
                 {['Tipo', 'Caixinha', 'Valor', 'Saldo na caixinha', 'Data', 'Observação', ''].map((heading) => <th key={heading} className="table-header">{heading}</th>)}
               </tr></thead>
@@ -437,19 +437,19 @@ export default function SavingsPage() {
                   const isDeposit = transaction.type === 'deposit';
                   return (
                     <tr key={transaction.id} className="transition-colors hover:bg-subtle/40 dark:hover:bg-white/[0.03]">
-                      <td className="table-cell">
+                      <td data-label="Tipo" className="table-cell">
                         <Badge variant={isTransfer ? 'purple' : isDeposit ? 'success' : 'danger'}>
                           {isTransfer ? (isDeposit ? 'Transferência recebida' : 'Transferência enviada') : isDeposit ? 'Depósito' : 'Retirada'}
                         </Badge>
                       </td>
-                      <td className="table-cell font-medium">{bucketName(transaction.bucket)}</td>
-                      <td className={`table-cell font-mono font-bold tabular-nums ${isDeposit ? 'text-success-dark dark:text-success-light' : 'text-danger-dark dark:text-danger-light'}`}>
+                      <td data-label="Caixinha" className="table-cell font-medium">{bucketName(transaction.bucket)}</td>
+                      <td data-label="Valor" className={`table-cell font-mono font-bold tabular-nums ${isDeposit ? 'text-success-dark dark:text-success-light' : 'text-danger-dark dark:text-danger-light'}`}>
                         {isDeposit ? '+' : '-'}{formatCurrency(transaction.value)}
                       </td>
-                      <td className="table-cell font-mono tabular-nums text-slate-600 dark:text-zinc-400">{formatCurrency(transaction.bucketBalanceAfter)}</td>
-                      <td className="table-cell text-muted">{formatShortDate(transaction.transactionDate)}</td>
-                      <td className="table-cell text-muted">{transaction.observation ?? '—'}</td>
-                      <td className="table-cell">
+                      <td data-label="Saldo na caixinha" className="table-cell font-mono tabular-nums text-slate-600 dark:text-zinc-400">{formatCurrency(transaction.bucketBalanceAfter)}</td>
+                      <td data-label="Data" className="table-cell text-muted">{formatShortDate(transaction.transactionDate)}</td>
+                      <td data-label="Observação" className="table-cell text-muted">{transaction.observation ?? '—'}</td>
+                      <td data-label="Ações" className="table-cell">
                         {index === 0 && !isTransfer && (
                           <div className="flex items-center justify-end gap-2">
                             <Button size="sm" variant="ghost" onClick={() => openEditTx(transaction)}>Editar</Button>

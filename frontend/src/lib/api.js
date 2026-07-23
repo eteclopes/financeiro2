@@ -35,6 +35,22 @@ api.interceptors.request.use((config) => {
 
 let refreshPromise = null;
 
+// Único ponto de renovação da sessão dentro da página. Bootstrap e
+// interceptador compartilham a mesma Promise, impedindo rajadas de refresh.
+export function refreshAccessToken() {
+  if (!refreshPromise) {
+    refreshPromise = api.post('/auth/refresh')
+      .then(({ data }) => {
+        setAccessToken(data.accessToken);
+        return data.accessToken;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -46,14 +62,10 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !original._retry && !isAuthRoute) {
       original._retry = true;
       try {
-        refreshPromise = refreshPromise ?? api.post('/auth/refresh');
-        const { data } = await refreshPromise;
-        refreshPromise = null;
-        setAccessToken(data.accessToken);
-        original.headers.Authorization = `Bearer ${data.accessToken}`;
+        const accessToken = await refreshAccessToken();
+        original.headers.Authorization = `Bearer ${accessToken}`;
         return api(original);
       } catch (refreshError) {
-        refreshPromise = null;
         setAccessToken(null);
         window.dispatchEvent(new CustomEvent('auth:session-expired'));
         return Promise.reject(refreshError);

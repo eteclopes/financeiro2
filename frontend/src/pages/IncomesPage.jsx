@@ -132,7 +132,7 @@ export default function IncomesPage() {
             action={<Button onClick={openCreate}>Adicionar receita</Button>} />
         ) : (
           <div className="data-table-scroll">
-            <table className="w-full text-sm">
+            <table className="responsive-stack-table w-full text-sm">
               <thead className="bg-subtle/60 dark:bg-white/[0.03]">
                 <tr>{['Descrição','Categoria','Valor','Data','Forma','Recorrente',''].map(h=>(
                   <th key={h} className="table-header">{h}</th>
@@ -141,12 +141,12 @@ export default function IncomesPage() {
               <tbody className="divide-y divide-border/60 dark:divide-white/[0.06]">
                 {incomes.map((inc) => (
                   <tr key={inc.id} className="hover:bg-subtle/40 dark:hover:bg-white/[0.03] transition-colors">
-                    <td className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{inc.description}</td>
-                    <td className="table-cell text-muted">{inc.category?.name}</td>
-                    <td className="table-cell font-mono tabular-nums font-bold text-primary-dark dark:text-primary-light">{formatCurrency(inc.value)}</td>
-                    <td className="table-cell text-muted">{formatShortDate(inc.incomeDate)}</td>
-                    <td className="table-cell"><Badge>{getPaymentMethodLabel(inc.origin === 'physical' ? PHYSICAL_CASH_METHOD : ACCOUNT_BALANCE_METHOD)}</Badge></td>
-                    <td className="table-cell">
+                    <td data-label="Descrição" className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{inc.description}</td>
+                    <td data-label="Categoria" className="table-cell text-muted">{inc.category?.name}</td>
+                    <td data-label="Valor" className="table-cell font-mono tabular-nums font-bold text-primary-dark dark:text-primary-light">{formatCurrency(inc.value)}</td>
+                    <td data-label="Data" className="table-cell text-muted">{formatShortDate(inc.incomeDate)}</td>
+                    <td data-label="Forma" className="table-cell"><Badge>{getPaymentMethodLabel(inc.origin === 'physical' ? PHYSICAL_CASH_METHOD : ACCOUNT_BALANCE_METHOD)}</Badge></td>
+                    <td data-label="Recorrente" className="table-cell">
                       {inc.templateId ? (
                         <div className="flex items-center gap-2">
                           <Badge variant="success">Sim</Badge>
@@ -156,8 +156,8 @@ export default function IncomesPage() {
                         </div>
                       ) : <span className="text-muted text-xs">Não</span>}
                     </td>
-                    <td className="table-cell">
-                      <div className="flex gap-1">
+                    <td data-label="Ações" className="table-cell">
+                      <div className="flex flex-wrap gap-1">
                         <Button variant="ghost" size="sm" onClick={() => openEdit(inc)}>Editar</Button>
                         <Button variant="ghost" size="sm" className="text-danger" onClick={() => setDeleteTarget(inc)}>Excluir</Button>
                       </div>

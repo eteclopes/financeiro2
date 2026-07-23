@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api, extractErrorMessage, extractFieldErrors } from '../lib/api';
+import { api, extractErrorMessage, extractFieldErrors, refreshAccessToken } from '../lib/api';
 import { setAccessToken } from '../lib/tokenStore';
 
 export const useAuthStore = create((set) => ({
@@ -11,8 +11,7 @@ export const useAuthStore = create((set) => ({
   async bootstrap() {
     set({ status: 'loading' });
     try {
-      const { data: refreshData } = await api.post('/auth/refresh');
-      setAccessToken(refreshData.accessToken);
+      await refreshAccessToken();
       const { data: meData } = await api.get('/auth/me');
       set({ user: meData.user, status: 'authenticated', error: null });
     } catch {

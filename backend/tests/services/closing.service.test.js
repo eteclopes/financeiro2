@@ -27,13 +27,16 @@ describe('closeMonth — AuditLog', () => {
     );
   });
 
-  test('mês já fechado é rejeitado (409) e NÃO grava audit log nem gera nada', async () => {
+  test('mês já fechado entra em modo de reparo idempotente e não altera closedAt', async () => {
     prismaMock.$queryRaw.mockResolvedValue([{ id: 3n, status: 'closed', month: 6, year: 2026 }]);
 
-    await expect(closeMonth(10n, 3n)).rejects.toMatchObject({ statusCode: 409, code: 'MONTH_ALREADY_CLOSED' });
+    const result = await closeMonth(10n, 3n);
 
+    expect(result.repaired).toBe(true);
     expect(prismaMock.month.update).not.toHaveBeenCalled();
-    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'repair_close' }) })
+    );
   });
 
   test('mês inexistente/de outro usuário (lock não encontra linha) é rejeitado com 404', async () => {
@@ -55,7 +58,7 @@ describe('closeMonth — despesa fixa vinculada a cartão gera a próxima instâ
     prismaMock.fixedExpenseTemplate.findMany.mockResolvedValue([
       { id: 9n, description: 'Plano de corte', categoryId: 2n, value: 50, dueDay: 10, paymentMethod: 'credit', cardId: 7n },
     ]);
-    prismaMock.card.findUnique.mockResolvedValue({ id: 7n, userId: 10n, closingDay: 20, dueDay: 5, active: true, limitValue: 1000 });
+    prismaMock.card.findMany.mockResolvedValue([{ id: 7n, userId: 10n, closingDay: 20, dueDay: 5, active: true, limitValue: 1000 }]);
     prismaMock.card.findFirst.mockResolvedValue({ id: 7n, userId: 10n, closingDay: 20, dueDay: 5, active: true, limitValue: 1000 });
     prismaMock.cardInvoice.findUnique.mockResolvedValue(null); // fatura ainda não existe, será criada
 
@@ -76,8 +79,8 @@ describe('closeMonth — despesa fixa vinculada a cartão gera a próxima instâ
 
     await closeMonth(10n, 3n);
 
-    const createCalls = prismaMock.expense.create.mock.calls.map((c) => c[0].data);
-    const created = createCalls.find((d) => d.fixedTemplateId === 10n);
+    const batch = prismaMock.expense.createMany.mock.calls[0][0].data;
+    const created = batch.find((d) => d.fixedTemplateId === 10n);
 
     expect(created).toMatchObject({ type: 'fixed', value: 1200 });
     expect(created.cardInvoiceId).toBeUndefined();
@@ -102,8 +105,8 @@ describe('closeMonth — data real da receita recorrente', () => {
       expect.objectContaining({ id: 4n, month: 7, year: 2026 }),
       15
     );
-    expect(prismaMock.income.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ incomeDate: expectedDate }) })
+    expect(prismaMock.income.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.arrayContaining([expect.objectContaining({ incomeDate: expectedDate })]) })
     );
   });
 });

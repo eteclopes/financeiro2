@@ -11,6 +11,7 @@ const {
 } = require('../../utils/tokens');
 
 const BCRYPT_ROUNDS = 12;
+const REFRESH_CONCURRENCY_GRACE_MS = 10_000;
 
 // Hash bcrypt válido mas "morto" (nenhuma senha real corresponde a ele).
 // Usado apenas para igualar o tempo de resposta do login quando o e-mail não
@@ -111,7 +112,18 @@ async function refresh(rawRefreshToken) {
     });
 
     if (claimed.count !== 1) {
-      throw new AppError('Sessão expirada ou inválida. Faça login novamente.', 401, 'UNAUTHORIZED');
+      // Duas abas podem renovar a mesma sessão quase ao mesmo tempo. A
+      // primeira revoga o token antigo; as demais chegam milissegundos
+      // depois. Dentro de uma janela curta, emitimos outra sessão válida
+      // para a mesma família em vez de desconectar uma aba legítima. Fora
+      // dessa janela, o replay continua rejeitado.
+      const current = await tx.refreshToken.findUnique({ where: { id: existing.id } });
+      const revokedRecently = current?.revokedAt
+        && Date.now() - current.revokedAt.getTime() <= REFRESH_CONCURRENCY_GRACE_MS
+        && current.expiresAt.getTime() > Date.now();
+      if (!revokedRecently) {
+        throw new AppError('Sessão expirada ou inválida. Faça login novamente.', 401, 'UNAUTHORIZED');
+      }
     }
     return issueSession(existing.userId, tx);
   });

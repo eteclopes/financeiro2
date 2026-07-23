@@ -40,7 +40,10 @@ function enforceTrustedOrigin(originPolicy) {
 }
 
 morgan.token('request-id', (req) => req.id || '-');
-morgan.token('safe-path', (req) => sanitizeLogText(req.path || '/', 180));
+morgan.token('safe-path', (req) => {
+  const originalPath = String(req.originalUrl || req.url || req.path || '/').split('?')[0];
+  return sanitizeLogText(originalPath, 180);
+});
 
 function privacyLogger(environment) {
   if (environment === 'test') return (_req, _res, next) => next();

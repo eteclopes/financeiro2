@@ -692,6 +692,20 @@ function translateDynamicText(source, language) {
   match = source.match(/^Nova Compra — (.+)$/);
   if (match) return choose({ en: `New Purchase — ${match[1]}`, es: `Nueva compra — ${match[1]}`, ru: `Новая покупка — ${match[1]}` });
 
+  match = source.match(/^Este cartão fecha no dia (\d+)\. Compras feitas depois desse dia entram na fatura seguinte e vencem no dia (\d+) do mês seguinte\.$/);
+  if (match) return choose({
+    en: `This card closes on day ${match[1]}. Purchases made after that date go to the next bill and are due on day ${match[2]} of the following month.`,
+    es: `Esta tarjeta cierra el día ${match[1]}. Las compras realizadas después pasan a la factura siguiente y vencen el día ${match[2]} del mes siguiente.`,
+    ru: `Расчётный период карты закрывается ${match[1]}-го числа. Покупки после этой даты попадут в следующий счёт со сроком оплаты ${match[2]}-го числа следующего месяца.`,
+  });
+
+  match = source.match(/^Este cartão fecha no dia (\d+)\. Compras feitas depois desse dia entram na fatura seguinte, com vencimento no dia (\d+) após o próximo fechamento\.$/);
+  if (match) return choose({
+    en: `This card closes on day ${match[1]}. Purchases made after that date go to the next bill, due on day ${match[2]} after its next closing.`,
+    es: `Esta tarjeta cierra el día ${match[1]}. Las compras realizadas después pasan a la factura siguiente, con vencimiento el día ${match[2]} después de su próximo cierre.`,
+    ru: `Расчётный период карты закрывается ${match[1]}-го числа. Покупки после этой даты попадут в следующий счёт со сроком оплаты ${match[2]}-го числа после следующего закрытия.`,
+  });
+
   match = source.match(/^"(.+)" deixará de aceitar novas compras \(continua aparecendo na lista, marcado como desativado\)\. Faturas e compras já registradas continuam salvas no histórico\.$/);
   if (match) return choose({
     en: `"${match[1]}" will stop accepting new purchases (it will remain in the list as inactive). Existing bills and purchases remain in history.`,

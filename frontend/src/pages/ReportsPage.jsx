@@ -238,7 +238,7 @@ export default function ReportsPage() {
             <h3 className="font-semibold text-slate-900 dark:text-zinc-50">Relatório de Metas Ativas</h3>
           </div>
           <div className="data-table-scroll">
-            <table className="w-full text-sm">
+            <table className="responsive-stack-table w-full text-sm">
               <thead className="bg-subtle/60 dark:bg-white/[0.03]"><tr>
                 {['Meta','Valor Alvo','Acumulado','Progresso','Prazo estimado'].map(h => (
                   <th key={h} className="table-header">{h}</th>
@@ -247,10 +247,10 @@ export default function ReportsPage() {
               <tbody className="divide-y divide-border/60 dark:divide-white/[0.06]">
                 {data.goals.map((g) => (
                   <tr key={g.id} className="hover:bg-subtle/40 dark:hover:bg-white/[0.03] transition-colors">
-                    <td className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{g.name}</td>
-                    <td className="table-cell font-mono tabular-nums">{formatCurrency(g.targetValue)}</td>
-                    <td className="table-cell font-mono tabular-nums text-primary-dark dark:text-primary-light font-bold">{formatCurrency(g.progress)}</td>
-                    <td className="table-cell">
+                    <td data-label="Meta" className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{g.name}</td>
+                    <td data-label="Valor Alvo" className="table-cell font-mono tabular-nums">{formatCurrency(g.targetValue)}</td>
+                    <td data-label="Acumulado" className="table-cell font-mono tabular-nums text-primary-dark dark:text-primary-light font-bold">{formatCurrency(g.progress)}</td>
+                    <td data-label="Progresso" className="table-cell">
                       <div className="flex items-center gap-2">
                         <div className="flex-1 h-2 bg-subtle dark:bg-white/10 rounded-full overflow-hidden min-w-16">
                           <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(g.percentage, 100)}%` }} />
@@ -258,7 +258,7 @@ export default function ReportsPage() {
                         <span className="text-xs font-mono font-bold text-slate-700 dark:text-zinc-300 shrink-0">{Math.round(g.percentage)}%</span>
                       </div>
                     </td>
-                    <td className="table-cell text-muted">
+                    <td data-label="Prazo estimado" className="table-cell text-muted">
                       {g.estimatedMonthsAtCurrentPace ? `~${g.estimatedMonthsAtCurrentPace} meses` : '—'}
                     </td>
                   </tr>
@@ -276,7 +276,7 @@ export default function ReportsPage() {
             <h3 className="font-semibold text-slate-900 dark:text-zinc-50">Relatório de Cartões</h3>
           </div>
           <div className="data-table-scroll">
-            <table className="w-full text-sm">
+            <table className="responsive-stack-table w-full text-sm">
               <thead className="bg-subtle/60 dark:bg-white/[0.03]"><tr>
                 {['Cartão','Limite Total','Utilizado','Disponível','Utilização'].map(h => (
                   <th key={h} className="table-header">{h}</th>
@@ -287,11 +287,11 @@ export default function ReportsPage() {
                   const pct = Math.min(Math.round((c.usedLimit / Number(c.limitValue)) * 100), 100);
                   return (
                     <tr key={c.id} className="hover:bg-subtle/40 dark:hover:bg-white/[0.03] transition-colors">
-                      <td className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{c.name}</td>
-                      <td className="table-cell font-mono tabular-nums">{formatCurrency(c.limitValue)}</td>
-                      <td className="table-cell font-mono tabular-nums text-danger-dark dark:text-danger-light">{formatCurrency(c.usedLimit)}</td>
-                      <td className="table-cell font-mono tabular-nums text-primary-dark dark:text-primary-light">{formatCurrency(c.availableLimit)}</td>
-                      <td className="table-cell">
+                      <td data-label="Cartão" className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{c.name}</td>
+                      <td data-label="Limite Total" className="table-cell font-mono tabular-nums">{formatCurrency(c.limitValue)}</td>
+                      <td data-label="Utilizado" className="table-cell font-mono tabular-nums text-danger-dark dark:text-danger-light">{formatCurrency(c.usedLimit)}</td>
+                      <td data-label="Disponível" className="table-cell font-mono tabular-nums text-primary-dark dark:text-primary-light">{formatCurrency(c.availableLimit)}</td>
+                      <td data-label="Utilização" className="table-cell">
                         <div className="flex items-center gap-2">
                           <div className="flex-1 h-2 bg-subtle dark:bg-white/10 rounded-full overflow-hidden min-w-16">
                             <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: c.color ?? '#16A34A' }} />

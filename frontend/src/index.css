@@ -871,6 +871,36 @@ input[type='date'], input[type='time'], input[type='datetime-local'] { min-heigh
   to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
 
+
+/* Painel de notificações: dropdown no desktop e painel contido na tela no celular. */
+.notification-panel {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  width: min(360px, calc(100vw - 2rem));
+  max-height: 430px;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 639px) {
+  .notification-panel {
+    position: fixed;
+    left: 0.75rem;
+    right: 0.75rem;
+    top: calc(env(safe-area-inset-top) + 4.75rem);
+    width: auto;
+    max-height: min(26rem, calc(var(--app-viewport-height, 100dvh) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 10rem));
+    margin-top: 0;
+    border-radius: 1rem;
+    overscroll-behavior: contain;
+  }
+
+  .notification-panel > div,
+  .notification-panel > button {
+    max-width: 100%;
+  }
+}
+
 .responsive-money {
   max-width: 100%;
   font-size: clamp(1.9rem, 7vw, 3rem);
@@ -1307,4 +1337,80 @@ body[data-keyboard-open='true'] .modal-actions {
 body[data-modal-open='true'] .toast-layer {
   top: calc(0.75rem + env(safe-area-inset-top));
   bottom: auto;
+}
+
+/* Tabelas financeiras viram cartões verticais no celular. Nenhuma informação
+   exige rolagem horizontal; cada valor mantém seu rótulo. */
+@media (max-width: 639px) {
+  .data-table-scroll:has(.responsive-stack-table) {
+    margin-inline: 0;
+    overflow: visible;
+    padding: 0.65rem;
+  }
+
+  .data-table-scroll .responsive-stack-table {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  .responsive-stack-table thead { display: none; }
+  .responsive-stack-table tbody {
+    display: grid;
+    gap: 0.65rem;
+  }
+  .responsive-stack-table tbody tr {
+    display: block;
+    overflow: hidden;
+    border: 1px solid rgb(226 232 240 / 0.9);
+    border-radius: 1rem;
+    background: rgb(255 255 255 / 0.9);
+  }
+  .dark .responsive-stack-table tbody tr {
+    border-color: rgb(255 255 255 / 0.08);
+    background: rgb(255 255 255 / 0.025);
+  }
+  .responsive-stack-table .table-cell,
+  .responsive-stack-table .table-header:first-child,
+  .responsive-stack-table .table-cell:first-child {
+    position: static;
+    display: grid;
+    grid-template-columns: minmax(6.6rem, 38%) minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.7rem 0.8rem;
+    border-bottom: 1px solid rgb(226 232 240 / 0.7);
+    background: transparent;
+    box-shadow: none;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+  .dark .responsive-stack-table .table-cell,
+  .dark .responsive-stack-table .table-cell:first-child {
+    border-color: rgb(255 255 255 / 0.06);
+    background: transparent;
+    box-shadow: none;
+  }
+  .responsive-stack-table .table-cell:last-child { border-bottom: 0; }
+  .responsive-stack-table .table-cell::before {
+    content: attr(data-label);
+    min-width: 0;
+    color: #64748b;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+    text-align: left;
+    text-transform: uppercase;
+  }
+  .dark .responsive-stack-table .table-cell::before { color: #8b8b9f; }
+  .responsive-stack-table .table-cell > * { min-width: 0; justify-self: end; }
+  .responsive-stack-table .table-cell > .flex { justify-content: flex-end; }
+  .responsive-stack-table td[colspan] {
+    display: block;
+    padding: 1.25rem;
+    text-align: center;
+  }
+  .responsive-stack-table td[colspan]::before { content: none; }
 }

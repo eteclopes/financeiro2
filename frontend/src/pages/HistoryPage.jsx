@@ -164,25 +164,25 @@ export default function HistoryPage() {
               <h3 className="font-semibold text-slate-900 dark:text-zinc-50">Resumo Mês a Mês</h3>
             </div>
             <div className="data-table-scroll">
-              <table className="w-full text-sm">
+              <table className="responsive-stack-table w-full text-sm">
                 <thead className="bg-subtle/60 dark:bg-white/[0.03]"><tr>
                   {['Mês','Receita','Despesas pagas','Dívidas','Saldo do mês','Saldo acumulado','Saúde','Status'].map(h=><th key={h} className="table-header">{h}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-border/60 dark:divide-white/[0.06]">
                   {[...months].reverse().map((m) => (
                     <tr key={`${m.month}-${m.year}`} className="hover:bg-subtle/40 dark:hover:bg-white/[0.03] transition-colors">
-                      <td className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{String(m.month).padStart(2,'0')}/{m.year}</td>
-                      <td className="table-cell font-mono tabular-nums text-primary-dark dark:text-primary-light font-medium">{formatCurrency(m.income)}</td>
-                      <td className="table-cell font-mono tabular-nums text-danger-dark dark:text-danger-light">{formatCurrency(m.paidExpenses)}</td>
-                      <td className="table-cell font-mono tabular-nums text-warning-dark dark:text-warning-light">{formatCurrency(m.debtInstallments)}</td>
-                      <td className={`table-cell font-mono tabular-nums font-bold ${m.netBalance >= 0 ? 'text-success-dark dark:text-success-light' : 'text-danger-dark dark:text-danger-light'}`}>{formatCurrency(m.netBalance)}</td>
-                      <td className={`table-cell font-mono tabular-nums font-bold ${m.cumulativeBalance >= 0 ? 'text-success-dark dark:text-success-light' : 'text-danger-dark dark:text-danger-light'}`}>{formatCurrency(m.cumulativeBalance)}</td>
-                      <td className="table-cell">
+                      <td data-label="Mês" className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{String(m.month).padStart(2,'0')}/{m.year}</td>
+                      <td data-label="Receita" className="table-cell font-mono tabular-nums text-primary-dark dark:text-primary-light font-medium">{formatCurrency(m.income)}</td>
+                      <td data-label="Despesas pagas" className="table-cell font-mono tabular-nums text-danger-dark dark:text-danger-light">{formatCurrency(m.paidExpenses)}</td>
+                      <td data-label="Dívidas" className="table-cell font-mono tabular-nums text-warning-dark dark:text-warning-light">{formatCurrency(m.debtInstallments)}</td>
+                      <td data-label="Saldo do mês" className={`table-cell font-mono tabular-nums font-bold ${m.netBalance >= 0 ? 'text-success-dark dark:text-success-light' : 'text-danger-dark dark:text-danger-light'}`}>{formatCurrency(m.netBalance)}</td>
+                      <td data-label="Saldo acumulado" className={`table-cell font-mono tabular-nums font-bold ${m.cumulativeBalance >= 0 ? 'text-success-dark dark:text-success-light' : 'text-danger-dark dark:text-danger-light'}`}>{formatCurrency(m.cumulativeBalance)}</td>
+                      <td data-label="Saúde" className="table-cell">
                         {m.healthScore != null
                           ? <span className={`font-mono font-bold text-base ${m.healthScore>=75?'text-success-dark dark:text-success-light':m.healthScore>=50?'text-warning-dark dark:text-warning-light':'text-danger-dark dark:text-danger-light'}`}>{m.healthScore}</span>
                           : <span className="text-muted">—</span>}
                       </td>
-                      <td className="table-cell">
+                      <td data-label="Status" className="table-cell">
                         <Badge variant={m.status==='closed'?'default':'info'}>{m.status==='closed'?'Encerrado':'Aberto'}</Badge>
                       </td>
                     </tr>

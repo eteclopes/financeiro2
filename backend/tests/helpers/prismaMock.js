@@ -32,8 +32,8 @@ function createPrismaMock() {
     card: modelMock(['findMany', 'findFirst', 'findUnique', 'create', 'update', 'delete', 'count']),
     cardInvoice: modelMock(['findUnique', 'findFirst', 'findMany', 'create', 'update', 'updateMany', 'count', 'deleteMany']),
     cardPurchase: modelMock(['create', 'findMany', 'groupBy', 'deleteMany']),
-    expense: modelMock(['findMany', 'findFirst', 'aggregate', 'groupBy', 'count', 'update', 'updateMany', 'create', 'delete', 'deleteMany']),
-    income: modelMock(['aggregate', 'groupBy', 'count', 'create', 'findFirst', 'findMany', 'update', 'delete']),
+    expense: modelMock(['findMany', 'findFirst', 'aggregate', 'groupBy', 'count', 'update', 'updateMany', 'create', 'createMany', 'delete', 'deleteMany']),
+    income: modelMock(['aggregate', 'groupBy', 'count', 'create', 'createMany', 'findFirst', 'findMany', 'update', 'delete']),
     incomeTemplate: modelMock(['count', 'findMany', 'aggregate', 'create', 'update', 'findFirst']),
     fixedExpenseTemplate: modelMock(['count', 'findMany', 'aggregate', 'create', 'update', 'updateMany', 'delete', 'findFirst']),
     debt: modelMock(['findMany', 'findFirst', 'aggregate', 'create', 'update', 'count']),
@@ -82,6 +82,7 @@ function installDefaults(mock) {
     stripeCustomerId: null,
   });
   mock.card.count.mockResolvedValue(0);
+  mock.card.findMany.mockResolvedValue([]);
   mock.billingPurchase.findUnique.mockResolvedValue(null);
   mock.billingPurchase.findFirst.mockResolvedValue(null);
   mock.billingPurchase.upsert.mockImplementation(({ create, update }) => Promise.resolve({ id: 444n, ...create, ...update }));
@@ -97,11 +98,14 @@ function installDefaults(mock) {
   mock.expense.groupBy.mockResolvedValue([]);
   mock.expense.count.mockResolvedValue(0);
   mock.expense.create.mockImplementation(({ data }) => Promise.resolve({ id: 999n, ...data }));
+  mock.expense.createMany.mockImplementation(({ data }) => Promise.resolve({ count: data.length }));
   mock.expense.delete.mockImplementation(({ where }) => Promise.resolve({ id: where.id }));
+  mock.income.findMany.mockResolvedValue([]);
   mock.income.aggregate.mockResolvedValue({ _sum: { value: null } });
   mock.income.groupBy.mockResolvedValue([]);
   mock.income.count.mockResolvedValue(0);
   mock.income.create.mockImplementation(({ data }) => Promise.resolve({ id: 666n, ...data }));
+  mock.income.createMany.mockImplementation(({ data }) => Promise.resolve({ count: data.length }));
   mock.income.update.mockImplementation(({ where, data }) => Promise.resolve({ id: where.id, ...data }));
   mock.income.delete.mockImplementation(({ where }) => Promise.resolve({ id: where.id }));
   mock.incomeTemplate.count.mockResolvedValue(0);

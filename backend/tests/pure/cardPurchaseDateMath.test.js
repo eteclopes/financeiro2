@@ -1,9 +1,4 @@
-jest.mock('../../src/config/prisma', () => require('../helpers/prismaMock').createPrismaMock());
-jest.mock('../../src/modules/months/months.service');
-jest.mock('../../src/modules/expenses/expenses.service');
-jest.mock('../../src/modules/cards/cards.service');
-
-const { firstInvoiceReference, clampDay, invoiceDates } = require('../../src/modules/cards/cardPurchases.service');
+const { firstInvoiceReference, clampDay, invoiceDates, resolveInvoiceForPurchase } = require('../../src/utils/cardCycle');
 
 describe('firstInvoiceReference', () => {
   // Regra textual do projeto: "compra dia 10, fechamento dia 20 -> fatura
@@ -65,6 +60,21 @@ describe('invoiceDates — vencimento real da fatura', () => {
     expect(dueDate.toISOString().slice(0, 10)).toBe('2026-07-25');
   });
 
+
+  test('cartão que fecha dia 18 e vence dia 28: compra depois do fechamento vence dia 28 do mês seguinte', () => {
+    const purchase = new Date(Date.UTC(2026, 6, 19));
+    const result = resolveInvoiceForPurchase(purchase, 18, 28);
+    expect(result.reference).toEqual({ month: 8, year: 2026 });
+    expect(result.closingDate.toISOString().slice(0, 10)).toBe('2026-08-18');
+    expect(result.dueDate.toISOString().slice(0, 10)).toBe('2026-08-28');
+  });
+
+  test('cartão que fecha dia 18 e vence dia 28: compra no dia 18 ainda vence no dia 28 do mês atual', () => {
+    const purchase = new Date(Date.UTC(2026, 6, 18));
+    const result = resolveInvoiceForPurchase(purchase, 18, 28);
+    expect(result.reference).toEqual({ month: 7, year: 2026 });
+    expect(result.dueDate.toISOString().slice(0, 10)).toBe('2026-07-28');
+  });
   test('virada de dezembro para janeiro preserva o ano correto', () => {
     const { dueDate } = invoiceDates(12, 2026, 20, 5);
     expect(dueDate.toISOString().slice(0, 10)).toBe('2027-01-05');

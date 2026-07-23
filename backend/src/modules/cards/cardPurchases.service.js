@@ -7,32 +7,7 @@ const { addMonths } = require('../../utils/monthMath');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
 const { round2 } = require('../../utils/math');
 
-function clampDay(year, month, day) {
-  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  return new Date(Date.UTC(year, month - 1, Math.min(day, lastDay)));
-}
-
-function firstInvoiceReference(purchaseDate, closingDay) {
-  const day = purchaseDate.getUTCDate();
-  const month = purchaseDate.getUTCMonth() + 1;
-  const year = purchaseDate.getUTCFullYear();
-  if (day <= closingDay) return { month, year };
-  return addMonths(month, year, 1);
-}
-
-/**
- * O mês de referência identifica o ciclo que fecha naquele mês. Se o dia de
- * vencimento vem antes (ou no mesmo dia) do fechamento, o vencimento real é
- * no mês seguinte — comportamento usual dos cartões brasileiros.
- */
-function invoiceDates(refMonth, refYear, closingDay, dueDay) {
-  const closingDate = clampDay(refYear, refMonth, closingDay);
-  const dueReference = dueDay <= closingDay
-    ? addMonths(refMonth, refYear, 1)
-    : { month: refMonth, year: refYear };
-  const dueDate = clampDay(dueReference.year, dueReference.month, dueDay);
-  return { closingDate, dueDate };
-}
+const { clampDay, firstInvoiceReference, invoiceDates } = require('../../utils/cardCycle');
 
 async function getOrCreateInvoice(card, refMonth, refYear, client = prisma) {
   const where = {

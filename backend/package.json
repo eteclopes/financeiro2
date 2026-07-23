@@ -15,7 +15,8 @@
     "test:watch": "jest --watch",
     "seed:pro-test": "node prisma/seed-pro-test.js",
     "check:security": "node scripts/check-security-boundaries.js",
-    "check:v16-flows": "node scripts/check-v16-financial-flows.js"
+    "check:v16-flows": "node scripts/check-v16-financial-flows.js",
+    "check:v18-critical": "node scripts/check-v18-critical-flows.js"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",

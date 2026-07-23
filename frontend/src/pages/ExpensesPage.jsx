@@ -374,7 +374,7 @@ export default function ExpensesPage() {
         ) : tab === 'fixed' ? (
           /* ── Tabela Fixas ── */
           <div className="data-table-scroll">
-            <table className="w-full text-sm">
+            <table className="responsive-stack-table w-full text-sm">
               <thead className="bg-subtle/60 dark:bg-white/[0.03]">
                 <tr>
                   {['Descrição','Categoria','Valor','Vencimento','Status','Ações'].map(h=>(
@@ -385,15 +385,15 @@ export default function ExpensesPage() {
               <tbody className="divide-y divide-border/60 dark:divide-white/[0.06]">
                 {filtered.map((e) => (
                   <tr key={e.id} className="hover:bg-subtle/40 dark:hover:bg-white/[0.03] transition-colors">
-                    <td className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{e.description}</td>
-                    <td className="table-cell text-muted">{e.category?.name}</td>
-                    <td className="table-cell font-mono tabular-nums">{formatCurrency(e.value)}</td>
-                    <td className="table-cell text-muted">{formatShortDate(e.dueDate)}</td>
-                    <td className="table-cell">
+                    <td data-label="Descrição" className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{e.description}</td>
+                    <td data-label="Categoria" className="table-cell text-muted">{e.category?.name}</td>
+                    <td data-label="Valor" className="table-cell font-mono tabular-nums">{formatCurrency(e.value)}</td>
+                    <td data-label="Vencimento" className="table-cell text-muted">{formatShortDate(e.dueDate)}</td>
+                    <td data-label="Status" className="table-cell">
                       <Badge variant={STATUS_V[e.status] ?? 'default'}>{STATUS_L[e.status] ?? e.status}</Badge>
                     </td>
-                    <td className="table-cell">
-                      <div className="flex items-center gap-2">
+                    <td data-label="Ações" className="table-cell">
+                      <div className="flex flex-wrap items-center gap-2">
                         {e.type === 'card' ? (
                           <span className="text-xs text-info-dark bg-info-subtle px-2 py-1 rounded-lg font-medium">
                             💳 Fatura {e.cardInvoice?.card?.name ?? 'do cartão'}
@@ -424,7 +424,7 @@ export default function ExpensesPage() {
         ) : (
           /* ── Tabela Variáveis ── */
           <div className="data-table-scroll">
-            <table className="w-full text-sm">
+            <table className="responsive-stack-table w-full text-sm">
               <thead className="bg-subtle/60 dark:bg-white/[0.03]">
                 <tr>
                   {['Descrição','Categoria','Valor','Data','Forma','Status','Ações'].map(h=>(
@@ -435,16 +435,16 @@ export default function ExpensesPage() {
               <tbody className="divide-y divide-border/60 dark:divide-white/[0.06]">
                 {filtered.map((e) => (
                   <tr key={e.id} className="hover:bg-subtle/40 dark:hover:bg-white/[0.03] transition-colors">
-                    <td className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{e.description}</td>
-                    <td className="table-cell text-muted">{e.category?.name}</td>
-                    <td className="table-cell font-mono tabular-nums">{formatCurrency(e.value)}</td>
-                    <td className="table-cell text-muted">{formatShortDate(e.dueDate)}</td>
-                    <td className="table-cell"><Badge>{getPaymentMethodLabel(e.paymentMethod)}</Badge></td>
-                    <td className="table-cell">
+                    <td data-label="Descrição" className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{e.description}</td>
+                    <td data-label="Categoria" className="table-cell text-muted">{e.category?.name}</td>
+                    <td data-label="Valor" className="table-cell font-mono tabular-nums">{formatCurrency(e.value)}</td>
+                    <td data-label="Data" className="table-cell text-muted">{formatShortDate(e.dueDate)}</td>
+                    <td data-label="Forma" className="table-cell"><Badge>{getPaymentMethodLabel(e.paymentMethod)}</Badge></td>
+                    <td data-label="Status" className="table-cell">
                       <Badge variant={STATUS_V[e.status] ?? 'default'}>{STATUS_L[e.status] ?? e.status}</Badge>
                     </td>
-                    <td className="table-cell">
-                      <div className="flex items-center gap-2">
+                    <td data-label="Ações" className="table-cell">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Button size="sm" variant="ghost" onClick={() => {
                           setEditVarModal(e);
                           setEditVarForm({
