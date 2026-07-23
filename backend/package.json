@@ -13,7 +13,8 @@
     "prisma:studio": "prisma studio",
     "test": "jest",
     "test:watch": "jest --watch",
-    "seed:pro-test": "node prisma/seed-pro-test.js"
+    "seed:pro-test": "node prisma/seed-pro-test.js",
+    "check:security": "node scripts/check-security-boundaries.js"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",

@@ -1,12 +1,5 @@
 /**
  * Prepara a URL de runtime do Prisma para uso com o pooler do Supabase.
- *
- * O Supavisor/PgBouncer pode trocar a conexão física entre consultas. Sem o
- * modo de compatibilidade, o Prisma reutiliza prepared statements nomeados que
- * podem deixar de existir na conexão seguinte (erro PostgreSQL 26000).
- *
- * A função não altera conexões diretas. Em URLs do pooler do Supabase, garante
- * `pgbouncer=true`, o que desativa o cache de prepared statements do Prisma.
  */
 function normalizePrismaRuntimeUrl(rawUrl) {
   if (typeof rawUrl !== 'string' || rawUrl.trim() === '') return rawUrl;
@@ -27,4 +20,29 @@ function normalizePrismaRuntimeUrl(rawUrl) {
   return parsed.toString();
 }
 
-module.exports = { normalizePrismaRuntimeUrl };
+/**
+ * Não força um parâmetro específico porque provedores gerenciados podem
+ * negociar TLS sem `sslmode` explícito. Em produção, porém, recusa URLs que
+ * declaram de forma inequívoca que a conexão pode ficar sem criptografia.
+ */
+function getDatabaseTransportIssue(rawUrl, nodeEnv = 'development') {
+  if (nodeEnv !== 'production') return null;
+  let parsed;
+  try {
+    parsed = new URL(String(rawUrl || '').trim());
+  } catch {
+    return 'URL de banco inválida.';
+  }
+
+  if (!['postgres:', 'postgresql:'].includes(parsed.protocol)) {
+    return 'O banco precisa usar uma URL PostgreSQL.';
+  }
+
+  const sslMode = parsed.searchParams.get('sslmode')?.toLowerCase();
+  if (['disable', 'allow', 'prefer'].includes(sslMode)) {
+    return `sslmode=${sslMode} não é permitido em produção; use TLS obrigatório.`;
+  }
+  return null;
+}
+
+module.exports = { normalizePrismaRuntimeUrl, getDatabaseTransportIssue };

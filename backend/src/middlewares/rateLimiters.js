@@ -1,28 +1,48 @@
 const rateLimit = require('express-rate-limit');
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 20,
+function response(message) {
+  return { error: { code: 'TOO_MANY_REQUESTS', message } };
+}
+
+const common = {
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Muitas tentativas. Tente novamente mais tarde.' } },
+};
+
+const authLimiter = rateLimit({
+  ...common,
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  message: response('Muitas tentativas. Tente novamente mais tarde.'),
+});
+
+const sessionLimiter = rateLimit({
+  ...common,
+  windowMs: 15 * 60 * 1000,
+  limit: 90,
+  message: response('Muitas renovações de sessão. Aguarde alguns minutos.'),
+});
+
+const billingLimiter = rateLimit({
+  ...common,
+  windowMs: 10 * 60 * 1000,
+  limit: 10,
+  message: response('Muitas tentativas de pagamento. Aguarde antes de tentar novamente.'),
 });
 
 const globalLimiter = rateLimit({
+  ...common,
   windowMs: 60 * 1000,
   limit: 300,
-  standardHeaders: true,
-  legacyHeaders: false,
   skip: (req) => req.path === '/health',
-  message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Limite de requisições atingido. Aguarde 1 minuto.' } },
+  message: response('Limite de requisições atingido. Aguarde 1 minuto.'),
 });
 
 const heavyLimiter = rateLimit({
+  ...common,
   windowMs: 60 * 1000,
   limit: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Muitas requisições para este endpoint. Aguarde.' } },
+  message: response('Muitas requisições para este endpoint. Aguarde.'),
 });
 
-module.exports = { authLimiter, globalLimiter, heavyLimiter };
+module.exports = { authLimiter, sessionLimiter, billingLimiter, globalLimiter, heavyLimiter };

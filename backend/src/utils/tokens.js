@@ -2,11 +2,6 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const env = require('../config/env');
 
-/**
- * Tokens opacos (refresh e reset de senha) NUNCA são guardados em texto puro
- * no banco — apenas o hash SHA-256. Se o banco vazar, os tokens em si
- * continuam inúteis para um atacante, igual já fazemos com a senha (bcrypt).
- */
 function hashToken(rawToken) {
   return crypto.createHash('sha256').update(rawToken).digest('hex');
 }
@@ -16,13 +11,24 @@ function generateOpaqueToken() {
 }
 
 function signAccessToken(userId) {
-  return jwt.sign({ sub: String(userId) }, env.JWT_ACCESS_SECRET, {
-    expiresIn: env.JWT_ACCESS_EXPIRES_IN,
-  });
+  return jwt.sign(
+    { sub: String(userId), typ: 'access' },
+    env.JWT_ACCESS_SECRET,
+    {
+      algorithm: 'HS256',
+      expiresIn: env.JWT_ACCESS_EXPIRES_IN,
+      issuer: env.JWT_ISSUER,
+      audience: env.JWT_AUDIENCE,
+    }
+  );
 }
 
 function verifyAccessToken(token) {
-  return jwt.verify(token, env.JWT_ACCESS_SECRET);
+  return jwt.verify(token, env.JWT_ACCESS_SECRET, {
+    algorithms: ['HS256'],
+    issuer: env.JWT_ISSUER,
+    audience: env.JWT_AUDIENCE,
+  });
 }
 
 function refreshTokenExpiryDate() {

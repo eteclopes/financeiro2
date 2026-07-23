@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const prismaMock = require('../../src/config/prisma');
 const { installDefaults } = require('../helpers/prismaMock');
 const AppError = require('../../src/utils/AppError');
-const { login, register, forgotPassword, resetPassword, updateProfile } = require('../../src/modules/auth/auth.service');
+const { login, register, refresh, forgotPassword, resetPassword, updateProfile } = require('../../src/modules/auth/auth.service');
 
 beforeEach(() => installDefaults(prismaMock));
 
@@ -155,5 +155,43 @@ describe('updateProfile — edição do nome de exibição', () => {
     expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ userId: 7n, entity: 'user', action: 'update' }) })
     );
+  });
+});
+
+
+describe('refresh token — rotação atômica', () => {
+  test('consome o token uma única vez e emite nova sessão dentro da transação', async () => {
+    prismaMock.refreshToken.findUnique.mockResolvedValue({
+      id: 50n,
+      userId: 7n,
+      revokedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    prismaMock.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.refreshToken.create.mockResolvedValue({});
+
+    const result = await refresh('a'.repeat(96));
+
+    expect(prismaMock.refreshToken.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 50n, revokedAt: null }),
+    }));
+    expect(result.accessToken).toBeDefined();
+    expect(result.refreshToken).toBeDefined();
+  });
+
+  test('segunda tentativa concorrente é rejeitada quando o token já foi consumido', async () => {
+    prismaMock.refreshToken.findUnique.mockResolvedValue({
+      id: 50n,
+      userId: 7n,
+      revokedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    prismaMock.refreshToken.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(refresh('b'.repeat(96))).rejects.toMatchObject({
+      statusCode: 401,
+      code: 'UNAUTHORIZED',
+    });
+    expect(prismaMock.refreshToken.create).not.toHaveBeenCalled();
   });
 });

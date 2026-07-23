@@ -1,11 +1,6 @@
 const AppError = require('../utils/AppError');
 const { verifyAccessToken } = require('../utils/tokens');
 
-/**
- * Toda rota privada do sistema passa por aqui. É a ÚNICA fonte de verdade
- * de "quem é o usuário logado" (req.userId) — nenhum controller deve
- * confiar em um user_id vindo do body/query, sempre usar req.userId.
- */
 function authenticate(req, res, next) {
   const header = req.headers.authorization;
 
@@ -13,13 +8,19 @@ function authenticate(req, res, next) {
     throw new AppError('Token de acesso ausente.', 401, 'UNAUTHORIZED');
   }
 
-  const token = header.slice('Bearer '.length);
+  const token = header.slice('Bearer '.length).trim();
+  if (!token || token.length > 4096) {
+    throw new AppError('Token de acesso inválido ou expirado.', 401, 'UNAUTHORIZED');
+  }
 
   try {
     const payload = verifyAccessToken(token);
+    if (payload.typ !== 'access' || typeof payload.sub !== 'string' || !/^[1-9]\d*$/.test(payload.sub)) {
+      throw new Error('invalid token subject');
+    }
     req.userId = BigInt(payload.sub);
     next();
-  } catch (err) {
+  } catch {
     throw new AppError('Token de acesso inválido ou expirado.', 401, 'UNAUTHORIZED');
   }
 }

@@ -1,0 +1,38 @@
+-- MODELO OPCIONAL — NÃO É EXECUTADO POR MIGRATION.
+-- Execute apenas como administrador do PostgreSQL e substitua a senha.
+-- Alguns provedores gerenciados podem impedir CREATE ROLE.
+
+BEGIN;
+
+CREATE SCHEMA IF NOT EXISTS support;
+
+CREATE OR REPLACE VIEW support.user_summary AS
+SELECT
+  u.id AS user_id,
+  u.plan,
+  u.plan_source,
+  u.created_at,
+  (SELECT COUNT(*) FROM incomes i WHERE i.user_id = u.id) AS income_records,
+  (SELECT COUNT(*) FROM expenses e WHERE e.user_id = u.id AND e.deleted_at IS NULL) AS expense_records,
+  (SELECT COUNT(*) FROM debts d WHERE d.user_id = u.id) AS debt_records,
+  (SELECT COUNT(*) FROM cards c WHERE c.user_id = u.id) AS card_records,
+  (SELECT COUNT(*) FROM goals g WHERE g.user_id = u.id) AS goal_records
+FROM users u;
+
+CREATE OR REPLACE VIEW support.recent_activity AS
+SELECT
+  user_id,
+  entity,
+  action,
+  created_at
+FROM audit_log
+ORDER BY created_at DESC;
+
+-- EXEMPLO:
+-- CREATE ROLE financehub_support LOGIN PASSWORD 'SUBSTITUA_POR_UMA_SENHA_FORTE';
+-- REVOKE ALL ON ALL TABLES IN SCHEMA public FROM financehub_support;
+-- REVOKE ALL ON SCHEMA public FROM financehub_support;
+-- GRANT USAGE ON SCHEMA support TO financehub_support;
+-- GRANT SELECT ON support.user_summary, support.recent_activity TO financehub_support;
+
+COMMIT;

@@ -1,53 +1,42 @@
 const prisma = require('../../config/prisma');
+const { buildAuditSnapshot, sanitizeLogText } = require('../../utils/privacy');
 
 /**
- * Converte BigInt (ids) para string antes de gravar em uma coluna Json —
- * JSON.stringify lança TypeError em BigInt sem isto. Decimal do Prisma já
- * implementa toJSON() (vira string), não precisa de tratamento especial.
- * Retorna undefined para null/undefined (Prisma trata `undefined` como
- * "não definir o campo", diferente de `null` explícito).
- */
-function serialize(value) {
-  if (value === null || value === undefined) return value;
-  return JSON.parse(JSON.stringify(value, (_key, v) => (typeof v === 'bigint' ? v.toString() : v)));
-}
-
-/**
- * Registra uma ação sensível (login, criação/edição/exclusão de dados
- * financeiros, fechamento de mês, etc.) para auditoria.
+ * Registra ações importantes sem duplicar dados financeiros ou pessoais.
  *
- * DECISÃO IMPORTANTE: isto é chamado DEPOIS que a operação de negócio já
- * commitou (nunca de dentro do mesmo $transaction). Um audit log é uma
- * preocupação secundária — se o registro do log falhar (bug, coluna
- * inesperada, etc.), isso NUNCA pode reverter uma compra/pagamento/depósito
- * que já aconteceu de verdade. O custo é não ser 100% atômico (uma queda
- * de processo bem no meio do caminho deixaria a ação sem log); o benefício
- * é que um bug na auditoria não pode nunca quebrar uma função financeira.
- * Mesmo princípio já usado em auth.service.js (pruneExpiredTokens/
- * pruneExpiredPasswordResets): dispara e não deixa a falha propagar.
+ * O audit_log guarda somente:
+ * - usuário responsável (FK já existente), entidade, id e ação;
+ * - nomes dos campos envolvidos;
+ * - estados técnicos não sensíveis, como status/active/type.
  *
- * @param {bigint} userId
- * @param {string} entity - ex.: 'debt', 'card', 'savingsTransaction', 'user'
- * @param {bigint} entityId
- * @param {string} action - ex.: 'create', 'update', 'delete', 'login', 'logout'
- * @param {{oldValue?: object|null, newValue?: object|null}} [snapshot]
+ * Valores, saldos, limites, descrições, observações, nomes, e-mails, tokens e
+ * payloads de simulação nunca são copiados para o log. Isso reduz a superfície
+ * de exposição caso alguém acesse a tabela de auditoria.
+ *
+ * A chamada continua ocorrendo depois do commit da operação principal. Falhas
+ * de auditoria nunca revertem uma operação financeira já concluída.
  */
 async function recordAuditLog(userId, entity, entityId, action, { oldValue, newValue } = {}) {
   try {
+    const { oldSummary, newSummary } = buildAuditSnapshot(oldValue, newValue);
     await prisma.auditLog.create({
       data: {
         userId,
         entity,
         entityId,
         action,
-        oldValueJson: oldValue === undefined ? undefined : serialize(oldValue),
-        newValueJson: newValue === undefined ? undefined : serialize(newValue),
+        oldValueJson: oldSummary,
+        newValueJson: newSummary,
       },
     });
   } catch (err) {
-    // Nunca propaga — ver justificativa acima. Loga para não ficar
-    // silenciosamente invisível caso o auditLog pare de funcionar.
-    console.error(`[auditLog] falha ao registrar ${entity}/${action} (operação de negócio não foi afetada):`, err.message);
+    // Não inclui entityId, payload nem mensagem completa do driver, pois erros
+    // de banco podem conter detalhes de consulta. O suficiente para suporte é
+    // saber qual módulo/ação falhou.
+    console.error(
+      `[auditLog] falha em ${sanitizeLogText(entity, 40)}/${sanitizeLogText(action, 40)}; ` +
+      'a operação principal não foi revertida.'
+    );
   }
 }
 

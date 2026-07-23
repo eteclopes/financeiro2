@@ -17,19 +17,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-    <script>
-      // Aplica o tema salvo (ou a preferência do sistema, na primeira visita)
-      // antes de qualquer CSS/JS do React carregar, para nunca haver um
-      // "flash" de light mode em quem usa dark. O themeStore.js reaplica a
-      // mesma lógica depois — este script é só para o instante zero.
-      (function () {
-        try {
-          var saved = localStorage.getItem('financaspro:theme');
-          var dark = saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
-          if (dark) document.documentElement.classList.add('dark');
-        } catch (e) {}
-      })();
-    </script>
+    <script src="/theme-init.js"></script>
   </head>
   <body class="bg-bg dark:bg-canvas-dark text-gray-900 dark:text-ink-dark font-sans antialiased">
     <div id="root"></div>

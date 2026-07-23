@@ -1,5 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const { normalizePrismaRuntimeUrl } = require('../src/config/databaseUrl');
+const { sanitizeLogText } = require('../src/utils/privacy');
 
 process.env.DATABASE_URL = normalizePrismaRuntimeUrl(process.env.DATABASE_URL);
 const prisma = new PrismaClient();
@@ -46,5 +47,8 @@ async function main() {
 }
 
 main()
-  .catch((err) => { console.error(err); process.exit(1); })
+  .catch((err) => {
+    console.error(`Falha no seed (${sanitizeLogText(err?.code || err?.name || 'SEED_ERROR', 60)}).`);
+    process.exit(1);
+  })
   .finally(async () => { await prisma.$disconnect(); });

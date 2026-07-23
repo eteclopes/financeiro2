@@ -1,4 +1,4 @@
-const { normalizePrismaRuntimeUrl } = require('../../src/config/databaseUrl');
+const { normalizePrismaRuntimeUrl, getDatabaseTransportIssue } = require('../../src/config/databaseUrl');
 
 describe('normalizePrismaRuntimeUrl', () => {
   test('adiciona pgbouncer=true ao transaction pooler do Supabase', () => {
@@ -31,5 +31,22 @@ describe('normalizePrismaRuntimeUrl', () => {
 
   test('não quebra valor inválido', () => {
     expect(normalizePrismaRuntimeUrl('nao-e-url')).toBe('nao-e-url');
+  });
+});
+
+
+describe('database transport security', () => {
+  test('bloqueia sslmode=disable em produção', () => {
+    expect(getDatabaseTransportIssue(
+      'postgresql://user:pass@db.example.com:5432/app?sslmode=disable',
+      'production',
+    )).toContain('não é permitido');
+  });
+
+  test('não exige parâmetro explícito em provedor gerenciado', () => {
+    expect(getDatabaseTransportIssue(
+      'postgresql://user:pass@db.example.com:5432/app',
+      'production',
+    )).toBeNull();
   });
 });

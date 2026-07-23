@@ -16,3 +16,6 @@ process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test_db';
 process.env.DIRECT_URL = 'postgresql://test:test@localhost:5432/test_db';
 process.env.CORS_ORIGIN = 'http://localhost:5173';
 process.env.JWT_ACCESS_SECRET = 'test-secret-com-32-caracteres-no-minimo-ok';
+
+process.env.JWT_ISSUER = 'financehub-api';
+process.env.JWT_AUDIENCE = 'financehub-web';

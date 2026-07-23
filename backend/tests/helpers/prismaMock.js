@@ -134,6 +134,7 @@ function installDefaults(mock) {
   mock.savingsTransaction.findMany.mockResolvedValue([]);
   mock.auditLog.create.mockResolvedValue({});
   mock.refreshToken.deleteMany.mockResolvedValue({ count: 0 });
+  mock.refreshToken.updateMany.mockResolvedValue({ count: 1 });
   mock.passwordReset.deleteMany.mockResolvedValue({ count: 0 });
   mock.simulationResult.createMany.mockResolvedValue({ count: 0 });
   mock.financialHealthScore.findFirst.mockResolvedValue(null);

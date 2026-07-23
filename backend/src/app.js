@@ -4,7 +4,6 @@ const express = require('express');
 const helmet  = require('helmet');
 const cors    = require('cors');
 const cookieParser = require('cookie-parser');
-const morgan  = require('morgan');
 
 const env         = require('./config/env');
 const routes      = require('./routes');
@@ -14,14 +13,28 @@ const { globalLimiter } = require('./middlewares/rateLimiters');
 const { parseConfiguredOrigins, createOriginPolicy } = require('./utils/corsOrigins');
 const billingController = require('./modules/billing/billing.controller');
 const { localizationContext } = require('./utils/requestContext');
+const {
+  requestId,
+  privateApiHeaders,
+  enforceTrustedOrigin,
+  privacyLogger,
+} = require('./middlewares/security');
 
 const app = express();
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
 
-// ── Segurança ────────────────────────────────────────────────────────────────
+app.use(requestId);
 app.use(helmet({
   contentSecurityPolicy: env.NODE_ENV === 'production' ? undefined : false,
-  hsts: env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true } : false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  referrerPolicy: { policy: 'no-referrer' },
+  hsts: env.NODE_ENV === 'production'
+    ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+    : false,
 }));
+app.use(privateApiHeaders);
 
 const corsPolicy = createOriginPolicy({
   configuredOrigins: parseConfiguredOrigins(`${env.CORS_ORIGIN},${env.FRONTEND_URL}`),
@@ -31,61 +44,46 @@ const corsPolicy = createOriginPolicy({
 
 app.use(cors({
   origin(origin, callback) {
-    if (corsPolicy.isAllowed(origin)) {
-      // Retornar a origem recebida faz o middleware emitir um cabeçalho válido
-      // Access-Control-Allow-Origin, inclusive quando credentials=true.
-      return callback(null, origin || true);
-    }
-
-    if (env.NODE_ENV !== 'test') {
-      console.warn(`[CORS] Origem recusada: ${origin}`);
-    }
+    if (corsPolicy.isAllowed(origin)) return callback(null, origin || true);
+    if (env.NODE_ENV !== 'test') console.warn('[CORS] Origem recusada.');
     return callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept-Language', 'X-Time-Zone', 'X-Currency'],
+  allowedHeaders: [
+    'Content-Type', 'Authorization', 'Accept-Language', 'X-Time-Zone',
+    'X-Currency', 'X-Request-ID',
+  ],
+  exposedHeaders: ['X-Request-ID', 'RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset'],
   optionsSuccessStatus: 204,
+  maxAge: 600,
 }));
 
-// ── Webhook Stripe / body parsing ────────────────────────────────────────────
-// A assinatura do Stripe é calculada sobre os bytes originais. Por isso este
-// endpoint precisa ser montado ANTES do express.json e receber Buffer bruto.
-// Ele também fica antes do rate limit global: webhooks são servidor-servidor,
-// possuem assinatura criptográfica e precisam aceitar as retentativas do
-// Stripe sem risco de um pico da API bloquear a confirmação do pagamento.
+// CORS controla leitura pelo navegador, mas sozinho não impede que um POST
+// simples alcance o servidor. O guard abaixo rejeita origens não confiáveis
+// antes de executar qualquer mutação, reduzindo CSRF nas rotas com cookie.
+app.use(enforceTrustedOrigin(corsPolicy));
+
+// Webhook precisa dos bytes originais e fica fora do limitador global.
 app.post('/api/billing/webhook', express.raw({ type: 'application/json', limit: '1mb' }), billingController.webhook);
 
-// ── Rate limit global ────────────────────────────────────────────────────────
-app.set('trust proxy', 1);
 app.use(globalLimiter);
-
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '256kb', strict: true }));
 app.use(cookieParser());
-
-// Contexto por requisição: datas como "hoje" respeitam o fuso do usuário.
-// O valor financeiro continua sendo armazenado como número; locale/moeda são apresentação.
 app.use(localizationContext);
+app.use(privacyLogger(env.NODE_ENV));
 
-// ── Logging ──────────────────────────────────────────────────────────────────
-if (env.NODE_ENV !== 'test') {
-  app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
-}
-
-// ── Health check ─────────────────────────────────────────────────────────────
+app.get('/', (req, res) => res.status(204).send());
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', uptime: process.uptime(), env: env.NODE_ENV });
+  res.json({ status: 'ok', uptime: Math.floor(process.uptime()) });
 });
 
-// ── Rotas da API ─────────────────────────────────────────────────────────────
 app.use('/api', routes);
 
-// ── 404 ──────────────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
-  next(new AppError(`Rota não encontrada: ${req.method} ${req.originalUrl}`, 404, 'NOT_FOUND'));
+  next(new AppError('Rota não encontrada.', 404, 'NOT_FOUND'));
 });
 
-// ── Erros ────────────────────────────────────────────────────────────────────
 app.use(errorHandler);
 
 module.exports = app;

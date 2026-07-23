@@ -49,13 +49,13 @@ function pruneExpiredPasswordResets() {
   }).catch(() => {});
 }
 
-async function issueSession(userId) {
+async function issueSession(userId, client = prisma) {
   const accessToken = signAccessToken(userId);
   const rawRefreshToken = generateOpaqueToken();
-  await prisma.refreshToken.create({
+  await client.refreshToken.create({
     data: { userId, tokenHash: hashToken(rawRefreshToken), expiresAt: refreshTokenExpiryDate() },
   });
-  if (Math.random() < 0.02) { pruneExpiredTokens(); pruneExpiredPasswordResets(); }
+  if (client === prisma && Math.random() < 0.02) { pruneExpiredTokens(); pruneExpiredPasswordResets(); }
   return { accessToken, refreshToken: rawRefreshToken };
 }
 
@@ -87,14 +87,34 @@ async function login({ email, password }) {
 }
 
 async function refresh(rawRefreshToken) {
-  if (!rawRefreshToken) throw new AppError('Refresh token ausente.', 401, 'UNAUTHORIZED');
-  const tokenHash = hashToken(rawRefreshToken);
-  const existing = await prisma.refreshToken.findUnique({ where: { tokenHash } });
-  if (!existing || existing.revokedAt !== null || existing.expiresAt.getTime() < Date.now()) {
-    throw new AppError('Sessão expirada ou inválida. Faça login novamente.', 401, 'UNAUTHORIZED');
+  if (!rawRefreshToken || rawRefreshToken.length > 256) {
+    throw new AppError('Refresh token ausente.', 401, 'UNAUTHORIZED');
   }
-  await prisma.refreshToken.update({ where: { id: existing.id }, data: { revokedAt: new Date() } });
-  return issueSession(existing.userId);
+  const tokenHash = hashToken(rawRefreshToken);
+
+  // Rotação atômica: duas abas/requisições concorrentes não conseguem usar o
+  // mesmo refresh token duas vezes. Apenas a primeira atualização condicional
+  // vence e recebe um novo token.
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.refreshToken.findUnique({ where: { tokenHash } });
+    if (!existing) {
+      throw new AppError('Sessão expirada ou inválida. Faça login novamente.', 401, 'UNAUTHORIZED');
+    }
+
+    const claimed = await tx.refreshToken.updateMany({
+      where: {
+        id: existing.id,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      data: { revokedAt: new Date() },
+    });
+
+    if (claimed.count !== 1) {
+      throw new AppError('Sessão expirada ou inválida. Faça login novamente.', 401, 'UNAUTHORIZED');
+    }
+    return issueSession(existing.userId, tx);
+  });
 }
 
 async function logout(rawRefreshToken) {

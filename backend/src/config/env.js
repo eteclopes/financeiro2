@@ -24,6 +24,8 @@ const envSchema = z.object({
   // era fraco demais para um segredo assinando tokens de sessão.
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET deve ter pelo menos 32 caracteres'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
+  JWT_ISSUER: z.string().min(3).default('financehub-api'),
+  JWT_AUDIENCE: z.string().min(3).default('financehub-web'),
   JWT_REFRESH_EXPIRES_IN_DAYS: z.coerce.number().default(30),
   PASSWORD_RESET_EXPIRES_IN_HOURS: z.coerce.number().default(1),
 
@@ -57,6 +59,18 @@ const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {
   console.error('Variáveis de ambiente inválidas:');
   console.error(parsed.error.flatten().fieldErrors);
+  process.exit(1);
+}
+
+const { getDatabaseTransportIssue } = require('./databaseUrl');
+const databaseIssues = [
+  ['DATABASE_URL', getDatabaseTransportIssue(parsed.data.DATABASE_URL, parsed.data.NODE_ENV)],
+  ['DIRECT_URL', getDatabaseTransportIssue(parsed.data.DIRECT_URL, parsed.data.NODE_ENV)],
+].filter(([, issue]) => issue);
+
+if (databaseIssues.length) {
+  console.error('Configuração insegura de banco de dados:');
+  for (const [name, issue] of databaseIssues) console.error(`- ${name}: ${issue}`);
   process.exit(1);
 }
 

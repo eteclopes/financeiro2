@@ -2,23 +2,41 @@ const env = require('../../config/env');
 const asyncHandler = require('../../utils/asyncHandler');
 const authService = require('./auth.service');
 
-const REFRESH_COOKIE_NAME = 'refresh_token';
+const LEGACY_REFRESH_COOKIE_NAME = 'refresh_token';
+const REFRESH_COOKIE_NAME = env.NODE_ENV === 'production'
+  ? '__Host-financehub_refresh'
+  : 'financehub_refresh';
 
 function refreshCookieOptions() {
   return {
     httpOnly: true,
-    // Em produção o frontend (Vercel) e o backend (Render) ficam em domínios
-    // diferentes, então o cookie precisa ser cross-site: sameSite 'none' exige
-    // secure true (só funciona em HTTPS, que é o caso em produção).
     secure: env.NODE_ENV === 'production',
     sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
-    path: '/api/auth',
+    // O prefixo __Host- exige Path=/ e ausência de Domain. Isso impede que
+    // subdomínios sobrescrevam o cookie em produção.
+    path: '/',
     maxAge: env.JWT_REFRESH_EXPIRES_IN_DAYS * 24 * 60 * 60 * 1000,
+    priority: 'high',
   };
 }
 
+function clearCookieOptions() {
+  const { maxAge, ...options } = refreshCookieOptions();
+  return options;
+}
+
+function readRefreshToken(req) {
+  return req.cookies?.[REFRESH_COOKIE_NAME] ?? req.cookies?.[LEGACY_REFRESH_COOKIE_NAME];
+}
+
+function writeRefreshCookie(res, rawToken) {
+  res.cookie(REFRESH_COOKIE_NAME, rawToken, refreshCookieOptions());
+  // Limpa o cookie da versão anterior sem interromper sessões na migração.
+  res.clearCookie(LEGACY_REFRESH_COOKIE_NAME, { path: '/api/auth' });
+}
+
 function sendSession(res, status, { user, accessToken, refreshToken }) {
-  res.cookie(REFRESH_COOKIE_NAME, refreshToken, refreshCookieOptions());
+  writeRefreshCookie(res, refreshToken);
   return res.status(status).json({ user, accessToken });
 }
 
@@ -33,16 +51,15 @@ const login = asyncHandler(async (req, res) => {
 });
 
 const refresh = asyncHandler(async (req, res) => {
-  const rawRefreshToken = req.cookies?.[REFRESH_COOKIE_NAME];
-  const result = await authService.refresh(rawRefreshToken);
-  res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, refreshCookieOptions());
+  const result = await authService.refresh(readRefreshToken(req));
+  writeRefreshCookie(res, result.refreshToken);
   res.status(200).json({ accessToken: result.accessToken });
 });
 
 const logout = asyncHandler(async (req, res) => {
-  const rawRefreshToken = req.cookies?.[REFRESH_COOKIE_NAME];
-  await authService.logout(rawRefreshToken);
-  res.clearCookie(REFRESH_COOKIE_NAME, { path: '/api/auth' });
+  await authService.logout(readRefreshToken(req));
+  res.clearCookie(REFRESH_COOKIE_NAME, clearCookieOptions());
+  res.clearCookie(LEGACY_REFRESH_COOKIE_NAME, { path: '/api/auth' });
   res.status(204).send();
 });
 

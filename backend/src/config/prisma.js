@@ -2,13 +2,13 @@ const { PrismaClient } = require('@prisma/client');
 const env = require('./env');
 const { normalizePrismaRuntimeUrl } = require('./databaseUrl');
 
-// O Prisma lê DATABASE_URL ao criar o client. Normalizar antes da instanciação
-// evita prepared statements incompatíveis com o Supabase Pooler. DIRECT_URL não
-// é alterada e continua sendo usada pelo Prisma Migrate no schema.prisma.
 process.env.DATABASE_URL = normalizePrismaRuntimeUrl(env.DATABASE_URL);
 
 const prisma = new PrismaClient({
-  log: env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+  // Em produção o Prisma não escreve eventos diretamente no console porque
+  // mensagens do driver podem incluir estrutura de consulta. Erros seguem para
+  // o errorHandler sanitizado da API.
+  log: env.NODE_ENV === 'development' ? ['warn', 'error'] : [],
 });
 
 module.exports = prisma;
