@@ -27,6 +27,7 @@ function createPrismaMock() {
   const mock = {
     user: modelMock(['findUnique', 'create', 'update', 'upsert']),
     auditLog: modelMock(['create']),
+    savingsBucket: modelMock(['findFirst', 'findMany', 'create', 'update']),
     savingsTransaction: modelMock(['findFirst', 'findMany', 'create', 'update', 'delete', 'aggregate']),
     card: modelMock(['findMany', 'findFirst', 'findUnique', 'create', 'update', 'delete', 'count']),
     cardInvoice: modelMock(['findUnique', 'findFirst', 'findMany', 'create', 'update', 'updateMany', 'count', 'deleteMany']),
@@ -132,6 +133,18 @@ function installDefaults(mock) {
   mock.month.create.mockImplementation(({ data }) => Promise.resolve({ id: 333n, ...data }));
   mock.savingsTransaction.aggregate.mockResolvedValue({ _sum: { value: null } });
   mock.savingsTransaction.findMany.mockResolvedValue([]);
+  mock.savingsBucket.findFirst.mockResolvedValue({
+    id: 700n,
+    userId: 1n,
+    kind: 'general',
+    name: null,
+    targetValue: null,
+    isDefault: true,
+    isArchived: false,
+  });
+  mock.savingsBucket.findMany.mockResolvedValue([]);
+  mock.savingsBucket.create.mockImplementation(({ data }) => Promise.resolve({ id: 700n, ...data }));
+  mock.savingsBucket.update.mockImplementation(({ where, data }) => Promise.resolve({ id: where.id, ...data }));
   mock.auditLog.create.mockResolvedValue({});
   mock.refreshToken.deleteMany.mockResolvedValue({ count: 0 });
   mock.refreshToken.updateMany.mockResolvedValue({ count: 1 });

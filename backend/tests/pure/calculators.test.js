@@ -1,7 +1,6 @@
 const {
   calculateCompoundInterest,
   calculateFinancing,
-  convertRate,
   calculateCashVsInstallments,
   calculateDebtPayoff,
   calculateEmergencyReserve,
@@ -12,7 +11,8 @@ describe('Calculadoras Pro', () => {
     const result = calculateCompoundInterest({
       initialValue: 1000,
       monthlyContribution: 100,
-      annualRate: 0,
+      rate: 0,
+      ratePeriod: 'annual',
       years: 1,
       inflationRate: 0,
     });
@@ -21,11 +21,25 @@ describe('Calculadoras Pro', () => {
     expect(result.evolution).toHaveLength(1);
   });
 
+  test('taxa mensal é usada diretamente sem ser convertida como anual', () => {
+    const result = calculateCompoundInterest({
+      initialValue: 1000,
+      monthlyContribution: 0,
+      rate: 1,
+      ratePeriod: 'monthly',
+      years: 1,
+      inflationRate: 0,
+    });
+    expect(result.finalBalance).toBeCloseTo(1126.83, 2);
+    expect(result.monthlyEquivalentRate).toBe(1);
+  });
+
   test('financiamento Price com taxa zero divide igualmente', () => {
     const result = calculateFinancing({
       assetValue: 12000,
       downPayment: 0,
-      annualRate: 0,
+      rate: 0,
+      ratePeriod: 'monthly',
       months: 12,
       system: 'price',
       extraFees: 0,
@@ -35,11 +49,26 @@ describe('Calculadoras Pro', () => {
     expect(result.totalPaid).toBe(12000);
   });
 
-  test('conversão mensal/anual é equivalente', () => {
-    const annual = convertRate({ rate: 1, source: 'monthly' });
-    const monthly = convertRate({ rate: annual.annualRate, source: 'annual' });
-    expect(annual.annualRate).toBeCloseTo(12.68, 2);
-    expect(monthly.monthlyRate).toBeCloseTo(1, 2);
+  test('financiamento aceita taxa mensal e anual equivalentes', () => {
+    const monthly = calculateFinancing({
+      assetValue: 10000,
+      downPayment: 0,
+      rate: 1,
+      ratePeriod: 'monthly',
+      months: 12,
+      system: 'price',
+      extraFees: 0,
+    });
+    const annual = calculateFinancing({
+      assetValue: 10000,
+      downPayment: 0,
+      rate: 12.682503,
+      ratePeriod: 'annual',
+      months: 12,
+      system: 'price',
+      extraFees: 0,
+    });
+    expect(monthly.firstInstallment).toBeCloseTo(annual.firstInstallment, 1);
   });
 
   test('à vista ganha quando é claramente mais barato', () => {
@@ -47,7 +76,8 @@ describe('Calculadoras Pro', () => {
       cashPrice: 900,
       installmentTotal: 1200,
       installments: 12,
-      annualInvestmentRate: 0,
+      investmentRate: 0,
+      investmentRatePeriod: 'annual',
       cashback: 0,
     });
     expect(result.recommendation).toBe('cash');
@@ -57,7 +87,8 @@ describe('Calculadoras Pro', () => {
   test('aporte extra reduz prazo e juros da dívida', () => {
     const result = calculateDebtPayoff({
       balance: 10000,
-      annualRate: 24,
+      rate: 24,
+      ratePeriod: 'annual',
       monthlyPayment: 600,
       extraMonthly: 300,
     });

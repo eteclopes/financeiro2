@@ -125,8 +125,10 @@ async function runScenarioPreview(userId, monthId, type, input, monthsAhead = 12
   const baseline = mergeComponentsIntoSeries(baseComponents);
   const scenario = mergeComponentsIntoSeries(scenarioComponents);
 
+  const monthlySaved = type === 'save_monthly' ? Number(input.amount) : 0;
   const comparison = baseline.map((b, i) => {
     const s = scenario[i];
+    const reservedCumulative = round2(monthlySaved * (i + 1));
     return {
       month: b.month,
       year: b.year,
@@ -136,10 +138,16 @@ async function runScenarioPreview(userId, monthId, type, input, monthsAhead = 12
       baselineCumulative: b.cumulativeNet,
       scenarioCumulative: s.cumulativeNet,
       cumulativeDifference: round2(s.cumulativeNet - b.cumulativeNet),
+      reservedThisMonth: round2(monthlySaved),
+      reservedCumulative,
+      // Guardar dinheiro reduz o caixa livre, mas não destrói patrimônio:
+      // ele só muda de "saldo disponível" para "reserva".
+      scenarioTotalCumulative: round2(s.cumulativeNet + reservedCumulative),
     };
   });
 
   const totalGain = round2(comparison[comparison.length - 1]?.cumulativeDifference ?? 0);
+  const totalReserved = round2(comparison[comparison.length - 1]?.reservedCumulative ?? 0);
   const firstPositiveMonth = comparison.find((m) => m.cumulativeDifference > 0);
 
   return {
@@ -147,6 +155,9 @@ async function runScenarioPreview(userId, monthId, type, input, monthsAhead = 12
     input,
     monthsAhead,
     totalGain,
+    totalReserved,
+    availableBalanceImpact: totalGain,
+    totalWealthImpact: round2(totalGain + totalReserved),
     firstPositiveMonth: firstPositiveMonth
       ? { month: firstPositiveMonth.month, year: firstPositiveMonth.year }
       : null,

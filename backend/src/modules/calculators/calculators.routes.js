@@ -9,7 +9,6 @@ const service = require('./calculators.service');
 const handlers = {
   compound: service.calculateCompoundInterest,
   financing: service.calculateFinancing,
-  rate: service.convertRate,
   'cash-vs-installments': service.calculateCashVsInstallments,
   'debt-payoff': service.calculateDebtPayoff,
   'emergency-reserve': service.calculateEmergencyReserve,
@@ -18,7 +17,6 @@ const handlers = {
 const schemaByRoute = {
   compound: schemas.compound,
   financing: schemas.financing,
-  rate: schemas.rate,
   'cash-vs-installments': schemas.cashVsInstallments,
   'debt-payoff': schemas.debtPayoff,
   'emergency-reserve': schemas.emergencyReserve,

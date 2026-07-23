@@ -1,13 +1,24 @@
 const AppError = require('../../utils/AppError');
 const { round2 } = require('../../utils/math');
 
-function equivalentMonthlyRate(annualPercent) {
-  return Math.pow(1 + Number(annualPercent) / 100, 1 / 12) - 1;
+function equivalentMonthlyRate(ratePercent, ratePeriod = 'annual') {
+  const value = Number(ratePercent) / 100;
+  if (ratePeriod === 'monthly') return value;
+  return Math.pow(1 + value, 1 / 12) - 1;
 }
 
-function calculateCompoundInterest({ initialValue, monthlyContribution, annualRate, years, inflationRate = 0 }) {
+function resolveRate(data, preferredField = 'rate') {
+  const value = data[preferredField] ?? data.annualRate ?? data.annualInvestmentRate ?? 0;
+  return {
+    value: Number(value),
+    period: data.ratePeriod ?? data.investmentRatePeriod ?? 'annual',
+  };
+}
+
+function calculateCompoundInterest({ initialValue, monthlyContribution, inflationRate = 0, years, ...rateData }) {
   const months = Math.round(Number(years) * 12);
-  const monthlyRate = equivalentMonthlyRate(annualRate);
+  const { value: enteredRate, period: ratePeriod } = resolveRate(rateData);
+  const monthlyRate = equivalentMonthlyRate(enteredRate, ratePeriod);
   let balance = Number(initialValue);
   let invested = Number(initialValue);
   const evolution = [];
@@ -26,15 +37,18 @@ function calculateCompoundInterest({ initialValue, monthlyContribution, annualRa
     totalInvested: round2(invested),
     totalInterest: round2(balance - invested),
     realBalance: round2(balance / inflationFactor),
+    enteredRate: round2(enteredRate),
+    ratePeriod,
     monthlyEquivalentRate: round2(monthlyRate * 100),
     evolution,
   };
 }
 
-function calculateFinancing({ assetValue, downPayment, annualRate, months, system, extraFees = 0 }) {
+function calculateFinancing({ assetValue, downPayment, months, system, extraFees = 0, ...rateData }) {
   const financed = Number(assetValue) - Number(downPayment) + Number(extraFees);
   if (financed <= 0) throw new AppError('O valor financiado precisa ser maior que zero.', 422, 'VALIDATION_ERROR');
-  const rate = equivalentMonthlyRate(annualRate);
+  const { value: enteredRate, period: ratePeriod } = resolveRate(rateData);
+  const rate = equivalentMonthlyRate(enteredRate, ratePeriod);
   let balance = financed;
   let totalInterest = 0;
   let totalPaid = 0;
@@ -62,21 +76,16 @@ function calculateFinancing({ assetValue, downPayment, annualRate, months, syste
     lastInstallment: round2(schedule[schedule.length - 1]?.payment ?? 0),
     totalInterest: round2(totalInterest),
     totalPaid: round2(totalPaid + Number(downPayment)),
+    enteredRate: round2(enteredRate),
+    ratePeriod,
     monthlyEquivalentRate: round2(rate * 100),
     schedule,
   };
 }
 
-function convertRate({ rate, source }) {
-  const value = Number(rate) / 100;
-  if (source === 'monthly') {
-    return { monthlyRate: round2(Number(rate)), annualRate: round2((Math.pow(1 + value, 12) - 1) * 100) };
-  }
-  return { annualRate: round2(Number(rate)), monthlyRate: round2((Math.pow(1 + value, 1 / 12) - 1) * 100) };
-}
-
-function calculateCashVsInstallments({ cashPrice, installmentTotal, installments, annualInvestmentRate = 0, cashback = 0 }) {
-  const monthlyRate = equivalentMonthlyRate(annualInvestmentRate);
+function calculateCashVsInstallments({ cashPrice, installmentTotal, installments, cashback = 0, ...rateData }) {
+  const { value: enteredRate, period: ratePeriod } = resolveRate(rateData, 'investmentRate');
+  const monthlyRate = equivalentMonthlyRate(enteredRate, ratePeriod);
   const payment = Number(installmentTotal) / Number(installments);
   let presentValue = 0;
   for (let i = 1; i <= Number(installments); i += 1) {
@@ -92,12 +101,14 @@ function calculateCashVsInstallments({ cashPrice, installmentTotal, installments
     installmentPresentValue: round2(presentValue),
     adjustedInstallmentCost: round2(adjustedInstallmentCost),
     advantage: round2(difference),
+    enteredRate: round2(enteredRate),
+    ratePeriod,
     monthlyEquivalentRate: round2(monthlyRate * 100),
   };
 }
 
-function amortizeDebt(balanceInput, annualRate, monthlyPayment, maxMonths = 600) {
-  const rate = equivalentMonthlyRate(annualRate);
+function amortizeDebt(balanceInput, enteredRate, ratePeriod, monthlyPayment, maxMonths = 600) {
+  const rate = equivalentMonthlyRate(enteredRate, ratePeriod);
   let balance = Number(balanceInput);
   let interestPaid = 0;
   let months = 0;
@@ -112,9 +123,10 @@ function amortizeDebt(balanceInput, annualRate, monthlyPayment, maxMonths = 600)
   return { possible: balance <= 0.005, months, interestPaid: round2(interestPaid), totalPaid: round2(Number(balanceInput) + interestPaid) };
 }
 
-function calculateDebtPayoff({ balance, annualRate, monthlyPayment, extraMonthly = 0 }) {
-  const baseline = amortizeDebt(balance, annualRate, monthlyPayment);
-  const accelerated = amortizeDebt(balance, annualRate, Number(monthlyPayment) + Number(extraMonthly));
+function calculateDebtPayoff({ balance, monthlyPayment, extraMonthly = 0, ...rateData }) {
+  const { value: enteredRate, period: ratePeriod } = resolveRate(rateData);
+  const baseline = amortizeDebt(balance, enteredRate, ratePeriod, monthlyPayment);
+  const accelerated = amortizeDebt(balance, enteredRate, ratePeriod, Number(monthlyPayment) + Number(extraMonthly));
   if (!baseline.possible || !accelerated.possible) {
     throw new AppError('A parcela não cobre os juros mensais da dívida.', 422, 'PAYMENT_TOO_LOW');
   }
@@ -123,6 +135,9 @@ function calculateDebtPayoff({ balance, annualRate, monthlyPayment, extraMonthly
     accelerated,
     monthsSaved: Math.max(baseline.months - accelerated.months, 0),
     interestSaved: round2(Math.max(baseline.interestPaid - accelerated.interestPaid, 0)),
+    enteredRate: round2(enteredRate),
+    ratePeriod,
+    monthlyEquivalentRate: round2(equivalentMonthlyRate(enteredRate, ratePeriod) * 100),
   };
 }
 
@@ -143,7 +158,6 @@ module.exports = {
   equivalentMonthlyRate,
   calculateCompoundInterest,
   calculateFinancing,
-  convertRate,
   calculateCashVsInstallments,
   calculateDebtPayoff,
   calculateEmergencyReserve,

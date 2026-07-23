@@ -140,10 +140,18 @@ export default function WhatIfSimulatorPage() {
   const chartData = result?.comparison.map((m) => ({
     name: `${String(m.month).padStart(2,'0')}/${String(m.year).slice(-2)}`,
     atual: m.baselineCumulative,
-    'com cenário': m.scenarioCumulative,
+    ...(type === 'save_monthly'
+      ? {
+          'saldo livre': m.scenarioCumulative,
+          'reserva acumulada': m.reservedCumulative,
+          'patrimônio com reserva': m.scenarioTotalCumulative,
+        }
+      : { 'com cenário': m.scenarioCumulative }),
   })) ?? [];
 
   const totalGain = result?.totalGain ?? 0;
+  const isSavingsScenario = type === 'save_monthly';
+  const totalReserved = result?.totalReserved ?? 0;
 
   return (
     <div className="space-y-6 animate-page-enter">
@@ -171,26 +179,58 @@ export default function WhatIfSimulatorPage() {
         {result ? (
           <div className="space-y-4 animate-slide-up">
             {/* Resumo */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Card className={`!p-4 ${totalGain >= 0 ? 'bg-primary-subtle border-primary/20' : 'bg-danger-subtle border-danger/20'}`}>
-                <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Ganho acumulado</p>
-                <p className={`text-2xl font-bold font-mono ${totalGain >= 0 ? 'text-primary-dark' : 'text-danger-dark'}`}>
-                  {totalGain >= 0 ? '+' : ''}<AnimatedNumber value={totalGain} formatter={formatCurrency} />
-                </p>
-              </Card>
-              <Card className="!p-4">
-                <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Primeiro impacto</p>
-                <p className="text-base font-bold text-slate-900 dark:text-zinc-50 mt-1">
-                  {result.firstPositiveMonth
-                    ? `${String(result.firstPositiveMonth.month).padStart(2,'0')}/${result.firstPositiveMonth.year}`
-                    : 'Imediato'}
-                </p>
-              </Card>
+            <div className={`grid grid-cols-1 gap-3 ${isSavingsScenario ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+              {isSavingsScenario ? (
+                <>
+                  <Card className="!p-4 bg-primary-subtle border-primary/20">
+                    <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Total guardado</p>
+                    <p className="text-2xl font-bold font-mono text-primary-dark">
+                      +<AnimatedNumber value={totalReserved} formatter={formatCurrency} />
+                    </p>
+                  </Card>
+                  <Card className="!p-4 bg-warning-subtle border-warning/20">
+                    <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Movido do saldo livre</p>
+                    <p className="text-2xl font-bold font-mono text-warning-dark">
+                      <AnimatedNumber value={Math.abs(result.availableBalanceImpact ?? 0)} formatter={formatCurrency} />
+                    </p>
+                    <p className="mt-1 text-xs text-muted">Não é perda: virou reserva.</p>
+                  </Card>
+                  <Card className="!p-4 bg-success-subtle border-success/20">
+                    <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Impacto no patrimônio total</p>
+                    <p className="text-2xl font-bold font-mono text-success-dark">
+                      <AnimatedNumber value={result.totalWealthImpact ?? 0} formatter={formatCurrency} />
+                    </p>
+                  </Card>
+                </>
+              ) : (
+                <>
+                  <Card className={`!p-4 ${totalGain >= 0 ? 'bg-primary-subtle border-primary/20' : 'bg-danger-subtle border-danger/20'}`}>
+                    <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Ganho acumulado</p>
+                    <p className={`text-2xl font-bold font-mono ${totalGain >= 0 ? 'text-primary-dark' : 'text-danger-dark'}`}>
+                      {totalGain >= 0 ? '+' : ''}<AnimatedNumber value={totalGain} formatter={formatCurrency} />
+                    </p>
+                  </Card>
+                  <Card className="!p-4">
+                    <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Primeiro impacto</p>
+                    <p className="text-base font-bold text-slate-900 dark:text-zinc-50 mt-1">
+                      {result.firstPositiveMonth
+                        ? `${String(result.firstPositiveMonth.month).padStart(2,'0')}/${result.firstPositiveMonth.year}`
+                        : 'Imediato'}
+                    </p>
+                  </Card>
+                </>
+              )}
             </div>
+
+            {isSavingsScenario && (
+              <div className="rounded-2xl border border-primary/20 bg-primary-subtle p-4 text-sm text-primary-dark">
+                Guardar dinheiro não gera uma perda de {formatCurrency(totalReserved)}. Esse valor sai do saldo livre e passa a compor sua reserva; o patrimônio total projetado permanece preservado.
+              </div>
+            )}
 
             {/* Gráfico */}
             <Card>
-              <CardHeader title="Projeção 12 meses" subtitle="Saldo acumulado" />
+              <CardHeader title="Projeção 12 meses" subtitle={isSavingsScenario ? 'Patrimônio, saldo livre e reserva acumulada' : 'Saldo acumulado'} />
               <div className="h-48">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartData} margin={{ left: -20 }}>
@@ -210,7 +250,15 @@ export default function WhatIfSimulatorPage() {
                     <Tooltip content={<CustomTooltip />} />
                     <Legend wrapperStyle={{ fontSize:'12px' }} />
                     <Area type="monotone" dataKey="atual" stroke="#94A3B8" strokeWidth={2} fill="url(#atualGrad)" strokeDasharray="4 2" dot={false} />
-                    <Area type="monotone" dataKey="com cenário" stroke="#16A34A" strokeWidth={2.5} fill="url(#scenarioGrad)" dot={false} />
+                    {isSavingsScenario ? (
+                      <>
+                        <Area type="monotone" dataKey="patrimônio com reserva" stroke="#16A34A" strokeWidth={2.5} fill="url(#scenarioGrad)" dot={false} />
+                        <Area type="monotone" dataKey="saldo livre" stroke="#F59E0B" strokeWidth={2} fillOpacity={0} strokeDasharray="5 3" dot={false} />
+                        <Area type="monotone" dataKey="reserva acumulada" stroke="#2563EB" strokeWidth={2.5} fillOpacity={0} dot={false} />
+                      </>
+                    ) : (
+                      <Area type="monotone" dataKey="com cenário" stroke="#16A34A" strokeWidth={2.5} fill="url(#scenarioGrad)" dot={false} />
+                    )}
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -252,7 +300,9 @@ export default function WhatIfSimulatorPage() {
               // métricas diferentes. Agora as duas usam a mesma conta
               // (soma de `difference` de todos os meses salvos), então o
               // número aqui é diretamente comparável ao de uma prévia nova.
-              const gain = (sim.results ?? []).reduce((sum, r) => sum + Number(r.difference), 0);
+              const gain = sim.type === 'save_monthly'
+                ? Number(sim.inputJson?.amount ?? 0) * Number(sim.monthsAhead ?? 0)
+                : (sim.results ?? []).reduce((sum, r) => sum + Number(r.difference), 0);
               return (
                 <div key={sim.id} className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-subtle dark:bg-white/[0.04] rounded-xl">
                   <div>
@@ -263,8 +313,8 @@ export default function WhatIfSimulatorPage() {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className={`text-sm font-mono font-bold ${gain >= 0 ? 'text-primary-dark' : 'text-danger-dark'}`}
-                      title="Ganho acumulado ao longo de todo o período simulado">
-                      {gain >= 0 ? '+' : ''}{formatCurrency(gain)}
+                      title={sim.type === 'save_monthly' ? 'Total que seria guardado no período' : 'Ganho acumulado ao longo de todo o período simulado'}>
+                      {gain >= 0 ? '+' : ''}{formatCurrency(gain)}{sim.type === 'save_monthly' ? ' guardados' : ''}
                     </span>
                     <Button variant="ghost" size="sm" className="text-danger h-8 w-8 !px-0 justify-center"
                       onClick={() => handleDelete(sim.id)}>×</Button>

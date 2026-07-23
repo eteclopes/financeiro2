@@ -77,6 +77,11 @@ export const cardsApi = {
 // ---- Savings ----
 export const savingsApi = {
   get: () => api.get('/savings'),
+  createBucket: (data) => api.post('/savings/buckets', data),
+  updateBucket: (id, data) => api.patch(`/savings/buckets/${id}`, data),
+  archiveBucket: (id) => api.delete(`/savings/buckets/${id}`),
+  restoreBucket: (id) => api.post(`/savings/buckets/${id}/restore`),
+  transfer: (data) => api.post('/savings/transfer', data),
   deposit: (data) => api.post('/savings/deposit', data),
   withdraw: (data) => api.post('/savings/withdraw', data),
   update: (id, data) => api.patch(`/savings/${id}`, data),

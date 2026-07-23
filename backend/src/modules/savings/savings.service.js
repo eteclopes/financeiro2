@@ -1,60 +1,197 @@
+const { randomUUID } = require('node:crypto');
 const prisma = require('../../config/prisma');
 const AppError = require('../../utils/AppError');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
 const { round2 } = require('../../utils/math');
 const { assertSufficientBalance, lockUserBalance } = require('../_shared/balance');
-const { isFutureDate } = require('../../utils/dateTime');
+const latestOrder = [{ createdAt: 'desc' }, { id: 'desc' }];
 
+async function ensureDefaultBucket(userId, client = prisma) {
+  const existing = await client.savingsBucket.findFirst({
+    where: { userId, isDefault: true },
+  });
+  if (existing) return existing;
 
-function assertTransactionDateNotFuture(date) {
-  if (isFutureDate(date)) {
-    throw new AppError('Não é possível registrar uma movimentação com data futura.', 422, 'FUTURE_TRANSACTION_DATE');
+  // ON CONFLICT DO NOTHING é importante aqui. Uma captura comum de erro de
+  // unique dentro de uma transação PostgreSQL deixaria a transação abortada,
+  // impedindo até a consulta de recuperação. Esta forma é idempotente tanto
+  // em requests normais quanto dentro de prisma.$transaction.
+  await client.$executeRaw`
+    INSERT INTO "savings_buckets"
+      ("user_id", "kind", "name", "target_value", "is_default", "is_archived", "created_at", "updated_at")
+    VALUES
+      (${userId}, 'general', NULL, NULL, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT DO NOTHING
+  `;
+
+  const initialized = await client.savingsBucket.findFirst({
+    where: { userId, isDefault: true },
+  });
+  if (!initialized) {
+    throw new AppError('Não foi possível inicializar a caixinha principal.', 500, 'DEFAULT_SAVINGS_BUCKET_INIT_FAILED');
   }
+  return initialized;
 }
 
-async function getCurrentBalance(userId) {
-  const last = await prisma.savingsTransaction.findFirst({
+async function getBucketOrThrow(userId, bucketId, client = prisma, { allowArchived = false } = {}) {
+  const bucket = await client.savingsBucket.findFirst({
+    where: {
+      id: BigInt(bucketId),
+      userId,
+      ...(allowArchived ? {} : { isArchived: false }),
+    },
+  });
+  if (!bucket) throw new AppError('Caixinha não encontrada.', 404, 'SAVINGS_BUCKET_NOT_FOUND');
+  return bucket;
+}
+
+async function resolveBucket(userId, bucketId, client = prisma) {
+  if (bucketId != null && bucketId !== '') return getBucketOrThrow(userId, bucketId, client);
+  return ensureDefaultBucket(userId, client);
+}
+
+async function getCurrentBalance(userId, client = prisma) {
+  const last = await client.savingsTransaction.findFirst({
     where: { userId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: latestOrder,
   });
   return last ? Number(last.balanceAfter) : 0;
+}
+
+async function getBucketBalance(userId, bucketId, client = prisma) {
+  const last = await client.savingsTransaction.findFirst({
+    where: { userId, bucketId: BigInt(bucketId) },
+    orderBy: latestOrder,
+  });
+  return last ? Number(last.bucketBalanceAfter) : 0;
+}
+
+async function listBucketsByArchiveStatus(userId, isArchived) {
+  await ensureDefaultBucket(userId);
+  const buckets = await prisma.savingsBucket.findMany({
+    where: { userId, isArchived },
+    include: {
+      transactions: {
+        orderBy: latestOrder,
+        take: 1,
+        select: { bucketBalanceAfter: true },
+      },
+    },
+    orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+  });
+
+  return buckets.map(({ transactions, ...bucket }) => ({
+    ...bucket,
+    balance: Number(transactions[0]?.bucketBalanceAfter ?? 0),
+    progress: bucket.targetValue && Number(bucket.targetValue) > 0
+      ? round2(Math.min((Number(transactions[0]?.bucketBalanceAfter ?? 0) / Number(bucket.targetValue)) * 100, 100))
+      : null,
+  }));
+}
+
+async function listBuckets(userId) {
+  return listBucketsByArchiveStatus(userId, false);
+}
+
+async function listArchivedBuckets(userId) {
+  return listBucketsByArchiveStatus(userId, true);
 }
 
 async function listTransactions(userId) {
   return prisma.savingsTransaction.findMany({
     where: { userId },
-    orderBy: { createdAt: 'desc' },
+    include: { bucket: true },
+    orderBy: latestOrder,
   });
 }
 
-async function deposit(userId, { value, date, observation, origin = 'balance' }) {
-  assertTransactionDateNotFuture(date);
-  // Sem lock, duas chamadas concorrentes (duplo clique, retry de rede) podem
-  // ler o mesmo currentBalance e gravar dois balanceAfter incorretos (lost
-  // update) — mesma classe de bug que closing.service.js já trava com
-  // `FOR UPDATE`. Aqui não há uma linha "de saldo" para travar (o saldo é
-  // derivado da última transação), então usamos um lock consultivo por
-  // usuário: serializa apenas depósitos/saques do MESMO usuário entre si e
-  // é liberado automaticamente ao fim da transação.
+async function createBucket(userId, { kind = 'custom', name, targetValue }) {
+  if (kind === 'general') {
+    throw new AppError('A finalidade Reserva geral é exclusiva da caixinha principal.', 422, 'GENERAL_BUCKET_RESERVED');
+  }
+  const cleanName = name?.trim() || null;
+  if (kind === 'custom' && !cleanName) {
+    throw new AppError('Informe um nome para a caixinha personalizada.', 422, 'BUCKET_NAME_REQUIRED');
+  }
+  return prisma.savingsBucket.create({
+    data: {
+      userId,
+      kind,
+      name: cleanName,
+      targetValue: targetValue == null || targetValue === '' ? null : targetValue,
+    },
+  });
+}
+
+async function updateBucket(userId, bucketId, { kind, name, targetValue }) {
+  const bucket = await getBucketOrThrow(userId, bucketId, prisma, { allowArchived: true });
+  const nextKind = kind ?? bucket.kind;
+  const nextName = name === undefined ? bucket.name : (name?.trim() || null);
+  if (nextKind === 'general' && !bucket.isDefault) {
+    throw new AppError('A finalidade Reserva geral é exclusiva da caixinha principal.', 422, 'GENERAL_BUCKET_RESERVED');
+  }
+  if (nextKind === 'custom' && !nextName) {
+    throw new AppError('Informe um nome para a caixinha personalizada.', 422, 'BUCKET_NAME_REQUIRED');
+  }
+  return prisma.savingsBucket.update({
+    where: { id: bucket.id },
+    data: {
+      ...(kind ? { kind } : {}),
+      ...(name !== undefined ? { name: nextName } : {}),
+      ...(targetValue !== undefined
+        ? { targetValue: targetValue == null || targetValue === '' ? null : targetValue }
+        : {}),
+    },
+  });
+}
+
+async function archiveBucket(userId, bucketId) {
   return prisma.$transaction(async (tx) => {
     await lockUserBalance(tx, userId);
-    if (origin === 'balance') {
-      await assertSufficientBalance(userId, value, tx);
+    const bucket = await getBucketOrThrow(userId, bucketId, tx);
+    if (bucket.isDefault) {
+      throw new AppError('A caixinha padrão não pode ser arquivada. Você pode renomeá-la e alterar sua finalidade.', 409, 'DEFAULT_BUCKET_CANNOT_ARCHIVE');
     }
+    const balance = await getBucketBalance(userId, bucket.id, tx);
+    if (balance > 0.009) {
+      throw new AppError('Transfira ou retire todo o saldo antes de arquivar esta caixinha.', 409, 'BUCKET_HAS_BALANCE');
+    }
+    return tx.savingsBucket.update({ where: { id: bucket.id }, data: { isArchived: true } });
+  });
+}
 
-    const last = await tx.savingsTransaction.findFirst({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-    });
-    const currentBalance = last ? Number(last.balanceAfter) : 0;
-    const balanceAfter = round2(currentBalance + value);
+async function restoreBucket(userId, bucketId) {
+  const bucket = await getBucketOrThrow(userId, bucketId, prisma, { allowArchived: true });
+  if (!bucket.isArchived) return bucket;
+  return prisma.savingsBucket.update({ where: { id: bucket.id }, data: { isArchived: false } });
+}
 
-    // Só um depósito com origin='balance' sai do "bolso" do mês corrente —
-    // ver getNetMovementInRange e _shared/balance.getAvailableBalance, que
-    // tratam origin='external' como dinheiro que nunca esteve no saldo
-    // disponível (só está sendo registrado agora, não está "saindo" de lugar nenhum).
+async function deposit(userId, { value, date, observation, origin = 'balance', bucketId }) {
+  return prisma.$transaction(async (tx) => {
+    await lockUserBalance(tx, userId);
+    const bucket = await resolveBucket(userId, bucketId, tx);
+    if (origin === 'balance') await assertSufficientBalance(userId, value, tx);
+
+    const [last, lastInBucket] = await Promise.all([
+      tx.savingsTransaction.findFirst({ where: { userId }, orderBy: latestOrder }),
+      tx.savingsTransaction.findFirst({ where: { userId, bucketId: bucket.id }, orderBy: latestOrder }),
+    ]);
+    const currentBalance = Number(last?.balanceAfter ?? 0);
+    const currentBucketBalance = Number(lastInBucket?.bucketBalanceAfter ?? lastInBucket?.balanceAfter ?? 0);
+
     return tx.savingsTransaction.create({
-      data: { userId, type: 'deposit', value, transactionDate: date, observation, balanceAfter, origin },
+      data: {
+        userId,
+        bucketId: bucket.id,
+        type: 'deposit',
+        value,
+        transactionDate: date,
+        observation,
+        origin,
+        balanceAfter: round2(currentBalance + value),
+        bucketBalanceAfter: round2(currentBucketBalance + value),
+      },
+      include: { bucket: true },
     });
   }).then(async (created) => {
     await recordAuditLog(userId, 'savingsTransaction', created.id, 'deposit', { newValue: created });
@@ -62,28 +199,37 @@ async function deposit(userId, { value, date, observation, origin = 'balance' })
   });
 }
 
-async function withdraw(userId, { value, date, observation }) {
-  assertTransactionDateNotFuture(date);
+async function withdraw(userId, { value, date, observation, bucketId }) {
   return prisma.$transaction(async (tx) => {
     await lockUserBalance(tx, userId);
+    const bucket = await resolveBucket(userId, bucketId, tx);
+    const [last, lastInBucket] = await Promise.all([
+      tx.savingsTransaction.findFirst({ where: { userId }, orderBy: latestOrder }),
+      tx.savingsTransaction.findFirst({ where: { userId, bucketId: bucket.id }, orderBy: latestOrder }),
+    ]);
+    const currentBalance = Number(last?.balanceAfter ?? 0);
+    const currentBucketBalance = Number(lastInBucket?.bucketBalanceAfter ?? lastInBucket?.balanceAfter ?? 0);
 
-    const last = await tx.savingsTransaction.findFirst({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-    });
-    const currentBalance = last ? Number(last.balanceAfter) : 0;
-
-    if (value > currentBalance + 0.009) {
+    if (value > currentBucketBalance + 0.009) {
       throw new AppError(
-        `Saldo guardado insuficiente. Disponível: R$ ${currentBalance.toFixed(2)}.`,
+        `Saldo insuficiente nesta caixinha. Disponível: R$ ${currentBucketBalance.toFixed(2)}.`,
         409,
         'INSUFFICIENT_SAVINGS_BALANCE'
       );
     }
-    const balanceAfter = round2(currentBalance - value);
 
     return tx.savingsTransaction.create({
-      data: { userId, type: 'withdraw', value, transactionDate: date, observation, balanceAfter },
+      data: {
+        userId,
+        bucketId: bucket.id,
+        type: 'withdraw',
+        value,
+        transactionDate: date,
+        observation,
+        balanceAfter: round2(currentBalance - value),
+        bucketBalanceAfter: round2(currentBucketBalance - value),
+      },
+      include: { bucket: true },
     });
   }).then(async (created) => {
     await recordAuditLog(userId, 'savingsTransaction', created.id, 'withdraw', { newValue: created });
@@ -91,41 +237,99 @@ async function withdraw(userId, { value, date, observation }) {
   });
 }
 
-/**
- * Edita o lançamento mais recente do extrato de poupança. É seguro porque
- * balanceAfter é uma cadeia sequencial (cada lançamento depende apenas do
- * anterior) — mexer em QUALQUER lançamento que não seja o último exigiria
- * recalcular o balanceAfter de todos os posteriores em cascata. Editar
- * apenas o último não tem esse problema: não existe nada depois dele.
- * Não permite trocar `type` (deposit<->withdraw) — isso mudaria o sentido
- * do lançamento; para isso o usuário deve excluir e lançar de novo.
- */
-async function updateLastTransaction(userId, transactionId, { value, date, observation, origin }) {
-  assertTransactionDateNotFuture(date);
+async function transfer(userId, { fromBucketId, toBucketId, value, date, observation }) {
+  if (String(fromBucketId) === String(toBucketId)) {
+    throw new AppError('Escolha duas caixinhas diferentes.', 422, 'SAME_BUCKET_TRANSFER');
+  }
+
   return prisma.$transaction(async (tx) => {
     await lockUserBalance(tx, userId);
+    const [source, destination] = await Promise.all([
+      getBucketOrThrow(userId, fromBucketId, tx),
+      getBucketOrThrow(userId, toBucketId, tx),
+    ]);
+    const [globalLast, sourceLast, destinationLast] = await Promise.all([
+      tx.savingsTransaction.findFirst({ where: { userId }, orderBy: latestOrder }),
+      tx.savingsTransaction.findFirst({ where: { userId, bucketId: source.id }, orderBy: latestOrder }),
+      tx.savingsTransaction.findFirst({ where: { userId, bucketId: destination.id }, orderBy: latestOrder }),
+    ]);
 
-    const last = await tx.savingsTransaction.findFirst({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
+    const totalBalance = Number(globalLast?.balanceAfter ?? 0);
+    const sourceBalance = Number(sourceLast?.bucketBalanceAfter ?? sourceLast?.balanceAfter ?? 0);
+    const destinationBalance = Number(destinationLast?.bucketBalanceAfter ?? destinationLast?.balanceAfter ?? 0);
+    if (value > sourceBalance + 0.009) {
+      throw new AppError(
+        `Saldo insuficiente na caixinha de origem. Disponível: R$ ${sourceBalance.toFixed(2)}.`,
+        409,
+        'INSUFFICIENT_SAVINGS_BALANCE'
+      );
+    }
+
+    const transferId = randomUUID();
+    const outgoing = await tx.savingsTransaction.create({
+      data: {
+        userId,
+        bucketId: source.id,
+        type: 'withdraw',
+        value,
+        origin: 'balance',
+        transactionDate: date,
+        observation,
+        balanceAfter: round2(totalBalance - value),
+        bucketBalanceAfter: round2(sourceBalance - value),
+        transferId,
+      },
+      include: { bucket: true },
     });
+    const incoming = await tx.savingsTransaction.create({
+      data: {
+        userId,
+        bucketId: destination.id,
+        type: 'deposit',
+        value,
+        origin: 'balance',
+        transactionDate: date,
+        observation,
+        balanceAfter: round2(totalBalance),
+        bucketBalanceAfter: round2(destinationBalance + value),
+        transferId,
+      },
+      include: { bucket: true },
+    });
+    return { outgoing, incoming, transferId };
+  }).then(async (result) => {
+    await recordAuditLog(userId, 'savingsTransfer', result.outgoing.id, 'transfer', {
+      fields: ['fromBucketId', 'toBucketId', 'value'],
+    });
+    return result;
+  });
+}
 
+async function updateLastTransaction(userId, transactionId, { value, date, observation, origin }) {
+  return prisma.$transaction(async (tx) => {
+    await lockUserBalance(tx, userId);
+    const last = await tx.savingsTransaction.findFirst({ where: { userId }, orderBy: latestOrder });
     if (!last || String(last.id) !== String(transactionId)) {
       throw new AppError(
-        'Só é possível editar o lançamento mais recente do extrato de poupança. Para corrigir um lançamento mais antigo, é preciso desfazer os posteriores primeiro.',
+        'Só é possível editar o lançamento mais recente do extrato de poupança.',
         409,
         'NOT_LAST_SAVINGS_TRANSACTION'
       );
     }
+    if (last.transferId) {
+      throw new AppError('Transferências entre caixinhas não podem ser editadas. Faça uma transferência inversa.', 409, 'TRANSFER_IMMUTABLE');
+    }
 
-    // Saldo antes deste lançamento = desfaz o próprio efeito dele sobre o balanceAfter salvo.
     const balanceBeforeThis = last.type === 'deposit'
       ? round2(Number(last.balanceAfter) - Number(last.value))
       : round2(Number(last.balanceAfter) + Number(last.value));
+    const bucketBalanceBeforeThis = last.type === 'deposit'
+      ? round2(Number(last.bucketBalanceAfter ?? last.balanceAfter) - Number(last.value))
+      : round2(Number(last.bucketBalanceAfter ?? last.balanceAfter) + Number(last.value));
 
-    if (last.type === 'withdraw' && value > balanceBeforeThis + 0.009) {
+    if (last.type === 'withdraw' && value > bucketBalanceBeforeThis + 0.009) {
       throw new AppError(
-        `Saldo guardado insuficiente para esse valor. Disponível antes deste lançamento: R$ ${balanceBeforeThis.toFixed(2)}.`,
+        `Saldo insuficiente nesta caixinha. Disponível antes deste lançamento: R$ ${bucketBalanceBeforeThis.toFixed(2)}.`,
         409,
         'INSUFFICIENT_SAVINGS_BALANCE'
       );
@@ -133,27 +337,29 @@ async function updateLastTransaction(userId, transactionId, { value, date, obser
 
     const oldBalanceImpact = last.type === 'deposit' && last.origin === 'balance'
       ? Number(last.value)
-      : last.type === 'withdraw'
-        ? -Number(last.value)
-        : 0;
+      : last.type === 'withdraw' ? -Number(last.value) : 0;
     const nextOrigin = last.type === 'deposit' ? (origin ?? last.origin) : null;
     const newBalanceImpact = last.type === 'deposit' && nextOrigin === 'balance'
       ? value
-      : last.type === 'withdraw'
-        ? -value
-        : 0;
+      : last.type === 'withdraw' ? -value : 0;
     const additionalConsumption = round2(newBalanceImpact - oldBalanceImpact);
-    if (additionalConsumption > 0) {
-      await assertSufficientBalance(userId, additionalConsumption, tx);
-    }
-
-    const balanceAfter = last.type === 'deposit'
-      ? round2(balanceBeforeThis + value)
-      : round2(balanceBeforeThis - value);
+    if (additionalConsumption > 0) await assertSufficientBalance(userId, additionalConsumption, tx);
 
     const updated = await tx.savingsTransaction.update({
       where: { id: last.id },
-      data: { value, transactionDate: date, observation, balanceAfter, ...(last.type === 'deposit' && origin ? { origin } : {}) },
+      data: {
+        value,
+        transactionDate: date,
+        observation,
+        balanceAfter: last.type === 'deposit'
+          ? round2(balanceBeforeThis + value)
+          : round2(balanceBeforeThis - value),
+        bucketBalanceAfter: last.type === 'deposit'
+          ? round2(bucketBalanceBeforeThis + value)
+          : round2(bucketBalanceBeforeThis - value),
+        ...(last.type === 'deposit' && origin ? { origin } : {}),
+      },
+      include: { bucket: true },
     });
     return { updated, oldValue: last };
   }).then(async ({ updated, oldValue }) => {
@@ -162,35 +368,17 @@ async function updateLastTransaction(userId, transactionId, { value, date, obser
   });
 }
 
-/**
- * Exclui o lançamento mais recente do extrato — mesma justificativa de
- * segurança de updateLastTransaction. Como não há nada depois dele na
- * cadeia, remover não deixa nenhum balanceAfter desatualizado para trás.
- */
 async function deleteLastTransaction(userId, transactionId) {
   return prisma.$transaction(async (tx) => {
     await lockUserBalance(tx, userId);
-
-    const last = await tx.savingsTransaction.findFirst({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-    });
-
+    const last = await tx.savingsTransaction.findFirst({ where: { userId }, orderBy: latestOrder });
     if (!last || String(last.id) !== String(transactionId)) {
-      throw new AppError(
-        'Só é possível excluir o lançamento mais recente do extrato de poupança. Para remover um lançamento mais antigo, é preciso desfazer os posteriores primeiro.',
-        409,
-        'NOT_LAST_SAVINGS_TRANSACTION'
-      );
+      throw new AppError('Só é possível excluir o lançamento mais recente do extrato de poupança.', 409, 'NOT_LAST_SAVINGS_TRANSACTION');
     }
-
-    // Excluir uma retirada remove dinheiro que já havia voltado ao saldo
-    // disponível. Se esse dinheiro já foi gasto, a exclusão não pode criar
-    // um caixa negativo retroativo.
-    if (last.type === 'withdraw') {
-      await assertSufficientBalance(userId, Number(last.value), tx);
+    if (last.transferId) {
+      throw new AppError('Transferências entre caixinhas não podem ser excluídas. Faça uma transferência inversa.', 409, 'TRANSFER_IMMUTABLE');
     }
-
+    if (last.type === 'withdraw') await assertSufficientBalance(userId, Number(last.value), tx);
     await tx.savingsTransaction.delete({ where: { id: last.id } });
     return last;
   }).then(async (deleted) => {
@@ -199,15 +387,6 @@ async function deleteLastTransaction(userId, transactionId) {
   });
 }
 
-/**
- * Soma líquida de movimentações de saldo guardado dentro de um intervalo de
- * datas (tipicamente o mês selecionado no dashboard). Depósito com
- * origin='balance' é saída de caixa do mês (positivo aqui = deve ser
- * subtraído do saldo atual); retirada é entrada (negativo aqui = deve ser
- * somado). Depósito com origin='external' NÃO entra nessa conta — é
- * dinheiro que já estava guardado fora do app, nunca saiu do saldo deste
- * mês (só está sendo registrado agora).
- */
 async function getNetMovementInRange(userId, startDate, endDate) {
   const [deposits, withdraws] = await Promise.all([
     prisma.savingsTransaction.aggregate({
@@ -219,17 +398,9 @@ async function getNetMovementInRange(userId, startDate, endDate) {
       _sum: { value: true },
     }),
   ]);
-
   return round2(Number(deposits._sum.value ?? 0) - Number(withdraws._sum.value ?? 0));
 }
 
-/**
- * Resumo pedido explicitamente pela reforma da reserva: quanto está
- * reservado no total, quanto disso realmente saiu do saldo disponível, e
- * quanto foi só informado como dinheiro que já estava guardado fora do
- * app. `totalReserved` = `movedFromBalance` + `externalReported` sempre
- * (menos qualquer saque, que sai proporcionalmente do total).
- */
 async function getBalanceBreakdown(userId) {
   const [totalReserved, movedFromBalanceAgg, externalAgg, withdrawnAgg] = await Promise.all([
     getCurrentBalance(userId),
@@ -237,15 +408,29 @@ async function getBalanceBreakdown(userId) {
     prisma.savingsTransaction.aggregate({ where: { userId, type: 'deposit', origin: 'external' }, _sum: { value: true } }),
     prisma.savingsTransaction.aggregate({ where: { userId, type: 'withdraw' }, _sum: { value: true } }),
   ]);
-
   const withdrawn = Number(withdrawnAgg._sum.value ?? 0);
   const originallyMoved = Number(movedFromBalanceAgg._sum.value ?? 0);
-  // Para exibição, considera que retiradas consomem primeiro o dinheiro que
-  // saiu do saldo do app. Assim nenhum componente fica negativo e a soma
-  // continua exatamente igual ao total ainda reservado.
   const movedFromBalance = round2(Math.max(originallyMoved - withdrawn, 0));
   const externalReported = round2(Math.max(totalReserved - movedFromBalance, 0));
   return { totalReserved, movedFromBalance, externalReported };
 }
 
-module.exports = { getCurrentBalance, listTransactions, deposit, withdraw, updateLastTransaction, deleteLastTransaction, getNetMovementInRange, getBalanceBreakdown };
+module.exports = {
+  ensureDefaultBucket,
+  getCurrentBalance,
+  getBucketBalance,
+  listBuckets,
+  listArchivedBuckets,
+  listTransactions,
+  createBucket,
+  updateBucket,
+  archiveBucket,
+  restoreBucket,
+  deposit,
+  withdraw,
+  transfer,
+  updateLastTransaction,
+  deleteLastTransaction,
+  getNetMovementInRange,
+  getBalanceBreakdown,
+};

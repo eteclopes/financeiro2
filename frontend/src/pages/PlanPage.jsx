@@ -21,7 +21,7 @@ const PRO = [
   'Relatórios analíticos completos',
   'Central de planejamento de cartões, dívidas e metas',
   'Dashboard Pro personalizável e sincronizado',
-  'Calculadoras de juros, financiamento, taxas e dívidas',
+  'Calculadoras de juros, financiamento, compras e dívidas',
   'Novos recursos Pro liberados nesta versão vitalícia',
 ];
 

@@ -82,6 +82,13 @@ describe('runScenarioPreview — cenários simples (increase_income / save_month
     const result = await runScenarioPreview(10n, 1n, 'save_monthly', { amount: 150 }, 6);
 
     expect(result.comparison.every((m) => m.difference === -150)).toBe(true);
+    expect(result.totalReserved).toBe(900);
+    expect(result.availableBalanceImpact).toBe(-900);
+    expect(result.totalWealthImpact).toBe(0);
+    expect(result.comparison.at(-1).scenarioTotalCumulative).toBeCloseTo(
+      result.comparison.at(-1).baselineCumulative,
+      2
+    );
   });
 });
 

@@ -89,7 +89,7 @@ describe('savings.service — deposit/withdraw (fix de condição de corrida)', 
 
     // Se algum dia alguém remover o lock (ou movê-lo para depois da leitura),
     // este teste falha — é exatamente o bug corrigido nesta sessão.
-    expect(order).toEqual(['lock', 'read', 'write']);
+    expect(order).toEqual(['lock', 'read', 'read', 'write']);
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
   });
 

@@ -563,6 +563,34 @@ function translateDynamicText(source, language) {
   const choose = (translations) => translations[language] ?? null;
   let match;
 
+  match = source.match(/^Guardar em (.+)$/);
+  if (match) return choose({ en: `Save into ${match[1]}`, es: `Ahorrar en ${match[1]}`, ru: `Отложить в «${match[1]}»` });
+
+  match = source.match(/^Retirar de (.+)$/);
+  if (match) return choose({ en: `Withdraw from ${match[1]}`, es: `Retirar de ${match[1]}`, ru: `Снять из «${match[1]}»` });
+
+  match = source.match(/^(\d+)% da meta$/);
+  if (match) return choose({ en: `${match[1]}% of target`, es: `${match[1]}% de la meta`, ru: `${match[1]}% от цели` });
+
+  match = source.match(/^Excluir este (depósito|saque) de (.+) da caixinha (.+)\?$/);
+  if (match) {
+    const kind = match[1] === 'depósito'
+      ? choose({ en: 'deposit', es: 'depósito', ru: 'пополнение' })
+      : choose({ en: 'withdrawal', es: 'retiro', ru: 'снятие' });
+    return choose({
+      en: `Delete this ${kind} of ${match[2]} from ${match[3]}?`,
+      es: `¿Eliminar este ${kind} de ${match[2]} del apartado ${match[3]}?`,
+      ru: `Удалить ${kind} на сумму ${match[2]} из копилки «${match[3]}»?`,
+    });
+  }
+
+  match = source.match(/^Arquivar a caixinha (.+)\? Ela precisa estar zerada e seu histórico será preservado\.$/);
+  if (match) return choose({
+    en: `Archive the savings pot ${match[1]}? It must have a zero balance and its history will be preserved.`,
+    es: `¿Archivar el apartado ${match[1]}? Debe tener saldo cero y se conservará su historial.`,
+    ru: `Архивировать копилку «${match[1]}»? Баланс должен быть нулевым, история сохранится.`,
+  });
+
   match = source.match(/^(\d+) ativo\(s\)$/);
   if (match) return choose({ en: `${match[1]} active`, es: `${match[1]} activos`, ru: `${match[1]} активных` });
 
