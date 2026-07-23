@@ -9,15 +9,13 @@ import { CategorySelect } from '../components/ui/CategorySelect';
 import { useUIStore } from '../store/uiStore';
 import { ledgerMonthDateInputValue, ledgerMonthDateRange, apiDateToInput } from '../lib/date';
 import { ChoiceCards, ToggleSwitch } from '../components/ui/Motion';
-
-const PM_LABELS = { cash:'Dinheiro', pix:'PIX', debit:'Débito', credit:'Crédito', transfer:'Transferência' };
-const PAYMENT_OPTIONS = [
-  { value:'pix', label:'PIX', icon:'⚡', description:'Instantâneo', tone:'choice-card-icon-primary' },
-  { value:'debit', label:'Débito', icon:'▣', description:'Sai da conta', tone:'choice-card-icon-info' },
-  { value:'credit', label:'Crédito', icon:'◇', description:'Vai para a fatura', tone:'choice-card-icon-warning' },
-  { value:'cash', label:'Dinheiro', icon:'●', description:'Pagamento físico', tone:'choice-card-icon-success' },
-  { value:'transfer', label:'Transferência', icon:'⇄', description:'TED ou banco', tone:'choice-card-icon-primary' },
-];
+import {
+  ACCOUNT_BALANCE_METHOD,
+  BALANCE_PAYMENT_OPTIONS,
+  getExpensePaymentOptions,
+  getPaymentMethodLabel,
+  normalizePaymentMethod,
+} from '../lib/paymentMethods';
 const STATUS_V  = { pending:'warning', partial:'info', paid:'success', late:'danger', settled:'success' };
 const STATUS_L  = { pending:'Pendente', partial:'Parcial', paid:'Pago', late:'Atrasado', settled:'Quitado' };
 
@@ -35,12 +33,12 @@ export default function ExpensesPage() {
   // ── Modais de pagamento ──
   const [payModal, setPayModal]   = useState(null);
   const [payAmount, setPayAmount] = useState('');
-  const [payMethod, setPayMethod] = useState('pix');
+  const [payMethod, setPayMethod] = useState(ACCOUNT_BALANCE_METHOD);
   const [paying, setPaying]       = useState(false);
 
   // ── Modal nova despesa variável ──
   const [varModal, setVarModal] = useState(false);
-  const [varForm, setVarForm]   = useState(() => ({ description:'', value:'', categoryId:'', date: ledgerMonthDateInputValue(selectedMonth), paymentMethod:'pix', paid:true, cardId:'' }));
+  const [varForm, setVarForm]   = useState(() => ({ description:'', value:'', categoryId:'', date: ledgerMonthDateInputValue(selectedMonth), paymentMethod: ACCOUNT_BALANCE_METHOD, paid:true, cardId:'' }));
 
   // ── Modal editar despesa variável ──
   const [editVarModal, setEditVarModal] = useState(null);
@@ -48,11 +46,11 @@ export default function ExpensesPage() {
 
   // ── Modal nova despesa fixa ──
   const [fixModal, setFixModal] = useState(false);
-  const [fixForm, setFixForm]   = useState({ description:'', value:'', categoryId:'', dueDay:'10', paymentMethod:'transfer', cardId:'' });
+  const [fixForm, setFixForm]   = useState({ description:'', value:'', categoryId:'', dueDay:'10', paymentMethod: ACCOUNT_BALANCE_METHOD, cardId:'' });
 
   // ── Modal editar despesa fixa ──
   const [editFixModal, setEditFixModal] = useState(null);
-  const [editFixForm, setEditFixForm]   = useState({ description:'', value:'', dueDay:'', paymentMethod:'transfer', cardId:'' });
+  const [editFixForm, setEditFixForm]   = useState({ description:'', value:'', dueDay:'', paymentMethod: ACCOUNT_BALANCE_METHOD, cardId:'' });
 
   // ── Modal nova dívida ──
   const [debtModal, setDebtModal] = useState(false);
@@ -87,6 +85,8 @@ export default function ExpensesPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const expensePaymentOptions = getExpensePaymentOptions(cards);
+
   const tabs = [
     { value:'priority', label:'Prioridade', count: expenses.filter(e=>e.type==='priority').length },
     { value:'fixed',    label:'Fixas',      count: expenses.filter(e=>e.fixedTemplateId).length },
@@ -96,7 +96,7 @@ export default function ExpensesPage() {
   const filtered = expenses.filter((e) => tab === 'fixed' ? !!e.fixedTemplateId : e.type === tab);
 
   // ── Handlers ────────────────────────────────────────────
-  function openPay(e) { setPayModal(e); setPayAmount(String(e.value)); setPayMethod('pix'); }
+  function openPay(e) { setPayModal(e); setPayAmount(String(e.value)); setPayMethod(ACCOUNT_BALANCE_METHOD); }
 
   async function handlePay() {
     if (!payAmount || parseFloat(payAmount) <= 0) { toast.error('Informe um valor válido.'); return; }
@@ -255,8 +255,8 @@ export default function ExpensesPage() {
 
   const addButton = (
     <Button data-tutorial="new-expense-button" size="sm" onClick={() => {
-      if (tab === 'variable') { setVarForm({ description:'', value:'', categoryId:'', date: ledgerMonthDateInputValue(selectedMonth), paymentMethod:'pix', paid:true, cardId:'' }); setVarModal(true); }
-      if (tab === 'fixed')    { setFixForm({ description:'', value:'', categoryId:'', dueDay:'10', paymentMethod:'transfer', cardId:'' }); setFixModal(true); }
+      if (tab === 'variable') { setVarForm({ description:'', value:'', categoryId:'', date: ledgerMonthDateInputValue(selectedMonth), paymentMethod: ACCOUNT_BALANCE_METHOD, paid:true, cardId:'' }); setVarModal(true); }
+      if (tab === 'fixed')    { setFixForm({ description:'', value:'', categoryId:'', dueDay:'10', paymentMethod: ACCOUNT_BALANCE_METHOD, cardId:'' }); setFixModal(true); }
       if (tab === 'priority') { setDebtForm({ description:'', categoryId:'', totalValue:'', installmentsCount:'1', flexiblePayment:false, dueDay:'10', startingInstallment:'1' }); setDebtModal(true); }
     }}>
       + {tab === 'variable' ? 'Nova Despesa' : tab === 'fixed' ? 'Nova Fixa' : 'Nova Dívida'}
@@ -407,7 +407,7 @@ export default function ExpensesPage() {
                             description: e.description,
                             value: String(e.value),
                             dueDay: String(e.dueDate ? new Date(e.dueDate).getUTCDate() : '10'),
-                            paymentMethod: e.fixedTemplate?.paymentMethod ?? 'transfer',
+                            paymentMethod: normalizePaymentMethod(e.fixedTemplate?.paymentMethod),
                             cardId: e.fixedTemplate?.cardId ? String(e.fixedTemplate.cardId) : '',
                           });
                         }}>Editar</Button>
@@ -439,7 +439,7 @@ export default function ExpensesPage() {
                     <td className="table-cell text-muted">{e.category?.name}</td>
                     <td className="table-cell font-mono tabular-nums">{formatCurrency(e.value)}</td>
                     <td className="table-cell text-muted">{formatShortDate(e.dueDate)}</td>
-                    <td className="table-cell"><Badge>{PM_LABELS[e.paymentMethod] ?? e.paymentMethod}</Badge></td>
+                    <td className="table-cell"><Badge>{getPaymentMethodLabel(e.paymentMethod)}</Badge></td>
                     <td className="table-cell">
                       <Badge variant={STATUS_V[e.status] ?? 'default'}>{STATUS_L[e.status] ?? e.status}</Badge>
                     </td>
@@ -481,7 +481,7 @@ export default function ExpensesPage() {
               <Input type="number" min="0" step="0.01" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
             </FormGroup>
             <FormGroup label="Forma de pagamento">
-              <ChoiceCards compact columns={2} value={payMethod} onChange={setPayMethod} options={PAYMENT_OPTIONS.filter((option) => option.value !== 'credit')} />
+              <ChoiceCards compact columns={2} value={payMethod} onChange={setPayMethod} options={BALANCE_PAYMENT_OPTIONS} />
             </FormGroup>
             {payModal.type === 'priority' && (
               <p className="text-xs text-info bg-info-subtle p-3 rounded-xl border border-info/20">
@@ -520,7 +520,7 @@ export default function ExpensesPage() {
             />
           </FormGroup>
           <FormGroup label="Forma de pagamento">
-            <ChoiceCards compact value={varForm.paymentMethod} onChange={(paymentMethod) => setVarForm({ ...varForm, paymentMethod, cardId: paymentMethod === 'credit' ? varForm.cardId : '', paid: paymentMethod === 'credit' ? true : varForm.paid })} options={PAYMENT_OPTIONS} />
+            <ChoiceCards compact columns={expensePaymentOptions.length} value={varForm.paymentMethod} onChange={(paymentMethod) => setVarForm({ ...varForm, paymentMethod, cardId: paymentMethod === 'credit' ? varForm.cardId : '', paid: paymentMethod === 'credit' ? true : varForm.paid })} options={expensePaymentOptions} />
           </FormGroup>
           {varForm.paymentMethod === 'credit' && (
             <FormGroup label="Cartão" required>
@@ -566,7 +566,7 @@ export default function ExpensesPage() {
             />
           </FormGroup>
           <FormGroup label="Forma de pagamento" required>
-            <ChoiceCards compact value={fixForm.paymentMethod} onChange={(paymentMethod) => setFixForm({ ...fixForm, paymentMethod, cardId: paymentMethod === 'credit' ? fixForm.cardId : '' })} options={PAYMENT_OPTIONS} />
+            <ChoiceCards compact columns={expensePaymentOptions.length} value={fixForm.paymentMethod} onChange={(paymentMethod) => setFixForm({ ...fixForm, paymentMethod, cardId: paymentMethod === 'credit' ? fixForm.cardId : '' })} options={expensePaymentOptions} />
           </FormGroup>
           {fixForm.paymentMethod === 'credit' && (
             <FormGroup label="Cartão" required>
@@ -610,7 +610,7 @@ export default function ExpensesPage() {
             </FormGroup>
           </div>
           <FormGroup label="Forma de pagamento" required>
-            <ChoiceCards compact value={editFixForm.paymentMethod} onChange={(paymentMethod) => setEditFixForm({ ...editFixForm, paymentMethod, cardId: paymentMethod === 'credit' ? editFixForm.cardId : '' })} options={PAYMENT_OPTIONS} />
+            <ChoiceCards compact columns={expensePaymentOptions.length} value={editFixForm.paymentMethod} onChange={(paymentMethod) => setEditFixForm({ ...editFixForm, paymentMethod, cardId: paymentMethod === 'credit' ? editFixForm.cardId : '' })} options={expensePaymentOptions} />
           </FormGroup>
           {editFixForm.paymentMethod === 'credit' && (
             <FormGroup label="Cartão" required>

@@ -25,6 +25,12 @@ const criticalStatic = [
   'Gráfico de receitas e despesas',
   'Idioma e região',
   'Detectar automaticamente',
+  'Saldo da conta',
+  'Cartão de crédito',
+  'Dinheiro físico',
+  'Usa o saldo disponível',
+  'Entrada no saldo disponível',
+  'Pagamento em espécie',
 ];
 
 const criticalDynamic = [

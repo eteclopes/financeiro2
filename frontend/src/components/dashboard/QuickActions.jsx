@@ -10,24 +10,13 @@ import { Modal, FormGroup, Input, Select } from '../ui/Modal';
 import { CategorySelect } from '../ui/CategorySelect';
 import { useUIStore } from '../../store/uiStore';
 import { IconIncome, IconExpense, IconCheck, IconCard, IconGoal, IconAlert } from '../icons';
-
-const PAYMENT_OPTIONS = [
-  { value: 'pix', label: 'PIX', icon: '⚡', description: 'Instantâneo', tone: 'choice-card-icon-primary' },
-  { value: 'debit', label: 'Débito', icon: '▣', description: 'Sai da conta', tone: 'choice-card-icon-info' },
-  { value: 'credit', label: 'Crédito', icon: '◇', description: 'Vai para a fatura', tone: 'choice-card-icon-warning' },
-  { value: 'cash', label: 'Dinheiro', icon: '●', description: 'Valor físico', tone: 'choice-card-icon-success' },
-  { value: 'transfer', label: 'Transferência', icon: '⇄', description: 'TED ou banco', tone: 'choice-card-icon-primary' },
-];
-
-const RECEIPT_OPTIONS = PAYMENT_OPTIONS.filter((option) => option.value !== 'credit').map((option) => ({
-  ...option,
-  description: option.value === 'cash' ? 'Dinheiro em mãos' : option.description,
-}));
-
-const ORIGIN_OPTIONS = [
-  { value: 'digital', label: 'Digital', icon: '◉', description: 'Disponível na conta', tone: 'choice-card-icon-info' },
-  { value: 'physical', label: 'Físico', icon: '●', description: 'Dinheiro em mãos', tone: 'choice-card-icon-warning' },
-];
+import {
+  ACCOUNT_BALANCE_METHOD,
+  BALANCE_PAYMENT_OPTIONS,
+  RECEIPT_OPTIONS,
+  getExpensePaymentOptions,
+  incomeOriginForPaymentMethod,
+} from '../../lib/paymentMethods';
 
 const EXPENSE_KIND_OPTIONS = [
   { value: 'variable', label: 'Variável', icon: '↗', description: 'Compra ou gasto avulso', tone: 'choice-card-icon-primary' },
@@ -36,16 +25,16 @@ const EXPENSE_KIND_OPTIONS = [
 ];
 
 const createIncomeForm = (month) => ({
-  description: '', value: '', categoryId: '', paymentMethod: 'pix',
+  description: '', value: '', categoryId: '', paymentMethod: ACCOUNT_BALANCE_METHOD,
   origin: 'digital', date: ledgerMonthDateInputValue(month), observation: '', recurring: false,
 });
 const createVariableForm = (month) => ({
   description: '', value: '', categoryId: '', date: ledgerMonthDateInputValue(month),
-  paymentMethod: 'pix', paid: true, cardId: '', observation: '',
+  paymentMethod: ACCOUNT_BALANCE_METHOD, paid: true, cardId: '', observation: '',
 });
 const createFixedForm = () => ({
   description: '', value: '', categoryId: '', dueDay: '10',
-  paymentMethod: 'transfer', cardId: '', observation: '',
+  paymentMethod: ACCOUNT_BALANCE_METHOD, cardId: '', observation: '',
 });
 const createDebtForm = () => ({
   description: '', categoryId: '', totalValue: '', installmentsCount: '1',
@@ -80,13 +69,13 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
 
   const [payTarget, setPayTarget] = useState(null);
   const [payAmount, setPayAmount] = useState('');
-  const [payMethod, setPayMethod] = useState('pix');
+  const [payMethod, setPayMethod] = useState(ACCOUNT_BALANCE_METHOD);
 
   const [invoices, setInvoices] = useState([]);
   const [loadingInvoices, setLoadingInvoices] = useState(false);
   const invoiceRequestId = useRef(0);
   const [invoiceTarget, setInvoiceTarget] = useState(null);
-  const [invMethod, setInvMethod] = useState('pix');
+  const [invMethod, setInvMethod] = useState(ACCOUNT_BALANCE_METHOD);
 
   const [goalTarget, setGoalTarget] = useState(null);
   const [contribForm, setContribForm] = useState(() => ({ value: '', date: ledgerMonthDateInputValue(selectedMonth) }));
@@ -95,6 +84,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   const [closing, setClosing] = useState(false);
 
   const activeCards = cards.filter((card) => card.active !== false);
+  const expensePaymentOptions = getExpensePaymentOptions(activeCards);
   const activeGoals = goals.filter((goal) => !goal.status || goal.status === 'active');
 
   function openIncome() {
@@ -481,18 +471,15 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
           <FormGroup label="Forma de recebimento">
             <ChoiceCards
               compact
-              columns={4}
+              columns={2}
               value={incForm.paymentMethod}
               onChange={(paymentMethod) => setIncForm({
                 ...incForm,
                 paymentMethod,
-                origin: paymentMethod === 'cash' ? 'physical' : incForm.origin,
+                origin: incomeOriginForPaymentMethod(paymentMethod),
               })}
               options={RECEIPT_OPTIONS}
             />
-          </FormGroup>
-          <FormGroup label="Origem do dinheiro">
-            <ChoiceCards compact columns={2} value={incForm.origin} onChange={(origin) => setIncForm({ ...incForm, origin })} options={ORIGIN_OPTIONS} />
           </FormGroup>
           <FormGroup label="Observação">
             <Input value={incForm.observation} onChange={(event) => setIncForm({ ...incForm, observation: event.target.value })} placeholder="Opcional" />
@@ -545,6 +532,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
               <FormGroup label="Forma de pagamento">
                 <ChoiceCards
                   compact
+                  columns={expensePaymentOptions.length}
                   value={expForm.paymentMethod}
                   onChange={(paymentMethod) => setExpForm({
                     ...expForm,
@@ -552,7 +540,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                     cardId: paymentMethod === 'credit' ? expForm.cardId : '',
                     paid: paymentMethod === 'credit' ? true : expForm.paid,
                   })}
-                  options={PAYMENT_OPTIONS}
+                  options={expensePaymentOptions}
                 />
               </FormGroup>
               {expForm.paymentMethod === 'credit' && (
@@ -617,13 +605,14 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
               <FormGroup label="Forma de pagamento" required>
                 <ChoiceCards
                   compact
+                  columns={expensePaymentOptions.length}
                   value={fixForm.paymentMethod}
                   onChange={(paymentMethod) => setFixForm({
                     ...fixForm,
                     paymentMethod,
                     cardId: paymentMethod === 'credit' ? fixForm.cardId : '',
                   })}
-                  options={PAYMENT_OPTIONS}
+                  options={expensePaymentOptions}
                 />
               </FormGroup>
               {fixForm.paymentMethod === 'credit' && (
@@ -740,7 +729,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                 <Input type="number" min="0" step="0.01" value={payAmount} onChange={(event) => setPayAmount(event.target.value)} />
               </FormGroup>
               <FormGroup label="Forma de pagamento">
-                <ChoiceCards compact columns={2} value={payMethod} onChange={setPayMethod} options={PAYMENT_OPTIONS.filter((option) => option.value !== 'credit')} />
+                <ChoiceCards compact columns={2} value={payMethod} onChange={setPayMethod} options={BALANCE_PAYMENT_OPTIONS} />
               </FormGroup>
               {payTarget?.type === 'priority' && (
                 <p className="text-xs text-info bg-info-subtle p-3 rounded-xl border border-info/20">
@@ -789,7 +778,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                 </div>
               )}
               <FormGroup label="Forma de pagamento">
-                <ChoiceCards compact columns={2} value={invMethod} onChange={setInvMethod} options={PAYMENT_OPTIONS.filter((option) => option.value !== 'credit')} />
+                <ChoiceCards compact columns={2} value={invMethod} onChange={setInvMethod} options={BALANCE_PAYMENT_OPTIONS} />
               </FormGroup>
               <div className="modal-actions">
                 <Button variant="outline" onClick={() => setModal(null)}>Cancelar</Button>

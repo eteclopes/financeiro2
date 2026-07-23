@@ -10,7 +10,8 @@
     "check:tutorial": "node scripts/check-tutorial-safety.mjs",
     "check:i18n": "node scripts/check-i18n-coverage.mjs",
     "check:ledger-forms": "node scripts/check-ledger-form-safety.mjs",
-    "check:security": "node scripts/check-security-headers.mjs"
+    "check:security": "node scripts/check-security-headers.mjs",
+    "check:payments": "node scripts/check-payment-methods.mjs"
   },
   "dependencies": {
     "axios": "^1.7.7",

@@ -5,25 +5,20 @@ import { extractErrorMessage } from '../lib/api';
 import { formatCurrency, formatShortDate } from '../lib/format';
 import { ledgerMonthDateInputValue, ledgerMonthDateRange } from '../lib/date';
 import { Card, Badge, Button, EmptyState, Skeleton } from '../components/ui/index';
-import { Modal, ConfirmDialog, FormGroup, Input, Select } from '../components/ui/Modal';
+import { Modal, ConfirmDialog, FormGroup, Input } from '../components/ui/Modal';
 import { CategorySelect } from '../components/ui/CategorySelect';
 import { useUIStore } from '../store/uiStore';
 import { ChoiceCards, ToggleSwitch } from '../components/ui/Motion';
-
-const PM_LABELS = { cash:'Dinheiro', pix:'PIX', debit:'Débito', credit:'Crédito', transfer:'Transferência' };
-const RECEIPT_OPTIONS = [
-  { value:'pix', label:'PIX', icon:'⚡', description:'Instantâneo', tone:'choice-card-icon-primary' },
-  { value:'debit', label:'Débito', icon:'▣', description:'Conta bancária', tone:'choice-card-icon-info' },
-  { value:'transfer', label:'Transferência', icon:'⇄', description:'TED ou banco', tone:'choice-card-icon-primary' },
-  { value:'cash', label:'Dinheiro', icon:'●', description:'Valor físico', tone:'choice-card-icon-success' },
-];
-const ORIGIN_OPTIONS = [
-  { value:'digital', label:'Digital', icon:'◉', description:'Disponível na conta', tone:'choice-card-icon-info' },
-  { value:'physical', label:'Físico', icon:'●', description:'Dinheiro em mãos', tone:'choice-card-icon-warning' },
-];
+import {
+  ACCOUNT_BALANCE_METHOD,
+  RECEIPT_OPTIONS,
+  PHYSICAL_CASH_METHOD,
+  getPaymentMethodLabel,
+  incomeOriginForPaymentMethod,
+} from '../lib/paymentMethods';
 
 const createEmptyForm = (month) => ({
-  description:'', value:'', categoryId:'', paymentMethod:'pix',
+  description:'', value:'', categoryId:'', paymentMethod: ACCOUNT_BALANCE_METHOD,
   origin:'digital', date: ledgerMonthDateInputValue(month),
   observation:'', recurring: false,
 });
@@ -67,8 +62,8 @@ export default function IncomesPage() {
       description:   income.description,
       value:         String(income.value),
       categoryId:    String(income.categoryId),
-      paymentMethod: income.paymentMethod,
-      origin:        income.origin,
+      paymentMethod: income.origin === 'physical' ? PHYSICAL_CASH_METHOD : ACCOUNT_BALANCE_METHOD,
+      origin:        income.origin === 'physical' ? 'physical' : 'digital',
       date:          income.incomeDate?.slice(0,10) ?? '',
       observation:   income.observation ?? '',
       recurring:     false,
@@ -139,7 +134,7 @@ export default function IncomesPage() {
           <div className="data-table-scroll">
             <table className="w-full text-sm">
               <thead className="bg-subtle/60 dark:bg-white/[0.03]">
-                <tr>{['Descrição','Categoria','Valor','Data','Forma','Origem','Recorrente',''].map(h=>(
+                <tr>{['Descrição','Categoria','Valor','Data','Forma','Recorrente',''].map(h=>(
                   <th key={h} className="table-header">{h}</th>
                 ))}</tr>
               </thead>
@@ -150,8 +145,7 @@ export default function IncomesPage() {
                     <td className="table-cell text-muted">{inc.category?.name}</td>
                     <td className="table-cell font-mono tabular-nums font-bold text-primary-dark dark:text-primary-light">{formatCurrency(inc.value)}</td>
                     <td className="table-cell text-muted">{formatShortDate(inc.incomeDate)}</td>
-                    <td className="table-cell"><Badge>{PM_LABELS[inc.paymentMethod] ?? inc.paymentMethod}</Badge></td>
-                    <td className="table-cell"><Badge variant={inc.origin==='physical'?'warning':'info'}>{inc.origin==='physical'?'Físico':'Digital'}</Badge></td>
+                    <td className="table-cell"><Badge>{getPaymentMethodLabel(inc.origin === 'physical' ? PHYSICAL_CASH_METHOD : ACCOUNT_BALANCE_METHOD)}</Badge></td>
                     <td className="table-cell">
                       {inc.templateId ? (
                         <div className="flex items-center gap-2">
@@ -199,10 +193,17 @@ export default function IncomesPage() {
             />
           </FormGroup>
           <FormGroup label="Forma de recebimento">
-            <ChoiceCards compact columns={4} value={form.paymentMethod} onChange={(paymentMethod) => setForm({ ...form, paymentMethod, origin: paymentMethod === 'cash' ? 'physical' : form.origin })} options={RECEIPT_OPTIONS} />
-          </FormGroup>
-          <FormGroup label="Origem do dinheiro">
-            <ChoiceCards compact columns={2} value={form.origin} onChange={(origin) => setForm({ ...form, origin })} options={ORIGIN_OPTIONS} />
+            <ChoiceCards
+              compact
+              columns={2}
+              value={form.paymentMethod}
+              onChange={(paymentMethod) => setForm({
+                ...form,
+                paymentMethod,
+                origin: incomeOriginForPaymentMethod(paymentMethod),
+              })}
+              options={RECEIPT_OPTIONS}
+            />
           </FormGroup>
           <FormGroup label="Observação">
             <Input value={form.observation} onChange={(e) => setForm({...form,observation:e.target.value})} placeholder="Opcional" />

@@ -11,17 +11,11 @@ import { CategorySelect } from '../components/ui/CategorySelect';
 import { useUIStore } from '../store/uiStore';
 import { useAuthStore } from '../store/authStore';
 import { ChoiceCards, AnimatedNumber } from '../components/ui/Motion';
+import { ACCOUNT_BALANCE_METHOD, BALANCE_PAYMENT_OPTIONS } from '../lib/paymentMethods';
 
 const COLORS = ['#7C3AED','#2563EB','#16A34A','#F59E0B','#DC2626','#A855F7','#06B6D4'];
 const STATUS_V = { open:'info', closed:'warning', paid:'success' };
 const STATUS_L = { open:'Aberta', closed:'Fechada', paid:'Paga' };
-const PAYMENT_OPTIONS = [
-  { value:'pix', label:'PIX', icon:'⚡', tone:'choice-card-icon-primary' },
-  { value:'debit', label:'Débito', icon:'▣', tone:'choice-card-icon-info' },
-  { value:'transfer', label:'Transferência', icon:'⇄', tone:'choice-card-icon-primary' },
-  { value:'cash', label:'Dinheiro', icon:'●', tone:'choice-card-icon-success' },
-];
-
 export default function CardsPage() {
   const selectedMonth = useMonthStore((s) => s.months.find((month) => String(month.id) === String(s.selectedMonthId)) ?? null);
   const [cards, setCards]     = useState([]);
@@ -44,7 +38,7 @@ export default function CardsPage() {
   const [payTarget, setPayTarget]   = useState(null);
   const [saving, setSaving]         = useState(false);
   const [paying, setPaying]         = useState(false);
-  const [invMethod, setInvMethod]   = useState('pix');
+  const [invMethod, setInvMethod]   = useState(ACCOUNT_BALANCE_METHOD);
 
   const [cardForm, setCardForm] = useState({ name:'', color: COLORS[0], limitValue:'', closingDay:'20', dueDay:'27' });
   const [editCardForm, setEditCardForm] = useState({ name:'', color: COLORS[0], limitValue:'', closingDay:'', dueDay:'' });
@@ -506,7 +500,7 @@ export default function CardsPage() {
               <p className="text-xs text-muted mt-1">{String(payTarget.referenceMonth).padStart(2,'0')}/{payTarget.referenceYear}</p>
             </div>
             <FormGroup label="Forma de pagamento">
-              <ChoiceCards compact columns={2} value={invMethod} onChange={setInvMethod} options={PAYMENT_OPTIONS} />
+              <ChoiceCards compact columns={2} value={invMethod} onChange={setInvMethod} options={BALANCE_PAYMENT_OPTIONS} />
             </FormGroup>
             <div className="modal-actions">
               <Button variant="outline" onClick={() => setPayTarget(null)}>Cancelar</Button>
