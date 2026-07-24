@@ -226,9 +226,11 @@ model Month {
   userId    BigInt      @map("user_id")
   month     Int         @db.SmallInt
   year      Int         @db.SmallInt
-  status    MonthStatus @default(open)
-  closedAt  DateTime?   @map("closed_at")
-  createdAt DateTime    @default(now()) @map("created_at")
+  status            MonthStatus @default(open)
+  closedAt          DateTime?   @map("closed_at")
+  financialSnapshot Json?       @map("financial_snapshot")
+  snapshotVersion   Int?        @map("snapshot_version") @db.SmallInt
+  createdAt         DateTime    @default(now()) @map("created_at")
 
   user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   incomes           Income[]
@@ -239,6 +241,7 @@ model Month {
   financialHealthScore FinancialHealthScore?
 
   @@unique([userId, month, year])
+  @@index([userId, status])
   @@map("months")
 }
 

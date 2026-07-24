@@ -56,6 +56,7 @@ export default function SavingsPage() {
   ) ?? null);
   const selectedMonthDateRange = ledgerMonthDateRange(selectedMonth);
   const defaultDate = ledgerMonthDateInputValue(selectedMonth);
+  const isSelectedMonthClosed = selectedMonth?.status === 'closed';
   const [data, setData] = useState({ balance: 0, buckets: [], archivedBuckets: [], transactions: [], breakdown: null });
   const [loading, setLoading] = useState(true);
   const [movement, setMovement] = useState(null);
@@ -103,6 +104,10 @@ export default function SavingsPage() {
   const activeBuckets = data.buckets ?? [];
 
   function openMovement(type, bucket) {
+    if (isSelectedMonthClosed) {
+      toast.error('Este mês está encerrado. Selecione um mês aberto para movimentar as caixinhas.');
+      return;
+    }
     setMovement({ type, bucket });
     setMovementForm({ value: '', date: defaultDate, observation: '', origin: 'balance' });
   }
@@ -174,6 +179,10 @@ export default function SavingsPage() {
   }
 
   function openTransfer(sourceBucket) {
+    if (isSelectedMonthClosed) {
+      toast.error('Este mês está encerrado. Selecione um mês aberto para movimentar as caixinhas.');
+      return;
+    }
     const destination = activeBuckets.find((bucket) => String(bucket.id) !== String(sourceBucket.id));
     if (!destination) {
       toast.error('Crie outra caixinha para realizar uma transferência.');
@@ -315,6 +324,12 @@ export default function SavingsPage() {
         </div>
       </div>
 
+      {isSelectedMonthClosed && (
+        <div className="rounded-2xl border border-warning/30 bg-warning-subtle px-4 py-3 text-sm text-warning-dark dark:text-warning-light">
+          Este mês está encerrado e o histórico foi congelado. Selecione um mês aberto para guardar, retirar ou transferir valores.
+        </div>
+      )}
+
       {loading ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-52 rounded-3xl shimmer-bg" />)}</div>
       ) : (
@@ -350,9 +365,9 @@ export default function SavingsPage() {
                 ) : <p className="mt-3 text-xs text-muted">Defina uma meta para acompanhar o progresso.</p>}
 
                 <div className="mt-5 grid grid-cols-2 gap-2">
-                  <Button onClick={() => openMovement('deposit', bucket)} className="justify-center">+ Guardar</Button>
-                  <Button variant="outline" onClick={() => openMovement('withdraw', bucket)} disabled={balance <= 0} className="justify-center">Retirar</Button>
-                  <Button variant="ghost" onClick={() => openTransfer(bucket)} disabled={balance <= 0 || activeBuckets.length < 2} className="col-span-2 justify-center">Transferir entre caixinhas</Button>
+                  <Button onClick={() => openMovement('deposit', bucket)} disabled={isSelectedMonthClosed} className="justify-center">+ Guardar</Button>
+                  <Button variant="outline" onClick={() => openMovement('withdraw', bucket)} disabled={isSelectedMonthClosed || balance <= 0} className="justify-center">Retirar</Button>
+                  <Button variant="ghost" onClick={() => openTransfer(bucket)} disabled={isSelectedMonthClosed || balance <= 0 || activeBuckets.length < 2} className="col-span-2 justify-center">Transferir entre caixinhas</Button>
                 </div>
               </Card>
             );

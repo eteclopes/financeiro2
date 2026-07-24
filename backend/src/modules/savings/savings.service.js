@@ -4,6 +4,7 @@ const AppError = require('../../utils/AppError');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
 const { round2 } = require('../../utils/math');
 const { assertSufficientBalance, lockUserBalance } = require('../_shared/balance');
+const monthsService = require('../months/months.service');
 const latestOrder = [{ createdAt: 'desc' }, { id: 'desc' }];
 
 async function ensureDefaultBucket(userId, client = prisma) {
@@ -169,6 +170,7 @@ async function restoreBucket(userId, bucketId) {
 async function deposit(userId, { value, date, observation, origin = 'balance', bucketId }) {
   return prisma.$transaction(async (tx) => {
     await lockUserBalance(tx, userId);
+    await monthsService.assertTransactionDateIsOpen(userId, date, tx);
     const bucket = await resolveBucket(userId, bucketId, tx);
     if (origin === 'balance') await assertSufficientBalance(userId, value, tx);
 
@@ -202,6 +204,7 @@ async function deposit(userId, { value, date, observation, origin = 'balance', b
 async function withdraw(userId, { value, date, observation, bucketId }) {
   return prisma.$transaction(async (tx) => {
     await lockUserBalance(tx, userId);
+    await monthsService.assertTransactionDateIsOpen(userId, date, tx);
     const bucket = await resolveBucket(userId, bucketId, tx);
     const [last, lastInBucket] = await Promise.all([
       tx.savingsTransaction.findFirst({ where: { userId }, orderBy: latestOrder }),
@@ -244,6 +247,7 @@ async function transfer(userId, { fromBucketId, toBucketId, value, date, observa
 
   return prisma.$transaction(async (tx) => {
     await lockUserBalance(tx, userId);
+    await monthsService.assertTransactionDateIsOpen(userId, date, tx);
     const [source, destination] = await Promise.all([
       getBucketOrThrow(userId, fromBucketId, tx),
       getBucketOrThrow(userId, toBucketId, tx),
@@ -308,6 +312,7 @@ async function transfer(userId, { fromBucketId, toBucketId, value, date, observa
 async function updateLastTransaction(userId, transactionId, { value, date, observation, origin }) {
   return prisma.$transaction(async (tx) => {
     await lockUserBalance(tx, userId);
+    await monthsService.assertTransactionDateIsOpen(userId, date, tx);
     const last = await tx.savingsTransaction.findFirst({ where: { userId }, orderBy: latestOrder });
     if (!last || String(last.id) !== String(transactionId)) {
       throw new AppError(

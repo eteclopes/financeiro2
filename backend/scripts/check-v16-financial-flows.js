@@ -145,7 +145,10 @@ require.cache[monthsPath] = {
   id: monthsPath,
   filename: monthsPath,
   loaded: true,
-  exports: { getMonthOrThrow: async () => ({ id: 1n, month: 1, year: 2030 }) },
+  exports: {
+    getMonthOrThrow: async () => ({ id: 1n, month: 1, year: 2030 }),
+    assertTransactionDateIsOpen: async () => undefined,
+  },
 };
 require.cache[projectionsPath] = {
   id: projectionsPath,

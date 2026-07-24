@@ -12,6 +12,7 @@ const { getAvailableBalance, getBalanceAsOf } = require('../_shared/balance');
 const { monthDateRange, todayUtcDate } = require('../../utils/dateTime');
 const { round2 } = require('../../utils/math');
 const { getUserPlan } = require('../plans/plans.service');
+const { ensureClosedMonthSnapshot } = require('../months/monthSnapshot.service');
 
 async function getDashboard(userId, monthId) {
   const [month, planInfo] = await Promise.all([
@@ -19,6 +20,9 @@ async function getDashboard(userId, monthId) {
     getUserPlan(userId),
   ]);
   const { entitlements } = planInfo;
+  const closedSnapshot = month.status === 'closed'
+    ? await ensureClosedMonthSnapshot(userId, month)
+    : null;
   const { start, end } = monthDateRange(month.year, month.month);
   const dayBeforeStart = new Date(start.getTime() - 1);
   const today = todayUtcDate();
@@ -63,7 +67,7 @@ async function getDashboard(userId, monthId) {
     }),
     prisma.debt.aggregate({ where: { userId, status: 'active' }, _sum: { remainingBalance: true } }),
     savingsService.getCurrentBalance(userId),
-    prisma.goalContribution.findMany({ where: { monthId } }),
+    prisma.goalContribution.findMany({ where: { monthId, goal: { userId } } }),
     prisma.income.aggregate({ where: { userId, monthId, origin: 'physical' }, _sum: { value: true } }),
     prisma.expense.aggregate({
       where: { userId, paymentMethod: 'cash', deletedAt: null, paidAt: { gte: start, lte: end } },
@@ -87,13 +91,11 @@ async function getDashboard(userId, monthId) {
   const outstanding = round2(
     Number(outstandingAgg._sum.value ?? 0) - Number(outstandingAgg._sum.paidAmount ?? 0)
   );
-
   const goalNet = round2(goalMovements.reduce(
     (sum, item) => sum + (item.type === 'contribution' ? Number(item.value) : -Number(item.value)),
     0
   ));
   const savingsNet = await savingsService.getNetMovementInRange(userId, start, end);
-
   const physicalCash = round2(
     Number(cashIncomesAgg._sum.value ?? 0) - Number(cashExpensesPaidAgg._sum.paidAmount ?? 0)
   );
@@ -112,25 +114,51 @@ async function getDashboard(userId, monthId) {
     getAverageRecentIncome(userId, monthId, 3),
   ]);
 
-  const incomeRef = avgIncome > 0 ? avgIncome : incomeTotal > 0 ? incomeTotal : 1;
-  const commitmentRatio = round2(expensesPlanned / incomeRef);
-  const commitmentBand = classifyCommitment(commitmentRatio);
-
-  return {
-    month,
+  const liveSummary = {
     openingBalance: round2(openingBalance),
     incomeTotal: round2(incomeTotal),
     expensesPlanned: round2(expensesPlanned),
     expensesPaid: round2(expensesPaid),
     currentBalance: round2(currentBalance),
     projectedBalance: round2(monthEndBalance - outstanding),
-    savingsBalance,
-    savingsNet,
-    goalNet,
-    physicalCash,
-    digitalCash,
+    savingsBalance: round2(Number(savingsBalance ?? 0)),
+    savingsNet: round2(savingsNet),
+    goalNet: round2(goalNet),
+    physicalCash: round2(physicalCash),
+    digitalCash: round2(digitalCash),
     totalActiveDebt: round2(Number(debtsAgg._sum.remainingBalance ?? 0)),
     pendingExpensesCount: pendingCount,
+  };
+  const summary = closedSnapshot ?? liveSummary;
+
+  const incomeRef = avgIncome > 0
+    ? avgIncome
+    : Number(summary.incomeTotal) > 0
+      ? Number(summary.incomeTotal)
+      : 1;
+  const commitmentRatio = round2(Number(summary.expensesPlanned) / incomeRef);
+  const commitmentBand = classifyCommitment(commitmentRatio);
+
+  return {
+    month,
+    historicalSnapshot: closedSnapshot ? {
+      version: Number(closedSnapshot.version ?? 1),
+      capturedAt: closedSnapshot.capturedAt ?? null,
+      reconstructed: Boolean(closedSnapshot.reconstructed),
+    } : null,
+    openingBalance: Number(summary.openingBalance),
+    incomeTotal: Number(summary.incomeTotal),
+    expensesPlanned: Number(summary.expensesPlanned),
+    expensesPaid: Number(summary.expensesPaid),
+    currentBalance: Number(summary.currentBalance),
+    projectedBalance: Number(summary.projectedBalance),
+    savingsBalance: Number(summary.savingsBalance),
+    savingsNet: Number(summary.savingsNet),
+    goalNet: Number(summary.goalNet),
+    physicalCash: Number(summary.physicalCash),
+    digitalCash: Number(summary.digitalCash),
+    totalActiveDebt: Number(summary.totalActiveDebt),
+    pendingExpensesCount: Number(summary.pendingExpensesCount),
     upcomingDueDates: pendingExpenses,
     cards,
     goals: goals.filter((goal) => goal.status === 'active'),

@@ -5,6 +5,7 @@ const expensesService = require('../expenses/expenses.service');
 const debtsService = require('../debts/debts.service');
 const { addMonths } = require('../../utils/monthMath');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
+const { buildMonthSnapshot, SNAPSHOT_VERSION } = require('../months/monthSnapshot.service');
 
 const CLOSE_TRANSACTION_OPTIONS = {
   maxWait: 10_000,
@@ -222,7 +223,7 @@ async function closeMonth(userId, monthId) {
       // linha do mês protege também contra duas chamadas do mesmo mês.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${userId})`;
       const locked = await tx.$queryRaw`
-        SELECT id, status, month, year
+        SELECT id, status, month, year, closed_at, created_at, financial_snapshot, snapshot_version
         FROM months
         WHERE id = ${monthId} AND user_id = ${userId}
         FOR UPDATE
@@ -235,19 +236,40 @@ async function closeMonth(userId, monthId) {
         status: raw.status,
         month: Number(raw.month),
         year: Number(raw.year),
+        closedAt: raw.closed_at,
+        createdAt: raw.created_at,
+        financialSnapshot: raw.financial_snapshot,
+        snapshotVersion: raw.snapshot_version,
       };
       const repaired = current.status === 'closed';
+      const hasSnapshot = current.financialSnapshot && Number(current.snapshotVersion) === SNAPSHOT_VERSION;
+      const snapshot = hasSnapshot
+        ? current.financialSnapshot
+        : await buildMonthSnapshot(userId, current, tx, repaired
+          ? { recordedBefore: current.closedAt || current.createdAt || new Date(), reconstructed: true }
+          : {});
+
       const next = addMonths(current.month, current.year, 1);
       const nextMonth = await monthsService.getOrCreateMonth(userId, next.month, next.year, tx);
       const generation = await generateNextMonthEntries(tx, userId, current, nextMonth, next);
 
-      // O status só muda DEPOIS que todas as recorrências foram geradas. Se a
-      // transação falhar ou expirar, o mês continua aberto e pode ser tentado
-      // novamente sem ficar "fechado pela metade".
+      // O status e o retrato financeiro só são persistidos DEPOIS que todas
+      // as recorrências foram geradas. Se a transação falhar, nada fica pela
+      // metade e o mês continua podendo ser tentado/reparado com segurança.
       if (!repaired) {
         await tx.month.update({
           where: { id: monthId },
-          data: { status: 'closed', closedAt: new Date() },
+          data: {
+            status: 'closed',
+            closedAt: new Date(),
+            financialSnapshot: snapshot,
+            snapshotVersion: SNAPSHOT_VERSION,
+          },
+        });
+      } else if (!hasSnapshot) {
+        await tx.month.update({
+          where: { id: monthId },
+          data: { financialSnapshot: snapshot, snapshotVersion: SNAPSHOT_VERSION },
         });
       }
 

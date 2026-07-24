@@ -10,7 +10,7 @@ const { closeMonth } = require('../../src/modules/closing/closing.service');
 
 beforeEach(() => {
   installDefaults(prismaMock);
-  prismaMock.$queryRaw.mockResolvedValue([{ id: 3n, status: 'open', month: 6, year: 2026 }]);
+  prismaMock.$queryRaw.mockResolvedValue([{ id: 3n, status: 'open', month: 6, year: 2026, closed_at: null, created_at: new Date('2026-06-01'), financial_snapshot: null, snapshot_version: null }]);
   monthsService.getOrCreateMonth.mockResolvedValue({ id: 4n, month: 7, year: 2026 });
 });
 
@@ -28,12 +28,17 @@ describe('closeMonth — AuditLog', () => {
   });
 
   test('mês já fechado entra em modo de reparo idempotente e não altera closedAt', async () => {
-    prismaMock.$queryRaw.mockResolvedValue([{ id: 3n, status: 'closed', month: 6, year: 2026 }]);
+    prismaMock.$queryRaw.mockResolvedValue([{ id: 3n, status: 'closed', month: 6, year: 2026, closed_at: new Date('2026-06-30T20:00:00Z'), created_at: new Date('2026-06-01'), financial_snapshot: null, snapshot_version: null }]);
 
     const result = await closeMonth(10n, 3n);
 
     expect(result.repaired).toBe(true);
-    expect(prismaMock.month.update).not.toHaveBeenCalled();
+    expect(prismaMock.month.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 3n },
+        data: expect.objectContaining({ financialSnapshot: expect.any(Object), snapshotVersion: 1 }),
+      })
+    );
     expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: 'repair_close' }) })
     );

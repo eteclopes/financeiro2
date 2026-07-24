@@ -80,6 +80,7 @@ async function contribute(userId, goalId, { monthId, value, date }) {
     throw new AppError('Não é possível registrar um aporte com data futura.', 422, 'FUTURE_TRANSACTION_DATE');
   }
   const month = await monthsService.getMonthOrThrow(userId, monthId);
+  monthsService.assertMonthIsOpen(month);
   if (date.getUTCMonth() + 1 !== month.month || date.getUTCFullYear() !== month.year) {
     throw new AppError('A data do aporte não pertence ao mês selecionado.', 422, 'DATE_OUTSIDE_MONTH');
   }
@@ -130,6 +131,7 @@ async function cancelGoal(userId, goalId, { refundContributions, monthId }) {
     const targetMonth = monthId
       ? await monthsService.getMonthOrThrow(userId, monthId, tx)
       : await monthsService.getCurrentMonth(userId, tx);
+    monthsService.assertMonthIsOpen(targetMonth);
 
     const refund = await tx.goalContribution.create({
       data: {

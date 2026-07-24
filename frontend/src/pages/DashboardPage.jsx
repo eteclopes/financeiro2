@@ -167,6 +167,7 @@ export default function DashboardPage() {
 
   if (!data) return null;
 
+  const isHistoricalClosed = data.month?.status === 'closed';
   const health       = data.financialHealthScore;
   const activeAlerts = (data.alerts ?? []).filter((a) => !a.resolvedAt);
   const barData      = [
@@ -194,6 +195,11 @@ export default function DashboardPage() {
 
   return (
     <div data-tutorial-page-ready="dashboard" className="space-y-6 animate-page-enter">
+      {isHistoricalClosed && (
+        <div className="rounded-2xl border border-border bg-subtle/70 px-4 py-3 text-sm text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-zinc-300">
+          Histórico congelado no encerramento do mês. Receitas, despesas, pagamentos e reservas adicionados depois não alteram estes totais.
+        </div>
+      )}
       {isPro && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/15 bg-primary-subtle/70 px-4 py-3 dark:bg-primary/10">
           <div>
@@ -216,9 +222,9 @@ export default function DashboardPage() {
             <span className="hero-orbit-ring"><i className="hero-orbit-dot" /></span>
           </div>
           <div className="relative">
-            <p className="text-white/80 text-sm font-medium mb-1">Saldo disponível acumulado</p>
+            <p className="text-white/80 text-sm font-medium mb-1">{isHistoricalClosed ? 'Saldo no encerramento' : 'Saldo disponível acumulado'}</p>
             <p className="responsive-money font-bold font-mono tracking-tight"><AnimatedNumber value={data.currentBalance} formatter={formatCurrency} /></p>
-            <p className="text-white/65 text-xs mt-1">O valor restante dos meses anteriores continua no seu caixa.</p>
+            <p className="text-white/65 text-xs mt-1">{isHistoricalClosed ? 'Este valor foi congelado quando o mês foi encerrado e não muda com lançamentos posteriores.' : 'O valor restante dos meses anteriores continua no seu caixa.'}</p>
             <div className="hero-mini-bars mt-4" aria-hidden="true">
               {[35, 68, 48, 82, 62, 96, 75].map((height, index) => <span key={index} style={{ height: `${height}%` }} />)}
             </div>

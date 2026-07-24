@@ -1513,4 +1513,9 @@ export const UI_PHRASES = new Set([
   "reserva muito baixa",
   "saudável",
   "simulação não existe ou não é sua",
+  "Este mês está encerrado. Selecione um mês aberto para movimentar as caixinhas.",
+  "Este mês está encerrado e o histórico foi congelado. Selecione um mês aberto para guardar, retirar ou transferir valores.",
+  "Saldo no encerramento",
+  "Este valor foi congelado quando o mês foi encerrado e não muda com lançamentos posteriores.",
+  "Histórico congelado no encerramento do mês. Receitas, despesas, pagamentos e reservas adicionados depois não alteram estes totais.",
 ]);

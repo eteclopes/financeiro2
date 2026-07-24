@@ -27,6 +27,7 @@ async function getCurrentMonth(userId, client = prisma) {
 async function listMonths(userId) {
   return prisma.month.findMany({
     where: { userId },
+    select: { id: true, userId: true, month: true, year: true, status: true, closedAt: true, createdAt: true },
     orderBy: [{ year: 'desc' }, { month: 'desc' }],
   });
 }
@@ -37,6 +38,23 @@ async function getMonthOrThrow(userId, monthId, client = prisma) {
     throw new AppError('Mês não encontrado.', 404, 'MONTH_NOT_FOUND');
   }
   return month;
+}
+
+
+async function assertTransactionDateIsOpen(userId, date, client = prisma) {
+  const month = date.getUTCMonth() + 1;
+  const year = date.getUTCFullYear();
+  const ledgerMonth = await client.month.findUnique({
+    where: { userId_month_year: { userId, month, year } },
+  });
+  if (ledgerMonth?.status === 'closed') {
+    throw new AppError(
+      'Essa data pertence a um mês encerrado. Troque para um mês aberto para registrar a movimentação.',
+      409,
+      'MONTH_CLOSED'
+    );
+  }
+  return ledgerMonth;
 }
 
 function assertMonthIsOpen(month) {
@@ -55,4 +73,5 @@ module.exports = {
   listMonths,
   getMonthOrThrow,
   assertMonthIsOpen,
+  assertTransactionDateIsOpen,
 };

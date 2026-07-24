@@ -2,12 +2,16 @@ const prisma = require('../../config/prisma');
 const AppError = require('../../utils/AppError');
 const { round2 } = require('../../utils/math');
 
-async function getBalanceComponents(userId, client = prisma, asOf = null) {
+async function getBalanceComponents(userId, client = prisma, asOf = null, recordedBefore = null) {
   const dateFilter = asOf ? { lte: asOf } : undefined;
+  const incomeRecordedFilter = recordedBefore ? { createdAt: { lte: recordedBefore } } : {};
+  const expenseRecordedFilter = recordedBefore ? { updatedAt: { lte: recordedBefore } } : {};
+  const contributionRecordedFilter = recordedBefore ? { createdAt: { lte: recordedBefore } } : {};
+  const savingsRecordedFilter = recordedBefore ? { createdAt: { lte: recordedBefore } } : {};
 
   const [incomeAgg, expenseAgg, goalContributions, goalRefunds, savingsDeposits, savingsWithdrawals] = await Promise.all([
     client.income.aggregate({
-      where: { userId, ...(dateFilter ? { incomeDate: dateFilter } : {}) },
+      where: { userId, ...(dateFilter ? { incomeDate: dateFilter } : {}), ...incomeRecordedFilter },
       _sum: { value: true },
     }),
     client.expense.aggregate({
@@ -15,6 +19,7 @@ async function getBalanceComponents(userId, client = prisma, asOf = null) {
         userId,
         deletedAt: null,
         ...(dateFilter ? { paidAt: dateFilter } : {}),
+        ...expenseRecordedFilter,
       },
       _sum: { paidAmount: true },
     }),
@@ -23,6 +28,7 @@ async function getBalanceComponents(userId, client = prisma, asOf = null) {
         goal: { userId },
         type: 'contribution',
         ...(dateFilter ? { contributionDate: dateFilter } : {}),
+        ...contributionRecordedFilter,
       },
       _sum: { value: true },
     }),
@@ -31,6 +37,7 @@ async function getBalanceComponents(userId, client = prisma, asOf = null) {
         goal: { userId },
         type: 'refund',
         ...(dateFilter ? { contributionDate: dateFilter } : {}),
+        ...contributionRecordedFilter,
       },
       _sum: { value: true },
     }),
@@ -40,6 +47,7 @@ async function getBalanceComponents(userId, client = prisma, asOf = null) {
         type: 'deposit',
         origin: 'balance',
         ...(dateFilter ? { transactionDate: dateFilter } : {}),
+        ...savingsRecordedFilter,
       },
       _sum: { value: true },
     }),
@@ -48,6 +56,7 @@ async function getBalanceComponents(userId, client = prisma, asOf = null) {
         userId,
         type: 'withdraw',
         ...(dateFilter ? { transactionDate: dateFilter } : {}),
+        ...savingsRecordedFilter,
       },
       _sum: { value: true },
     }),
@@ -86,8 +95,8 @@ async function getAvailableBalance(userId, client = prisma) {
   return calculateBalance(await getBalanceComponents(userId, client));
 }
 
-async function getBalanceAsOf(userId, date, client = prisma) {
-  return calculateBalance(await getBalanceComponents(userId, client, date));
+async function getBalanceAsOf(userId, date, client = prisma, recordedBefore = null) {
+  return calculateBalance(await getBalanceComponents(userId, client, date, recordedBefore));
 }
 
 async function assertSufficientBalance(userId, amount, client = prisma) {
