@@ -7,6 +7,7 @@ import { useMonthStore } from '../store/monthStore';
 import { useUIStore } from '../store/uiStore';
 import { Badge, Button, Card, CardHeader, EmptyState, PageHeader, ProgressBar, Skeleton } from '../components/ui/index';
 import { IconAlert, IconCard, IconGoal, IconReport, IconTrend } from '../components/icons';
+import { UserText } from '../i18n/UserText';
 
 const ALERT_TONES = {
   critical: 'danger',
@@ -57,7 +58,7 @@ function CardPlan({ card }) {
     <div className="rounded-2xl border border-slate-200/80 p-4 dark:border-white/[0.07]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-bold text-slate-900 dark:text-white">{card.name}</p>
+          <p className="truncate text-sm font-bold text-slate-900 dark:text-white"><UserText>{card.name}</UserText></p>
           <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">Melhor dia estimado: até {formatShortDate(card.closingDate)}</p>
         </div>
         <Badge variant={usage >= 95 ? 'danger' : usage >= 80 ? 'warning' : 'success'}>{Math.round(usage)}% usado</Badge>
@@ -196,7 +197,7 @@ export default function PlanningPage() {
               {debtPlan.snowballOrder.map((debt, index) => (
                 <div key={debt.id} className="flex items-center gap-3 rounded-2xl border border-slate-200/80 p-4 dark:border-white/[0.07]">
                   <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary-subtle text-sm font-black text-primary dark:bg-primary/10 dark:text-primary-hover">{index + 1}</div>
-                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900 dark:text-white">{debt.description}</p><p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">Parcela {formatCurrency(debt.installmentValue)}{debt.estimatedInstallments ? ` · aproximadamente ${debt.estimatedInstallments} parcela(s)` : ''}</p></div>
+                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900 dark:text-white"><UserText>{debt.description}</UserText></p><p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">Parcela {formatCurrency(debt.installmentValue)}{debt.estimatedInstallments ? ` · aproximadamente ${debt.estimatedInstallments} parcela(s)` : ''}</p></div>
                   <p className="shrink-0 text-sm font-extrabold text-slate-950 dark:text-white">{formatCurrency(debt.remainingBalance)}</p>
                 </div>
               ))}
@@ -212,7 +213,7 @@ export default function PlanningPage() {
                 const status = GOAL_STATUS[goal.status] ?? GOAL_STATUS.on_track;
                 return (
                   <div key={goal.id} className="rounded-2xl border border-slate-200/80 p-4 dark:border-white/[0.07]">
-                    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900 dark:text-white">{goal.name}</p><p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">{formatCurrency(goal.progress)} de {formatCurrency(goal.targetValue)}</p></div><Badge variant={status.tone}>{status.label}</Badge></div>
+                    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900 dark:text-white"><UserText>{goal.name}</UserText></p><p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">{formatCurrency(goal.progress)} de {formatCurrency(goal.targetValue)}</p></div><Badge variant={status.tone}>{status.label}</Badge></div>
                     <div className="mt-3"><ProgressBar value={goal.percentage} color={goal.status === 'behind' ? 'warning' : 'success'} /></div>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 text-xs"><div><p className="text-slate-400 dark:text-zinc-500">Aporte recomendado</p><p className="mt-0.5 font-bold text-slate-800 dark:text-zinc-200">{goal.recommendedMonthly == null ? 'Defina uma data' : `${formatCurrency(goal.recommendedMonthly)}/mês`}</p></div><div><p className="text-slate-400 dark:text-zinc-500">Ritmo recente</p><p className="mt-0.5 font-bold text-slate-800 dark:text-zinc-200">{formatCurrency(goal.currentMonthlyPace)}/mês</p></div></div>
                   </div>

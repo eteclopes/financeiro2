@@ -93,7 +93,7 @@ export default function PurchaseSimulatorPage() {
               <Select value={form.cardId} onChange={(e) => setForm({...form, cardId:e.target.value})}>
                 <option value="">Sem cartão / dinheiro</option>
                 {cards.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name} — disponível: {formatCurrency(c.availableLimit)}</option>
+                  <option data-i18n-ignore="true" key={c.id} value={c.id}>{c.name} — disponível: {formatCurrency(c.availableLimit)}</option>
                 ))}
               </Select>
             </FormGroup>

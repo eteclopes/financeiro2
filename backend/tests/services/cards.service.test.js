@@ -104,8 +104,11 @@ describe('cards.service — AuditLog', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           entity: 'card', entityId: 9n, action: 'deactivate',
-          oldValueJson: expect.objectContaining({ active: true }),
-          newValueJson: expect.objectContaining({ active: false }),
+          // Desde o hardening de privacidade (V15) o audit_log guarda um
+          // RESUMO sanitizado (privacyVersion/fields/state), nunca o
+          // objeto financeiro cru. O teste valida o formato atual.
+          oldValueJson: expect.objectContaining({ state: expect.objectContaining({ active: true }) }),
+          newValueJson: expect.objectContaining({ state: expect.objectContaining({ active: false }) }),
         }),
       })
     );

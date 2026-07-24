@@ -124,14 +124,37 @@ async function getCardInstallmentsForMonth(userId, refMonth, refYear) {
   return Number(agg._sum.value ?? 0);
 }
 
+/**
+ * Totais recorrentes mensais.
+ *
+ * IMPORTANTE: despesas fixas pagas no CARTÃO são deliberadamente excluídas
+ * daqui. Elas já entram na projeção pelo outro lado — cada fechamento gera
+ * uma cobrança real do tipo `card` na fatura, e `getCardInstallmentsForMonth`
+ * soma exatamente essas cobranças. Antes, o mesmo compromisso era somado
+ * duas vezes (uma como template fixo, outra como parcela de cartão),
+ * inflando toda projeção, relatório e cenário do simulador "E Se?".
+ *
+ * A despesa continua existindo normalmente na aba Despesas Fixas, continua
+ * gerando fatura e continua consumindo limite — só não é contada em dobro.
+ */
 async function getActiveRecurringTotals(userId) {
-  const [incomeAgg, fixedAgg] = await Promise.all([
+  const [incomeAgg, fixedAgg, cardFixedAgg] = await Promise.all([
     prisma.incomeTemplate.aggregate({ where: { userId, active: true }, _sum: { value: true } }),
-    prisma.fixedExpenseTemplate.aggregate({ where: { userId, active: true }, _sum: { value: true } }),
+    prisma.fixedExpenseTemplate.aggregate({
+      where: { userId, active: true, paymentMethod: { not: 'credit' } },
+      _sum: { value: true },
+    }),
+    prisma.fixedExpenseTemplate.aggregate({
+      where: { userId, active: true, paymentMethod: 'credit' },
+      _sum: { value: true },
+    }),
   ]);
   return {
     income: Number(incomeAgg._sum.value ?? 0),
     fixedExpenses: Number(fixedAgg._sum.value ?? 0),
+    // Exposto apenas para telas que queiram exibir o compromisso recorrente
+    // total; NUNCA deve ser somado a `fixedExpenses` na projeção.
+    fixedExpensesOnCard: Number(cardFixedAgg._sum.value ?? 0),
   };
 }
 

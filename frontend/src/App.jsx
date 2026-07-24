@@ -1,4 +1,4 @@
-import { useEffect, Component } from 'react';
+import { useEffect, Component, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { useThemeStore } from './store/themeStore';
@@ -14,23 +14,23 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
-import DashboardPage from './pages/DashboardPage';
-import IncomesPage from './pages/IncomesPage';
-import ExpensesPage from './pages/ExpensesPage';
-import CardsPage from './pages/CardsPage';
-import SavingsPage from './pages/SavingsPage';
-import GoalsPage from './pages/GoalsPage';
-import PurchaseSimulatorPage from './pages/PurchaseSimulatorPage';
-import WhatIfSimulatorPage from './pages/WhatIfSimulatorPage';
-import HistoryPage from './pages/HistoryPage';
-import TrendsPage from './pages/TrendsPage';
-import BudgetsPage from './pages/BudgetsPage';
-import InsightsPage from './pages/InsightsPage';
-import ReportsPage from './pages/ReportsPage';
-import SettingsPage from './pages/SettingsPage';
-import PlanPage from './pages/PlanPage';
-import CalculatorsPage from './pages/CalculatorsPage';
-import PlanningPage from './pages/PlanningPage';
+const DashboardPage = lazy(() => import('./pages/DashboardPage.jsx'));
+const IncomesPage = lazy(() => import('./pages/IncomesPage.jsx'));
+const ExpensesPage = lazy(() => import('./pages/ExpensesPage.jsx'));
+const CardsPage = lazy(() => import('./pages/CardsPage.jsx'));
+const SavingsPage = lazy(() => import('./pages/SavingsPage.jsx'));
+const GoalsPage = lazy(() => import('./pages/GoalsPage.jsx'));
+const PurchaseSimulatorPage = lazy(() => import('./pages/PurchaseSimulatorPage.jsx'));
+const WhatIfSimulatorPage = lazy(() => import('./pages/WhatIfSimulatorPage.jsx'));
+const HistoryPage = lazy(() => import('./pages/HistoryPage.jsx'));
+const TrendsPage = lazy(() => import('./pages/TrendsPage.jsx'));
+const BudgetsPage = lazy(() => import('./pages/BudgetsPage.jsx'));
+const InsightsPage = lazy(() => import('./pages/InsightsPage.jsx'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage.jsx'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
+const PlanPage = lazy(() => import('./pages/PlanPage.jsx'));
+const CalculatorsPage = lazy(() => import('./pages/CalculatorsPage.jsx'));
+const PlanningPage = lazy(() => import('./pages/PlanningPage.jsx'));
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -55,6 +55,18 @@ class ErrorBoundary extends Component {
     }
     return this.props.children;
   }
+}
+
+/** Fallback usado enquanto o código da rota é baixado sob demanda. */
+function RouteFallback() {
+  return (
+    <div className="flex min-h-[50dvh] items-center justify-center">
+      <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary text-white shadow-glow animate-pulse-soft">
+        <span className="text-xs font-black tracking-[-0.08em]">FH</span>
+      </div>
+      <span className="sr-only">Carregando página…</span>
+    </div>
+  );
 }
 
 function ProtectedRoute({ children }) {
@@ -257,7 +269,7 @@ export default function App() {
         <Route path="/forgot-password" element={<AuthShell><ForgotPasswordPage /></AuthShell>} />
         <Route path="/reset-password" element={<AuthShell><ResetPasswordPage /></AuthShell>} />
 
-        <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+        <Route element={<ProtectedRoute><Suspense fallback={<RouteFallback />}><AppLayout /></Suspense></ProtectedRoute>}>
           <Route path="/dashboard" element={<ErrorBoundary><DashboardPage /></ErrorBoundary>} />
           <Route path="/incomes" element={<ErrorBoundary><IncomesPage /></ErrorBoundary>} />
           <Route path="/expenses" element={<ErrorBoundary><ExpensesPage /></ErrorBoundary>} />

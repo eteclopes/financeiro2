@@ -19,6 +19,8 @@ router.post('/refresh', sessionLimiter, controller.refresh);
 router.post('/logout', sessionLimiter, controller.logout);
 router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), controller.forgotPassword);
 router.post('/reset-password', authLimiter, validate(resetPasswordSchema), controller.resetPassword);
+// Encerrar sessão em todos os dispositivos exige estar autenticado.
+router.post('/logout-all', authenticate, sessionLimiter, controller.logoutAll);
 router.get('/me', authenticate, controller.me);
 router.patch('/me', authenticate, validate(updateProfileSchema), controller.updateProfile);
 

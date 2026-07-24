@@ -16,6 +16,7 @@ import {
   getPaymentMethodLabel,
   incomeOriginForPaymentMethod,
 } from '../lib/paymentMethods';
+import { UserText } from '../i18n/UserText';
 
 const createEmptyForm = (month) => ({
   description:'', value:'', categoryId:'', paymentMethod: ACCOUNT_BALANCE_METHOD,
@@ -141,7 +142,7 @@ export default function IncomesPage() {
               <tbody className="divide-y divide-border/60 dark:divide-white/[0.06]">
                 {incomes.map((inc) => (
                   <tr key={inc.id} className="hover:bg-subtle/40 dark:hover:bg-white/[0.03] transition-colors">
-                    <td data-label="Descrição" className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{inc.description}</td>
+                    <td data-label="Descrição" className="table-cell font-semibold text-slate-800 dark:text-zinc-200"><UserText>{inc.description}</UserText></td>
                     <td data-label="Categoria" className="table-cell text-muted">{inc.category?.name}</td>
                     <td data-label="Valor" className="table-cell font-mono tabular-nums font-bold text-primary-dark dark:text-primary-light">{formatCurrency(inc.value)}</td>
                     <td data-label="Data" className="table-cell text-muted">{formatShortDate(inc.incomeDate)}</td>

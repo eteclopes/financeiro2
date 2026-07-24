@@ -76,6 +76,13 @@ const resetPassword = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Senha redefinida com sucesso.' });
 });
 
+const logoutAll = asyncHandler(async (req, res) => {
+  const result = await authService.logoutAllDevices(req.userId);
+  res.clearCookie(REFRESH_COOKIE_NAME, clearCookieOptions());
+  res.clearCookie(LEGACY_REFRESH_COOKIE_NAME, { path: '/api/auth' });
+  res.status(200).json(result);
+});
+
 const me = asyncHandler(async (req, res) => {
   const user = await authService.me(req.userId);
   res.json({ user });
@@ -86,4 +93,4 @@ const updateProfile = asyncHandler(async (req, res) => {
   res.json({ user });
 });
 
-module.exports = { register, login, refresh, logout, forgotPassword, resetPassword, me, updateProfile };
+module.exports = { register, login, refresh, logout, logoutAll, forgotPassword, resetPassword, me, updateProfile };

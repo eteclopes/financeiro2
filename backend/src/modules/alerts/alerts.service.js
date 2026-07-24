@@ -263,6 +263,62 @@ function evaluateRules(ctx) {
  * continuam/passaram a ser válidos. Idempotente: chamar repetidamente no
  * mesmo estado não cria linhas duplicadas (chave única user+mês+tipo).
  */
+/**
+ * Throttle de recomputação.
+ *
+ * Antes, TODO GET /alerts (polling de 60s por aba) e TODA carga do
+ * Dashboard executavam `refreshAlerts`, que abre transação e grava
+ * (upsert + update de resolvedAt). Duas abas abertas produziam escrita
+ * contínua no banco só para exibir a mesma lista. Agora a recomputação
+ * acontece no máximo uma vez por janela por (usuário, mês); as demais
+ * chamadas fazem leitura pura.
+ *
+ * O cache é por processo. Em várias instâncias, cada uma recomputa no
+ * máximo uma vez por janela — ainda uma redução enorme, e sem risco de
+ * inconsistência, porque a recomputação é idempotente.
+ */
+const REFRESH_WINDOW_MS = 60_000;
+const lastRefreshByKey = new Map();
+
+function refreshKey(userId, monthId) {
+  return `${userId}:${monthId}`;
+}
+
+function shouldRecompute(userId, monthId, windowMs) {
+  const key = refreshKey(userId, monthId);
+  const last = lastRefreshByKey.get(key) ?? 0;
+  if (Date.now() - last < windowMs) return false;
+  lastRefreshByKey.set(key, Date.now());
+  // Limpeza preguiçosa: impede o Map de crescer sem limite com muitos usuários.
+  if (lastRefreshByKey.size > 5_000) {
+    const cutoff = Date.now() - windowMs * 10;
+    for (const [entryKey, timestamp] of lastRefreshByKey) {
+      if (timestamp < cutoff) lastRefreshByKey.delete(entryKey);
+    }
+  }
+  return true;
+}
+
+/** Leitura pura — nunca grava. Usada pelo polling da barra superior. */
+async function listAlerts(userId, monthId) {
+  return prisma.alert.findMany({
+    where: { userId, monthId },
+    orderBy: [{ resolvedAt: 'asc' }, { createdAt: 'desc' }],
+  });
+}
+
+/**
+ * Recomputa apenas se a janela permitir; caso contrário devolve a lista
+ * já persistida. `force` existe para o fechamento de mês, que precisa
+ * refletir o novo estado imediatamente.
+ */
+async function getAlerts(userId, monthId, { force = false, windowMs = REFRESH_WINDOW_MS } = {}) {
+  if (force || shouldRecompute(userId, monthId, windowMs)) {
+    return refreshAlerts(userId, monthId);
+  }
+  return listAlerts(userId, monthId);
+}
+
 async function refreshAlerts(userId, monthId) {
   const ctx = await gatherContext(userId, monthId);
   const triggered = evaluateRules(ctx);
@@ -294,4 +350,4 @@ async function refreshAlerts(userId, monthId) {
   });
 }
 
-module.exports = { refreshAlerts };
+module.exports = { refreshAlerts, getAlerts, listAlerts, REFRESH_WINDOW_MS };

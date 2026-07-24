@@ -143,7 +143,7 @@ export default function BudgetsPage() {
             <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} disabled={isEditing}>
               <option value="">Selecione...</option>
               {(isEditing ? categories : categoriesWithoutBudget).map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option data-i18n-ignore="true" key={c.id} value={c.id}>{c.name}</option>
               ))}
             </Select>
           </FormGroup>

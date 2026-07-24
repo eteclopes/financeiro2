@@ -105,7 +105,15 @@ const client = {
 
   const dashboard = fs.readFileSync(path.join(root, 'src/modules/dashboard/dashboard.service.js'), 'utf8');
   assert.ok(dashboard.includes('ensureClosedMonthSnapshot'));
-  assert.ok(dashboard.includes('const summary = closedSnapshot ?? liveSummary'));
+  // A imutabilidade deixou de viver só no Dashboard: agora TODAS as telas
+  // agregadas (Dashboard, Histórico, Saúde) leem por getMonthFacts, que
+  // devolve o snapshot congelado para mês fechado. O comportamento é
+  // coberto por testes reais em tests/services/financialFixes.test.js.
+  assert.ok(dashboard.includes('getMonthFacts'), 'dashboard deve usar a fonte única de verdade getMonthFacts');
+  const monthFacts = fs.readFileSync(path.join(root, 'src/modules/months/monthFacts.service.js'), 'utf8');
+  assert.ok(monthFacts.includes("source: 'snapshot'"), 'mês fechado deve retornar o snapshot como fonte');
+  const history = fs.readFileSync(path.join(root, 'src/modules/history/history.service.js'), 'utf8');
+  assert.ok(history.includes('getMonthFactsBatch'), 'Histórico deve usar snapshot congelado (imutabilidade em todas as telas)');
 
   const closing = fs.readFileSync(path.join(root, 'src/modules/closing/closing.service.js'), 'utf8');
   assert.ok(closing.includes('financialSnapshot: snapshot'));
@@ -113,6 +121,11 @@ const client = {
 
   const savingsService = fs.readFileSync(path.join(root, 'src/modules/savings/savings.service.js'), 'utf8');
   assert.ok((savingsService.match(/assertTransactionDateIsOpen/g) || []).length >= 4);
+
+  const snapshotSvc = fs.readFileSync(path.join(root, 'src/modules/months/monthSnapshot.service.js'), 'utf8');
+  assert.ok(snapshotSvc.includes('archiveSnapshot'), 'snapshot anterior deve ser arquivado, nunca sobrescrito em silêncio');
+  assert.ok(snapshotSvc.includes('if (validSnapshot(month)) return month.financialSnapshot'),
+    'snapshot válido nunca é reconstruído por leitura de tela');
 
   console.log('V19 OK: meses fechados usam snapshot imutável e ignoram lançamentos criados após o encerramento.');
 })().catch((error) => {

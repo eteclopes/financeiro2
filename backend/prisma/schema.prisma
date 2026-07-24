@@ -173,6 +173,10 @@ model RefreshToken {
   id         BigInt    @id @default(autoincrement())
   userId     BigInt    @map("user_id")
   tokenHash  String    @unique @map("token_hash") @db.VarChar(64)
+  /// Todos os tokens derivados de um mesmo login compartilham a família.
+  /// Detectar reuso de um token já rotacionado permite revogar a sessão
+  /// inteira, em vez de apenas recusar aquela requisição.
+  familyId   String    @map("family_id") @db.VarChar(36)
   expiresAt  DateTime  @map("expires_at")
   revokedAt  DateTime? @map("revoked_at")
   createdAt  DateTime  @default(now()) @map("created_at")
@@ -180,6 +184,8 @@ model RefreshToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([familyId], map: "refresh_tokens_family_id_idx")
+  @@index([userId, revokedAt], map: "refresh_tokens_user_id_revoked_at_idx")
   @@map("refresh_tokens")
 }
 
@@ -239,6 +245,7 @@ model Month {
   goalContributions GoalContribution[]
   alerts            Alert[]
   financialHealthScore FinancialHealthScore?
+  snapshotVersions  MonthSnapshotVersion[]
 
   @@unique([userId, month, year])
   @@index([userId, status])
@@ -284,7 +291,12 @@ model Income {
   template IncomeTemplate? @relation(fields: [templateId], references: [id])
   category Category        @relation(fields: [categoryId], references: [id])
 
+  // Proteção de banco contra receita recorrente duplicada no mesmo mês.
+  // NULL é distinto de NULL no PostgreSQL, então receitas avulsas
+  // (templateId = null) não são afetadas.
+  @@unique([templateId, monthId], map: "incomes_template_id_month_id_key")
   @@index([userId, monthId])
+  @@index([userId, incomeDate], map: "incomes_user_id_income_date_idx")
   @@map("incomes")
 }
 
@@ -431,7 +443,11 @@ model Expense {
   @@index([userId, monthId, type])
   @@index([userId, status])
   @@index([cardInvoiceId])
-  @@unique([fixedTemplateId, competenceMonth, competenceYear])
+  // `map` reproduz exatamente o nome criado na migration
+  // 20260721030000; sem isso o Prisma enxergaria drift de nome.
+  @@unique([fixedTemplateId, competenceMonth, competenceYear], map: "expenses_fixed_template_competence_key")
+  @@index([userId, paidAt], map: "expenses_user_id_paid_at_idx")
+  @@index([debtId, status], map: "expenses_debt_id_status_idx")
   @@map("expenses")
 }
 
@@ -480,6 +496,7 @@ model SavingsTransaction {
   @@index([userId, createdAt])
   @@index([bucketId, createdAt])
   @@index([transferId])
+  @@index([userId, transactionDate], map: "savings_transactions_user_id_transaction_date_idx")
   @@map("savings_transactions")
 }
 
@@ -514,6 +531,7 @@ model GoalContribution {
   month Month @relation(fields: [monthId], references: [id])
 
   @@index([goalId])
+  @@index([monthId], map: "goal_contributions_month_id_idx")
   @@map("goal_contributions")
 }
 
@@ -638,6 +656,23 @@ model BillingPurchase {
 
   @@index([userId, status])
   @@map("billing_purchases")
+}
+
+/// Histórico imutável de snapshots. Um snapshot de mês fechado nunca é
+/// sobrescrito silenciosamente: a versão anterior é arquivada aqui com o
+/// motivo da reconstrução, permitindo auditoria e migração controlada.
+model MonthSnapshotVersion {
+  id        BigInt   @id @default(autoincrement())
+  monthId   BigInt   @map("month_id")
+  version   Int      @db.SmallInt
+  snapshot  Json
+  reason    String   @db.VarChar(80)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  month Month @relation(fields: [monthId], references: [id], onDelete: Cascade)
+
+  @@index([monthId, createdAt(sort: Desc)], map: "month_snapshot_versions_month_id_created_at_idx")
+  @@map("month_snapshot_versions")
 }
 
 model StripeEvent {

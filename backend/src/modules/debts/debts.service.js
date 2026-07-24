@@ -7,6 +7,24 @@ const { round2 } = require('../../utils/math');
 const { assertSufficientBalance, lockUserBalance } = require('../_shared/balance');
 const { todayUtcDate } = require('../../utils/dateTime');
 
+// Tolerância única de centavos para decidir quitação. Um único ponto de
+// verdade evita que um trecho considere a dívida quitada e outro não.
+const SETTLE_TOLERANCE = 0.009;
+
+/**
+ * Parcelas que ainda faltam, derivadas do SALDO DEVEDOR REAL — nunca de
+ * `installmentsCount - parcelasGeradas`. Uma dívida com pagamento flexível
+ * pode ter esgotado o plano original e ainda dever dinheiro; nesse caso ela
+ * continua ativa e ganha parcelas residuais.
+ */
+function remainingInstallmentsFor(debt) {
+  const balance = Number(debt.remainingBalance);
+  if (balance <= SETTLE_TOLERANCE) return 0;
+  const nominal = Number(debt.installmentValue);
+  if (!(nominal > 0)) return 1;
+  return Math.max(Math.ceil(round2(balance) / nominal), 1);
+}
+
 /**
  * O valor de cada parcela nunca é "total / parcelas" fixo e cego — é sempre
  * recalculado em cima do saldo devedor real. Isso é o que faz pagamento
@@ -108,7 +126,9 @@ async function listDebts(userId) {
       ...debt,
       valuePaid: round2(Number(debt.totalValue) - Number(debt.remainingBalance)),
       installmentsGenerated,
-      installmentsRemaining: Math.max(debt.installmentsCount - installmentsGenerated, 0),
+      // Derivado do saldo devedor real (ver remainingInstallmentsFor).
+      installmentsRemaining: remainingInstallmentsFor(debt),
+      isFullySettled: Number(debt.remainingBalance) <= SETTLE_TOLERANCE,
       _count: undefined,
     };
   });
@@ -257,10 +277,22 @@ async function applyPaymentToInstallment(userId, expense, amount, paymentMethod)
       );
     }
 
+    // Pagar acima do saldo devedor apagaria dinheiro silenciosamente: o
+    // excedente sumiria do sistema sem virar saldo nem reduzir outra dívida.
+    const remainingBalance = Number(debt.remainingBalance);
+    if (amount > remainingBalance + SETTLE_TOLERANCE) {
+      throw new AppError(
+        `O valor informado é maior que o saldo devedor desta dívida (R$ ${remainingBalance.toFixed(2)}). Para quitar, pague exatamente o saldo devedor.`,
+        422,
+        'PAYMENT_ABOVE_DEBT_BALANCE',
+        { remainingBalance: round2(remainingBalance), requestedAmount: round2(amount) }
+      );
+    }
+
     await assertSufficientBalance(userId, amount, tx);
 
-    const newRemainingBalance = round2(Math.max(Number(debt.remainingBalance) - amount, 0));
-    const isSettled = newRemainingBalance <= 0.009;
+    const newRemainingBalance = round2(Math.max(remainingBalance - amount, 0));
+    const isSettled = newRemainingBalance <= SETTLE_TOLERANCE;
     const newExpenseStatus = amount >= installmentValue - 0.009 ? 'paid' : 'partial';
     const delta = round2(amount - installmentValue);
     const newCarryOver = isSettled ? 0 : round2(Number(debt.pendingCarryOver) - delta);
@@ -299,35 +331,62 @@ async function applyPaymentToInstallment(userId, expense, amount, paymentMethod)
 async function generateNextInstallment(debt, month, client = prisma, options = {}) {
   if (debt.status === 'settled') return null;
 
-  const installmentsGenerated = options.installmentsGenerated ?? await client.expense.count({ where: { debtId: debt.id } });
-  const installmentsRemaining = debt.installmentsCount - installmentsGenerated;
-  if (installmentsRemaining <= 0 || Number(debt.remainingBalance) <= 0.009) {
-    await client.debt.update({ where: { id: debt.id }, data: { status: 'settled', pendingCarryOver: 0 } });
+  const remainingBalance = Number(debt.remainingBalance);
+
+  // QUITAÇÃO REAL: a única condição para encerrar uma dívida é o saldo
+  // devedor chegar a zero. Antes, esgotar as parcelas originalmente
+  // planejadas também encerrava a dívida — e o saldo restante era apagado
+  // do sistema (o usuário deixava de ver que ainda devia).
+  if (remainingBalance <= SETTLE_TOLERANCE) {
+    await client.debt.update({
+      where: { id: debt.id },
+      data: { status: 'settled', pendingCarryOver: 0, remainingBalance: 0 },
+    });
     return null;
   }
 
+  const installmentsGenerated = options.installmentsGenerated
+    ?? await client.expense.count({ where: { debtId: debt.id, deletedAt: null } });
+  const plannedRemaining = debt.installmentsCount - installmentsGenerated;
   const carryOver = Number(debt.pendingCarryOver ?? 0);
-  const value = computeInstallmentValue(
-    debt.remainingBalance,
-    installmentsRemaining,
-    Number(debt.installmentValue),
-    carryOver
-  );
 
-  // Se o ajuste pendente não coube inteiro nesta parcela (ex.: um
-  // excedente maior que o valor nominal, ou perto do fim da dívida, onde o
-  // saldo já é curto), a sobra continua valendo para a parcela seguinte —
-  // em vez de ser descartada. Na imensa maioria dos casos isso dá zero
-  // (o ajuste é aplicado por inteiro nesta única parcela).
-  const remainingCarryOver = round2((Number(debt.installmentValue) + carryOver) - value);
-  await client.debt.update({ where: { id: debt.id }, data: { pendingCarryOver: remainingCarryOver } });
+  // O plano original acabou mas ainda há saldo devedor (típico de pagamento
+  // flexível com parcelas menores). Em vez de apagar o resto, a dívida ganha
+  // uma parcela RESIDUAL e o total de parcelas é estendido — assim o rótulo
+  // "(n/total)" continua coerente e a dívida some do total ativo apenas
+  // quando for realmente paga.
+  const isResidual = plannedRemaining <= 0;
+  const nominal = Number(debt.installmentValue);
+
+  let value;
+  if (isResidual) {
+    const target = nominal + carryOver;
+    value = round2(Math.min(target > 0 ? target : remainingBalance, remainingBalance));
+    if (value <= 0) value = round2(remainingBalance);
+  } else {
+    value = computeInstallmentValue(remainingBalance, plannedRemaining, nominal, carryOver);
+  }
+
+  // Sobra do ajuste que não coube nesta parcela continua valendo para a
+  // seguinte, em vez de ser descartada.
+  const remainingCarryOver = isResidual ? 0 : round2((nominal + carryOver) - value);
+
+  await client.debt.update({
+    where: { id: debt.id },
+    data: {
+      pendingCarryOver: remainingCarryOver,
+      ...(isResidual ? { installmentsCount: debt.installmentsCount + 1 } : {}),
+    },
+  });
+
+  const totalLabel = isResidual ? debt.installmentsCount + 1 : debt.installmentsCount;
 
   return client.expense.create({
     data: {
       userId: debt.userId,
       monthId: month.id,
       type: 'priority',
-      description: `${debt.description} (${installmentsGenerated + 1}/${debt.installmentsCount})`,
+      description: `${debt.description} (${installmentsGenerated + 1}/${totalLabel})`,
       categoryId: debt.categoryId,
       dueDate: expensesService.dueDateFromDay(month, debt.dueDay),
       value,
@@ -335,6 +394,59 @@ async function generateNextInstallment(debt, month, client = prisma, options = {
       debtId: debt.id,
     },
   });
+}
+
+/**
+ * Indicadores reais de dívida para o Dashboard. Antes, a tela contava
+ * "parcelas restantes" a partir da lista truncada de próximos vencimentos
+ * (LIMIT 5), o que produzia o absurdo "Dívida ativa R$ X — 0 parcelas".
+ * Aqui os números vêm do saldo devedor e das parcelas de fato existentes.
+ */
+async function getDebtIndicators(userId, client = prisma) {
+  const debts = await client.debt.findMany({
+    where: { userId, status: 'active' },
+    select: {
+      id: true, description: true, remainingBalance: true,
+      installmentValue: true, installmentsCount: true, dueDay: true,
+    },
+  });
+
+  const activeDebts = debts.filter((debt) => Number(debt.remainingBalance) > SETTLE_TOLERANCE);
+  if (activeDebts.length === 0) {
+    return {
+      activeDebtsCount: 0,
+      totalRemainingBalance: 0,
+      remainingInstallments: 0,
+      nextInstallment: null,
+    };
+  }
+
+  // Uma única query para todas as dívidas (evita N+1 por dívida).
+  const nextInstallments = await client.expense.findMany({
+    where: {
+      userId,
+      debtId: { in: activeDebts.map((debt) => debt.id) },
+      deletedAt: null,
+      status: { in: ['pending', 'partial', 'late'] },
+    },
+    select: { value: true, dueDate: true, description: true, debtId: true },
+    orderBy: { dueDate: 'asc' },
+    take: 1,
+  });
+
+  const next = nextInstallments[0] ?? null;
+  return {
+    activeDebtsCount: activeDebts.length,
+    totalRemainingBalance: round2(
+      activeDebts.reduce((sum, debt) => sum + Number(debt.remainingBalance), 0)
+    ),
+    remainingInstallments: activeDebts.reduce(
+      (sum, debt) => sum + remainingInstallmentsFor(debt), 0
+    ),
+    nextInstallment: next
+      ? { description: next.description, value: round2(Number(next.value)), dueDate: next.dueDate }
+      : null,
+  };
 }
 
 module.exports = {
@@ -346,4 +458,7 @@ module.exports = {
   applyPaymentToInstallment,
   generateNextInstallment,
   computeInstallmentValue,
+  getDebtIndicators,
+  remainingInstallmentsFor,
+  SETTLE_TOLERANCE,
 };

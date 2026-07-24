@@ -12,6 +12,7 @@ import { useUIStore } from '../store/uiStore';
 import { useAuthStore } from '../store/authStore';
 import { ChoiceCards, AnimatedNumber } from '../components/ui/Motion';
 import { ACCOUNT_BALANCE_METHOD, BALANCE_PAYMENT_OPTIONS } from '../lib/paymentMethods';
+import { UserText } from '../i18n/UserText';
 
 const COLORS = ['#7C3AED','#2563EB','#16A34A','#F59E0B','#DC2626','#A855F7','#06B6D4'];
 const STATUS_V = { open:'info', closed:'warning', paid:'success' };
@@ -268,7 +269,7 @@ export default function CardsPage() {
                     </span>
                   )}
                   <span className="pointer-events-none absolute -right-10 -top-16 h-36 w-36 rounded-full bg-white/15 blur-2xl transition-transform duration-500 group-hover:scale-125" /><span className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/10" /><div className="relative mb-4 flex items-center justify-between"><span className="credit-card-chip" aria-hidden="true" /><span className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/55">FinanceHub</span></div><div className="relative flex justify-between items-start mb-4">
-                    <p className="font-bold text-lg">{card.name}</p>
+                    <p className="font-bold text-lg"><UserText>{card.name}</UserText></p>
                     {!isInactive && (
                       <span className="text-white/60 text-xs bg-white/10 px-2 py-1 rounded-lg">
                         Fecha d{card.closingDay}
@@ -292,7 +293,7 @@ export default function CardsPage() {
               <div className="flex items-center justify-between px-5 py-4 border-b border-border dark:border-white/[0.06] flex-wrap gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-slate-900 dark:text-zinc-50">{selected.name}</h3>
+                    <h3 className="font-semibold text-slate-900 dark:text-zinc-50"><UserText>{selected.name}</UserText></h3>
                     {selected.active === false && <Badge variant="default">Desativado</Badge>}
                   </div>
                   <p className="text-xs text-muted mt-0.5">

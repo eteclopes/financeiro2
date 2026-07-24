@@ -13,6 +13,53 @@ const { monthDateRange, todayUtcDate } = require('../../utils/dateTime');
 const { round2 } = require('../../utils/math');
 const { getUserPlan } = require('../plans/plans.service');
 const { ensureClosedMonthSnapshot } = require('../months/monthSnapshot.service');
+const { getMonthFacts, normalizeFacts } = require('../months/monthFacts.service');
+const debtsService = require('../debts/debts.service');
+
+/**
+ * Patrimônio financeiro (regra 8.5 do produto):
+ *   saldo disponível + dinheiro físico + reservas + acumulado em metas
+ *
+ * Existe para que MOVER dinheiro entre esses componentes nunca pareça
+ * ganho nem perda. Era exatamente o que faltava no Dashboard: um aporte
+ * em meta saía do saldo e não reaparecia em card nenhum, dando a
+ * impressão de dinheiro perdido.
+ */
+async function getWealthBreakdown(userId, facts, client = prisma) {
+  const [contributions, refunds] = await Promise.all([
+    client.goalContribution.aggregate({
+      where: { goal: { userId }, type: 'contribution' },
+      _sum: { value: true },
+    }),
+    client.goalContribution.aggregate({
+      where: { goal: { userId }, type: 'refund' },
+      _sum: { value: true },
+    }),
+  ]);
+
+  const goalsBalance = round2(
+    Number(contributions._sum.value ?? 0) - Number(refunds._sum.value ?? 0)
+  );
+  const availableBalance = round2(Number(facts.currentBalance));
+  const physicalCash = round2(Number(facts.physicalCash));
+  const savingsBalance = round2(Number(facts.savingsBalance));
+  const totalDebt = round2(Number(facts.totalActiveDebt));
+
+  // `currentBalance` já é o caixa total do usuário (conta + espécie).
+  // `physicalCash` é o recorte em espécie desse mesmo caixa — por isso NÃO
+  // é somado de novo aqui: seria contagem dupla.
+  const financialWealth = round2(availableBalance + savingsBalance + goalsBalance);
+
+  return {
+    availableBalance,
+    physicalCash,
+    savingsBalance,
+    goalsBalance,
+    financialWealth,
+    totalDebt,
+    netWealth: round2(financialWealth - totalDebt),
+  };
+}
 
 async function getDashboard(userId, monthId) {
   const [month, planInfo] = await Promise.all([
@@ -20,9 +67,12 @@ async function getDashboard(userId, monthId) {
     getUserPlan(userId),
   ]);
   const { entitlements } = planInfo;
-  const closedSnapshot = month.status === 'closed'
-    ? await ensureClosedMonthSnapshot(userId, month)
-    : null;
+  // Mês fechado sem snapshot (base anterior à V19) ganha o retrato agora;
+  // mês fechado COM snapshot nunca é recalculado nem sobrescrito.
+  if (month.status === 'closed') await ensureClosedMonthSnapshot(userId, month);
+  const refreshedMonth = month.status === 'closed'
+    ? await monthsService.getMonthOrThrow(userId, monthId)
+    : month;
   const { start, end } = monthDateRange(month.year, month.month);
   const dayBeforeStart = new Date(start.getTime() - 1);
   const today = todayUtcDate();
@@ -107,7 +157,9 @@ async function getDashboard(userId, monthId) {
     cardsService.listCards(userId),
     goalsService.listGoals(userId),
     financialHealthService.getOrComputeHealthScore(userId, monthId),
-    alertsService.refreshAlerts(userId, monthId),
+    // Antes: `refreshAlerts` gravava no banco a CADA carregamento do
+    // Dashboard. Agora recomputa no máximo uma vez por minuto por mês.
+    alertsService.getAlerts(userId, monthId),
     entitlements.isPro
       ? recommendationsService.generateRecommendations(userId, monthId)
       : Promise.resolve({ recommendations: [] }),
@@ -129,7 +181,16 @@ async function getDashboard(userId, monthId) {
     totalActiveDebt: round2(Number(debtsAgg._sum.remainingBalance ?? 0)),
     pendingExpensesCount: pendingCount,
   };
-  const summary = closedSnapshot ?? liveSummary;
+  // Fonte única de verdade: mês fechado usa o snapshot congelado; mês
+  // aberto usa os números vivos calculados acima.
+  const closedSnapshot = refreshedMonth.status === 'closed'
+    ? await getMonthFacts(userId, refreshedMonth)
+    : null;
+  const summary = normalizeFacts(closedSnapshot ?? liveSummary);
+  const [wealth, debtIndicators] = await Promise.all([
+    getWealthBreakdown(userId, summary),
+    debtsService.getDebtIndicators(userId),
+  ]);
 
   const incomeRef = avgIncome > 0
     ? avgIncome
@@ -140,7 +201,11 @@ async function getDashboard(userId, monthId) {
   const commitmentBand = classifyCommitment(commitmentRatio);
 
   return {
-    month,
+    month: refreshedMonth,
+    wealth,
+    // Números REAIS de dívida. O Dashboard não deve mais derivar
+    // "parcelas restantes" da lista truncada de próximos vencimentos.
+    debtIndicators,
     historicalSnapshot: closedSnapshot ? {
       version: Number(closedSnapshot.version ?? 1),
       capturedAt: closedSnapshot.capturedAt ?? null,

@@ -72,6 +72,14 @@ export const useAuthStore = create((set) => ({
     set({ user: null, status: 'unauthenticated', error: null });
   },
 
+  // Encerra a sessão em TODOS os dispositivos (revoga a família inteira de
+  // refresh tokens no backend). Útil após suspeita de token comprometido.
+  async logoutAllDevices() {
+    try { await api.post('/auth/logout-all'); } catch {}
+    setAccessToken(null);
+    set({ user: null, status: 'unauthenticated', error: null });
+  },
+
   forceSignOut() {
     setAccessToken(null);
     set({ user: null, status: 'unauthenticated' });

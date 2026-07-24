@@ -207,8 +207,8 @@ describe('debts.service — AuditLog', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           entity: 'debt', entityId: 5n, action: 'update',
-          oldValueJson: expect.objectContaining({ description: 'Antiga' }),
-          newValueJson: expect.objectContaining({ description: 'Nova' }),
+          oldValueJson: expect.objectContaining({ privacyVersion: 1 }),
+          newValueJson: expect.objectContaining({ privacyVersion: 1 }),
         }),
       })
     );

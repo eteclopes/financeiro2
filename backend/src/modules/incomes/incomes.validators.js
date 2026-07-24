@@ -15,6 +15,9 @@ const createIncomeSchema = z.object({
 });
 
 const updateIncomeSchema = z.object({
+  // 'single' altera só este lançamento; 'future' passa a valer também nos
+  // próximos meses (atualiza o template da recorrência).
+  scope: z.enum(['single', 'future']).default('single'),
   description: z.string().trim().min(1).max(160).optional(),
   value: z.coerce.number().positive().optional(),
   categoryId: z.coerce.bigint().optional(),

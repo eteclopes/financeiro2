@@ -4,6 +4,7 @@ import { alertsApi, recommendationsApi } from '../lib/services';
 import { formatShortDate } from '../lib/format';
 import { Card, CardHeader, Badge, EmptyState, Skeleton, TabGroup } from '../components/ui/index';
 import { useUIStore } from '../store/uiStore';
+import { UserText } from '../i18n/UserText';
 
 const SEVERITY_META = {
   critical: { emoji: '🔴', className: 'bg-danger-subtle dark:bg-danger/10 border-danger/20' },
@@ -106,7 +107,7 @@ export default function InsightsPage() {
                   <p className="font-semibold text-primary-dark dark:text-primary-light">{r.title}</p>
                   <Badge variant={PRIORITY_VARIANT[r.priority] ?? 'default'}>{PRIORITY_LABEL[r.priority] ?? r.priority}</Badge>
                 </div>
-                <p className="text-sm text-slate-600 dark:text-zinc-400 leading-relaxed mb-2">{r.description}</p>
+                <p className="text-sm text-slate-600 dark:text-zinc-400 leading-relaxed mb-2"><UserText>{r.description}</UserText></p>
                 {r.calculation && (
                   <p className="text-xs text-muted font-mono bg-white/50 dark:bg-black/20 rounded-lg px-2.5 py-1.5">
                     {r.calculation}

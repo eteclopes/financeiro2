@@ -107,7 +107,7 @@ export const dashboardPreferencesApi = {
   update: (data) => api.patch('/dashboard/preferences', data),
 };
 
-// ---- Relatórios Pro ----
+// ---- Relatórios (resumo mensal é Básico; análises avançadas são Pro) ----
 export const reportsApi = {
   get: (monthId) => api.get('/reports', { params: { monthId } }),
 };

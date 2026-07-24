@@ -19,6 +19,12 @@ const envSchema = z.object({
   // este projeto/equipe, sem abrir a API para qualquer domínio vercel.app.
   CORS_VERCEL_PROJECT: z.string().default('financeiro2'),
   CORS_VERCEL_TEAM: z.string().default('eteclopes-projects'),
+  // Em produção, previews automáticos da Vercel ficam BLOQUEADOS por
+  // padrão. Só um ambiente de staging deve ligar isto.
+  CORS_ALLOW_PREVIEWS: z
+    .string()
+    .optional()
+    .transform((value) => value === 'true'),
   // 32+ caracteres é o mínimo recomendado para HS256 (256 bits de entropia
   // quando gerado com `openssl rand -hex 32`, por exemplo). 16 caracteres
   // era fraco demais para um segredo assinando tokens de sessão.

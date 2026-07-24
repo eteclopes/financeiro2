@@ -11,6 +11,7 @@ import { useUIStore } from '../store/uiStore';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { ToggleSwitch, AnimatedNumber } from '../components/ui/Motion';
+import { UserText } from '../i18n/UserText';
 
 const SCORE_COLOR = (pct) => pct >= 75 ? '#16A34A' : pct >= 40 ? '#F59E0B' : '#3B82F6';
 
@@ -27,8 +28,8 @@ function GoalCard({ goal, theme, onContribute, onEdit, onCancel }) {
     <Card className="goal-card-v2 animate-fade-in overflow-hidden" hover>
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1 min-w-0 mr-3">
-          <p className="font-bold text-slate-900 dark:text-zinc-50 text-base">{goal.name}</p>
-          {goal.description && <p className="text-xs text-muted mt-0.5">{goal.description}</p>}
+          <p className="font-bold text-slate-900 dark:text-zinc-50 text-base"><UserText>{goal.name}</UserText></p>
+          {goal.description && <p className="text-xs text-muted mt-0.5"><UserText>{goal.description}</UserText></p>}
         </div>
         <Badge variant={goal.status==='active'?'info':goal.status==='completed'?'success':'default'}>
           {goal.status==='active'?'Ativa':goal.status==='completed'?'Concluída':'Cancelada'}

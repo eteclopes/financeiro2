@@ -5,14 +5,27 @@ import { useMonthStore } from '../../store/monthStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useAuthStore } from '../../store/authStore';
 import { formatMonthLabel } from '../../lib/format';
+import { useLocaleStore } from '../../store/localeStore';
 import { alertsApi } from '../../lib/services';
 import { Dropdown } from '../ui/Dropdown';
 import { IconMenu, IconBell, IconSun, IconMoon, IconChevronL, IconChevronR } from '../icons';
 
 const SEVERITY_DOT = { critical: 'bg-danger', warning: 'bg-warning', info: 'bg-info' };
 
-function greeting() {
-  const hour = new Date().getHours();
+/**
+ * Saudação pelo fuso CONFIGURADO pelo usuário, não pelo relógio do
+ * computador. Quem configura São Paulo mas está viajando via um "Boa
+ * noite" enquanto o app trata a data como sendo de outro dia.
+ */
+function greeting(timeZone) {
+  let hour;
+  try {
+    hour = Number(new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit', hour12: false, timeZone,
+    }).format(new Date()));
+  } catch {
+    hour = new Date().getHours();
+  }
   if (hour < 12) return 'Bom dia';
   if (hour < 18) return 'Boa tarde';
   return 'Boa noite';
@@ -28,6 +41,8 @@ export function Topbar({ title }) {
   const theme = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const user = useAuthStore((s) => s.user);
+  const timeZone = useLocaleStore((s) => s.timeZone);
+  const isPro = Boolean(user?.isPro);
   const navigate = useNavigate();
 
   const month = getSelected();
@@ -86,7 +101,7 @@ export function Topbar({ title }) {
             {months.map((m) => <option key={m.id} value={m.id}>{formatMonthLabel(m)}</option>)}
           </Dropdown>
         ) : null}
-        <p className="hidden text-xs text-slate-400 dark:text-zinc-500 sm:block">{greeting()}, {user?.name?.split(' ')?.[0] ?? 'bem-vindo'}.</p>
+        <p className="hidden text-xs text-slate-400 dark:text-zinc-500 sm:block">{greeting(timeZone)}, {user?.name?.split(' ')?.[0] ?? 'bem-vindo'}.</p>
       </div>
 
       <div className="hidden flex-1 sm:block" />
@@ -162,12 +177,25 @@ export function Topbar({ title }) {
               ))
             )}
 
+            {/* Alerta é recurso BÁSICO. Antes, o único botão do painel
+                levava a /insights, que é Pro: o usuário Básico clicava num
+                alerta seu e caía numa tela de venda. Agora o destino padrão
+                é o Dashboard, e a análise avançada só é oferecida a quem
+                tem acesso a ela. */}
             <button
-              onClick={() => { setNotifOpen(false); navigate('/insights'); }}
+              onClick={() => { setNotifOpen(false); navigate('/dashboard'); }}
               className="mx-2 mt-1 w-[calc(100%-1rem)] rounded-xl py-2.5 text-center text-sm font-bold text-primary-dark transition-colors hover:bg-primary-subtle dark:text-primary-hover dark:hover:bg-primary/10"
             >
-              Abrir central de alertas
+              Ver no painel
             </button>
+            {isPro && (
+              <button
+                onClick={() => { setNotifOpen(false); navigate('/insights'); }}
+                className="mx-2 mb-1 w-[calc(100%-1rem)] rounded-xl py-2 text-center text-xs font-semibold text-muted transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.03]"
+              >
+                Análise avançada
+              </button>
+            )}
           </div>
         )}
       </div>

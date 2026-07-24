@@ -17,6 +17,7 @@ import {
   getExpensePaymentOptions,
   incomeOriginForPaymentMethod,
 } from '../../lib/paymentMethods';
+import { UserText } from '../../i18n/UserText';
 
 const EXPENSE_KIND_OPTIONS = [
   { value: 'variable', label: 'Variável', icon: '↗', description: 'Compra ou gasto avulso', tone: 'choice-card-icon-primary' },
@@ -47,6 +48,11 @@ function defaultCategoryId(categories = []) {
 }
 
 export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goals = [], monthStatus }) {
+  // Mês encerrado é histórico imutável. Antes, os botões continuavam
+  // clicáveis: o usuário preenchia o formulário inteiro e só descobria o
+  // bloqueio no erro 409 do backend. Agora o impedimento é explicado antes.
+  const isClosedMonth = monthStatus === 'closed';
+  const closedMonthNotice = 'Este mês está encerrado. Selecione um mês aberto para registrar movimentações.';
   const selectedMonthId = useMonthStore((s) => s.selectedMonthId);
   const selectedMonth = useMonthStore((s) => s.months.find((month) => String(month.id) === String(s.selectedMonthId)) ?? null);
   const refreshMonths   = useMonthStore((s) => s.refreshMonths);
@@ -402,12 +408,23 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
 
   const selectedMonthDateRange = ledgerMonthDateRange(selectedMonth);
 
+  // Guard único para toda ação que grava no mês selecionado.
+  function guardClosedMonth(action) {
+    return (...args) => {
+      if (isClosedMonth) {
+        toast.error(closedMonthNotice);
+        return undefined;
+      }
+      return action(...args);
+    };
+  }
+
   const ACTIONS = [
-    { Icon: IconIncome, label: 'Receita', iconBg: 'bg-primary-muted dark:bg-primary/20', iconColor: 'text-primary-dark dark:text-primary-light', onClick: openIncome },
-    { Icon: IconExpense, label: 'Despesa', iconBg: 'bg-danger-muted dark:bg-danger/20', iconColor: 'text-danger-dark dark:text-danger-light', onClick: openExpense },
-    { Icon: IconCheck, label: 'Pagar conta', iconBg: 'bg-info-muted dark:bg-info/20', iconColor: 'text-info-dark dark:text-info-light', onClick: () => { setPayTarget(null); setPayAmount(''); setPayMethod('pix'); setModal('pay'); } },
-    { Icon: IconCard, label: 'Fatura', iconBg: 'bg-warning-muted dark:bg-warning/20', iconColor: 'text-warning-dark dark:text-warning-light', onClick: openFatura },
-    { Icon: IconGoal, label: 'Meta', iconBg: 'bg-purple-100 dark:bg-accentpurple/20', iconColor: 'text-purple-700 dark:text-accentpurple-light', onClick: () => { setGoalTarget(null); setContribForm({ value: '', date: ledgerMonthDateInputValue(selectedMonth) }); setModal('goal'); } },
+    { Icon: IconIncome, label: 'Receita', iconBg: 'bg-primary-muted dark:bg-primary/20', iconColor: 'text-primary-dark dark:text-primary-light', onClick: guardClosedMonth(openIncome), disabled: isClosedMonth },
+    { Icon: IconExpense, label: 'Despesa', iconBg: 'bg-danger-muted dark:bg-danger/20', iconColor: 'text-danger-dark dark:text-danger-light', onClick: guardClosedMonth(openExpense), disabled: isClosedMonth },
+    { Icon: IconCheck, label: 'Pagar conta', iconBg: 'bg-info-muted dark:bg-info/20', iconColor: 'text-info-dark dark:text-info-light', onClick: guardClosedMonth(() => { setPayTarget(null); setPayAmount(''); setPayMethod(ACCOUNT_BALANCE_METHOD); setModal('pay'); }), disabled: isClosedMonth },
+    { Icon: IconCard, label: 'Fatura', iconBg: 'bg-warning-muted dark:bg-warning/20', iconColor: 'text-warning-dark dark:text-warning-light', onClick: guardClosedMonth(openFatura), disabled: isClosedMonth },
+    { Icon: IconGoal, label: 'Meta', iconBg: 'bg-purple-100 dark:bg-accentpurple/20', iconColor: 'text-purple-700 dark:text-accentpurple-light', onClick: guardClosedMonth(() => { setGoalTarget(null); setContribForm({ value: '', date: ledgerMonthDateInputValue(selectedMonth) }); setModal('goal'); }), disabled: isClosedMonth },
     {
       Icon: IconAlert,
       label: monthStatus === 'open' ? 'Fechar mês' : 'Reparar mês',
@@ -429,13 +446,20 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
 
   return (
     <>
+      {isClosedMonth && (
+        <p className="mb-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-muted dark:border-white/[0.07] dark:bg-white/[0.03]">
+          {closedMonthNotice} Aqui você ainda pode <strong>reparar</strong> este mês.
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
-        {ACTIONS.map(({ Icon, label, iconBg, iconColor, onClick }) => (
+        {ACTIONS.map(({ Icon, label, iconBg, iconColor, onClick, disabled }) => (
           <button
             type="button"
             key={label}
             onClick={onClick}
-            className="quick-action-card group flex items-center gap-2.5 border border-slate-200 bg-white px-3 py-2.5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-[0_18px_34px_-22px_rgb(124_58_237_/_0.65)] active:translate-y-0 active:scale-[0.98] dark:border-white/[0.07] dark:bg-white/[0.035] dark:hover:border-primary/35"
+            disabled={disabled}
+            title={disabled ? closedMonthNotice : undefined}
+            className="quick-action-card group flex items-center gap-2.5 border border-slate-200 bg-white px-3 py-2.5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-[0_18px_34px_-22px_rgb(124_58_237_/_0.65)] active:translate-y-0 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:border-slate-200 disabled:hover:shadow-sm dark:border-white/[0.07] dark:bg-white/[0.035] dark:hover:border-primary/35"
           >
             <span className={`quick-action-icon h-9 w-9 rounded-xl flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}>
               <Icon size={15} strokeWidth={2} />
@@ -556,7 +580,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                     <Select value={expForm.cardId} onChange={(event) => setExpForm({ ...expForm, cardId: event.target.value })}>
                       <option value="">Selecione...</option>
                       {activeCards.map((card) => (
-                        <option key={card.id} value={card.id}>{card.name} — disponível {formatCurrency(card.availableLimit)}</option>
+                        <option data-i18n-ignore="true" key={card.id} value={card.id}>{card.name} — disponível {formatCurrency(card.availableLimit)}</option>
                       ))}
                     </Select>
                   )}
@@ -627,7 +651,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                   ) : (
                     <Select value={fixForm.cardId} onChange={(event) => setFixForm({ ...fixForm, cardId: event.target.value })}>
                       <option value="">Selecione...</option>
-                      {activeCards.map((card) => <option key={card.id} value={card.id}>{card.name}</option>)}
+                      {activeCards.map((card) => <option data-i18n-ignore="true" key={card.id} value={card.id}>{card.name}</option>)}
                     </Select>
                   )}
                   <p className="text-xs text-muted mt-1.5">
@@ -718,13 +742,13 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                 }}>
                   <option value="">Selecione...</option>
                   {pendingExpenses.map((expense) => (
-                    <option key={expense.id} value={expense.id}>{expense.description} — {formatCurrency(expense.value)}</option>
+                    <option data-i18n-ignore="true" key={expense.id} value={expense.id}>{expense.description} — {formatCurrency(expense.value)}</option>
                   ))}
                 </Select>
               </FormGroup>
               {payTarget && (
                 <div className="bg-subtle dark:bg-white/[0.04] rounded-xl p-3 text-sm">
-                  <p className="font-semibold text-slate-900 dark:text-zinc-50">{payTarget.description}</p>
+                  <p className="font-semibold text-slate-900 dark:text-zinc-50"><UserText>{payTarget.description}</UserText></p>
                   <p className="mt-1 text-xs text-muted">Valor previsto: {formatCurrency(payTarget.value)}</p>
                 </div>
               )}
@@ -806,7 +830,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                 >
                   <option value="">Selecione...</option>
                   {activeGoals.map((goal) => (
-                    <option key={goal.id} value={goal.id}>{goal.name} — faltam {formatCurrency(goal.remaining ?? 0)}</option>
+                    <option data-i18n-ignore="true" key={goal.id} value={goal.id}>{goal.name} — faltam {formatCurrency(goal.remaining ?? 0)}</option>
                   ))}
                 </Select>
               </FormGroup>

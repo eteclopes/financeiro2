@@ -1,3 +1,4 @@
+const { randomUUID } = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const prisma = require('../../config/prisma');
 const env = require('../../config/env');
@@ -50,11 +51,17 @@ function pruneExpiredPasswordResets() {
   }).catch(() => {});
 }
 
-async function issueSession(userId, client = prisma) {
+async function issueSession(userId, client = prisma, familyId = null) {
   const accessToken = signAccessToken(userId);
   const rawRefreshToken = generateOpaqueToken();
   await client.refreshToken.create({
-    data: { userId, tokenHash: hashToken(rawRefreshToken), expiresAt: refreshTokenExpiryDate() },
+    data: {
+      userId,
+      tokenHash: hashToken(rawRefreshToken),
+      // Sem família informada é um login novo: começa uma família própria.
+      familyId: familyId || randomUUID(),
+      expiresAt: refreshTokenExpiryDate(),
+    },
   });
   if (client === prisma && Math.random() < 0.02) { pruneExpiredTokens(); pruneExpiredPasswordResets(); }
   return { accessToken, refreshToken: rawRefreshToken };
@@ -87,52 +94,83 @@ async function login({ email, password }) {
   return { user: publicUser(user), ...session };
 }
 
+/**
+ * Rotação de refresh token com DETECÇÃO DE REUSO.
+ *
+ * Duas abas renovando quase ao mesmo tempo é legítimo e continua
+ * funcionando: dentro da janela de graça, a segunda recebe uma sessão
+ * válida da mesma família em vez de ser deslogada.
+ *
+ * O que mudou: fora dessa janela, apresentar um token JÁ ROTACIONADO
+ * deixa de ser apenas "401 nessa requisição". Isso é a assinatura clássica
+ * de token roubado — quem tem a cópia antiga está tentando usá-la depois
+ * que o dono legítimo já girou a sessão. Agora a FAMÍLIA INTEIRA é
+ * revogada: o atacante e o dono são desconectados, e o dono refaz login.
+ * Antes, um refresh token vazado continuava utilizável por até 30 dias
+ * sem que nada no sistema percebesse.
+ */
 async function refresh(rawRefreshToken) {
   if (!rawRefreshToken || rawRefreshToken.length > 256) {
     throw new AppError('Refresh token ausente.', 401, 'UNAUTHORIZED');
   }
   const tokenHash = hashToken(rawRefreshToken);
+  const invalidSession = () => new AppError(
+    'Sessão expirada ou inválida. Faça login novamente.', 401, 'UNAUTHORIZED'
+  );
 
-  // Rotação atômica: duas abas/requisições concorrentes não conseguem usar o
-  // mesmo refresh token duas vezes. Apenas a primeira atualização condicional
-  // vence e recebe um novo token.
   return prisma.$transaction(async (tx) => {
     const existing = await tx.refreshToken.findUnique({ where: { tokenHash } });
-    if (!existing) {
-      throw new AppError('Sessão expirada ou inválida. Faça login novamente.', 401, 'UNAUTHORIZED');
-    }
+    if (!existing) throw invalidSession();
 
     const claimed = await tx.refreshToken.updateMany({
-      where: {
-        id: existing.id,
-        revokedAt: null,
-        expiresAt: { gt: new Date() },
-      },
+      where: { id: existing.id, revokedAt: null, expiresAt: { gt: new Date() } },
       data: { revokedAt: new Date() },
     });
 
     if (claimed.count !== 1) {
-      // Duas abas podem renovar a mesma sessão quase ao mesmo tempo. A
-      // primeira revoga o token antigo; as demais chegam milissegundos
-      // depois. Dentro de uma janela curta, emitimos outra sessão válida
-      // para a mesma família em vez de desconectar uma aba legítima. Fora
-      // dessa janela, o replay continua rejeitado.
       const current = await tx.refreshToken.findUnique({ where: { id: existing.id } });
       const revokedRecently = current?.revokedAt
         && Date.now() - current.revokedAt.getTime() <= REFRESH_CONCURRENCY_GRACE_MS
         && current.expiresAt.getTime() > Date.now();
+
       if (!revokedRecently) {
-        throw new AppError('Sessão expirada ou inválida. Faça login novamente.', 401, 'UNAUTHORIZED');
+        // Reuso fora da janela -> revoga toda a família.
+        await tx.refreshToken.updateMany({
+          where: { familyId: existing.familyId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+        throw invalidSession();
       }
     }
-    return issueSession(existing.userId, tx);
+
+    return issueSession(existing.userId, tx, existing.familyId);
   });
+}
+
+/** Encerra a sessão em TODOS os dispositivos do usuário. */
+async function logoutAllDevices(userId) {
+  const result = await prisma.refreshToken.updateMany({
+    where: { userId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  await recordAuditLog(userId, 'user', userId, 'logout_all_devices');
+  return { revokedSessions: result.count };
 }
 
 async function logout(rawRefreshToken) {
   if (!rawRefreshToken) return;
   const tokenHash = hashToken(rawRefreshToken);
-  await prisma.refreshToken.updateMany({ where: { tokenHash, revokedAt: null }, data: { revokedAt: new Date() } });
+  const token = await prisma.refreshToken.findUnique({
+    where: { tokenHash },
+    select: { familyId: true },
+  });
+  if (!token) return;
+  // Revoga a família inteira: sair em uma aba encerra a sessão daquele
+  // dispositivo por completo, sem deixar um token rotacionado sobrevivendo.
+  await prisma.refreshToken.updateMany({
+    where: { familyId: token.familyId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
 }
 
 async function forgotPassword(email) {
@@ -184,4 +222,7 @@ async function updateProfile(userId, { name }) {
   return publicUser(user);
 }
 
-module.exports = { register, login, refresh, logout, forgotPassword, resetPassword, me, updateProfile };
+module.exports = {
+  register, login, refresh, logout, logoutAllDevices,
+  forgotPassword, resetPassword, me, updateProfile,
+};

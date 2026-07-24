@@ -100,7 +100,7 @@ export function CategorySelect({ value, onChange, categories, type, onCategoryCr
   return (
     <Select value={value} onChange={handleSelectChange} placeholder={placeholder}>
       {categories.map((c) => (
-        <option key={c.id} value={c.id}>{c.name}</option>
+        <option key={c.id} value={c.id} data-i18n-ignore={c.isDefault ? undefined : "true"}>{c.name}</option>
       ))}
       <option value={NEW_CATEGORY_VALUE}>+ Nova categoria...</option>
     </Select>

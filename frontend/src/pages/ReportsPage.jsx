@@ -3,16 +3,19 @@ import { Link } from 'react-router-dom';
 import { useMonthStore } from '../store/monthStore';
 import { reportsApi, dashboardApi } from '../lib/services';
 import { formatCurrency, formatMonthLabel } from '../lib/format';
+import { extractErrorMessage } from '../lib/api';
 import { Card, CardHeader, Badge, Button, ProgressBar } from '../components/ui/index';
 import { useUIStore } from '../store/uiStore';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
+import { UserText } from '../i18n/UserText';
 
 export default function ReportsPage() {
   const selectedMonthId = useMonthStore((s) => s.selectedMonthId);
   const getSelected     = useMonthStore((s) => s.getSelectedMonth);
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState(null);
   const toast = useUIStore((s) => s);
   const theme = useThemeStore((s) => s.theme);
   const isPro = useAuthStore((s) => Boolean(s.user?.isPro));
@@ -20,10 +23,20 @@ export default function ReportsPage() {
   const load = useCallback(async () => {
     if (!selectedMonthId) return;
     setLoading(true);
-    try { const r = await reportsApi.get(selectedMonthId); setData(r.data); }
-    catch { toast.error('Erro ao carregar relatório.'); }
-    finally { setLoading(false); }
-  }, [selectedMonthId, isPro]);
+    setError(null);
+    try {
+      const r = await reportsApi.get(selectedMonthId);
+      setData(r.data);
+    } catch (err) {
+      // Antes: só um toast e `return null` — o usuário do Plano Básico via
+      // uma PÁGINA COMPLETAMENTE EM BRANCO, porque a rota exigia Pro.
+      // Agora o backend responde 200 com o relatório básico; qualquer falha
+      // remanescente vira um estado de erro visível e recuperável.
+      setError(extractErrorMessage(err, 'Não foi possível carregar o relatório deste mês.'));
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedMonthId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -34,9 +47,25 @@ export default function ReportsPage() {
       {Array.from({length:4}).map((_,i) => <div key={i} className="h-48 shimmer-bg rounded-2xl" />)}
     </div>
   );
-  if (!data) return null;
+  if (error || !data) {
+    return (
+      <div className="mx-auto max-w-xl py-10">
+        <Card className="text-center">
+          <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-warning-subtle text-xl text-warning-dark dark:bg-warning/10">!</div>
+          <h2 className="text-lg font-bold text-slate-950 dark:text-white">Relatório indisponível</h2>
+          <p className="mt-2 text-sm text-muted">{error ?? 'Nenhum dado encontrado para o mês selecionado.'}</p>
+          <div className="mt-5 flex justify-center gap-2">
+            <Button onClick={load}>Tentar novamente</Button>
+            <Link to="/dashboard"><Button variant="outline">Voltar ao painel</Button></Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
-  const health = data.financialHealthScore;
+  const isProReport = data.tier === 'pro';
+
+  const health = data.advanced?.financialHealthScore ?? null;
   const activeAlerts = (data.alerts ?? []).filter((a) => !a.resolvedAt);
 
   const SCORE_COLOR = (s) => s >= 75 ? '#16A34A' : s >= 50 ? '#F59E0B' : '#EF4444';
@@ -147,6 +176,24 @@ export default function ReportsPage() {
       </Card>
 
       {/* ── Saúde Financeira ── */}
+      {!isProReport && (
+        <Card className="border-primary/20 bg-primary-subtle/40 dark:bg-primary/5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-primary-subtle text-2xl dark:bg-primary/10">✦</div>
+            <div className="min-w-0 flex-1">
+              <Badge variant="purple">Análises avançadas</Badge>
+              <p className="mt-2 text-sm leading-relaxed text-muted">
+                O relatório mensal completo — resumo, receitas, despesas, saldo, patrimônio,
+                cartões e metas — faz parte do Plano Básico e está todo aqui em cima.
+                O Plano Pro acrescenta score detalhado de saúde financeira, recomendações
+                personalizadas e comparativos entre períodos.
+              </p>
+            </div>
+            <Link to="/plan"><Button>Conhecer o Pro</Button></Link>
+          </div>
+        </Card>
+      )}
+
       {health && (
         <Card>
           <CardHeader title="Relatório de Saúde Financeira" />
@@ -221,7 +268,7 @@ export default function ReportsPage() {
                     {r.priority === 'high' ? 'Alta' : r.priority === 'medium' ? 'Média' : 'Baixa'}
                   </Badge>
                 </div>
-                <p className="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed">{r.description}</p>
+                <p className="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed"><UserText>{r.description}</UserText></p>
                 {r.calculation && (
                   <p className="text-xs text-muted bg-subtle dark:bg-white/[0.04] rounded-xl p-2 mt-2 font-mono">{r.calculation}</p>
                 )}
@@ -247,7 +294,7 @@ export default function ReportsPage() {
               <tbody className="divide-y divide-border/60 dark:divide-white/[0.06]">
                 {data.goals.map((g) => (
                   <tr key={g.id} className="hover:bg-subtle/40 dark:hover:bg-white/[0.03] transition-colors">
-                    <td data-label="Meta" className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{g.name}</td>
+                    <td data-label="Meta" className="table-cell font-semibold text-slate-800 dark:text-zinc-200"><UserText>{g.name}</UserText></td>
                     <td data-label="Valor Alvo" className="table-cell font-mono tabular-nums">{formatCurrency(g.targetValue)}</td>
                     <td data-label="Acumulado" className="table-cell font-mono tabular-nums text-primary-dark dark:text-primary-light font-bold">{formatCurrency(g.progress)}</td>
                     <td data-label="Progresso" className="table-cell">
@@ -287,7 +334,7 @@ export default function ReportsPage() {
                   const pct = Math.min(Math.round((c.usedLimit / Number(c.limitValue)) * 100), 100);
                   return (
                     <tr key={c.id} className="hover:bg-subtle/40 dark:hover:bg-white/[0.03] transition-colors">
-                      <td data-label="Cartão" className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{c.name}</td>
+                      <td data-label="Cartão" className="table-cell font-semibold text-slate-800 dark:text-zinc-200"><UserText>{c.name}</UserText></td>
                       <td data-label="Limite Total" className="table-cell font-mono tabular-nums">{formatCurrency(c.limitValue)}</td>
                       <td data-label="Utilizado" className="table-cell font-mono tabular-nums text-danger-dark dark:text-danger-light">{formatCurrency(c.usedLimit)}</td>
                       <td data-label="Disponível" className="table-cell font-mono tabular-nums text-primary-dark dark:text-primary-light">{formatCurrency(c.availableLimit)}</td>

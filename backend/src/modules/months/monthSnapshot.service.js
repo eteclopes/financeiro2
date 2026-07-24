@@ -1,4 +1,5 @@
 const prisma = require('../../config/prisma');
+const AppError = require('../../utils/AppError');
 const { monthDateRange } = require('../../utils/dateTime');
 const { round2 } = require('../../utils/math');
 const { getBalanceAsOf } = require('../_shared/balance');
@@ -216,10 +217,47 @@ async function buildMonthSnapshot(userId, month, client = prisma, {
   };
 }
 
+/**
+ * Um snapshot é VÁLIDO PARA LEITURA sempre que existir e tiver uma versão
+ * conhecida (<= versão atual). Ele não deixa de valer só porque o produto
+ * evoluiu de versão: um mês fechado em 2026 continua sendo o retrato
+ * correto daquele mês. Trocar isso por "só a versão mais nova vale" foi o
+ * que criava o risco de sobrescrever histórico correto em massa.
+ */
 function validSnapshot(month) {
-  return month?.financialSnapshot && Number(month.snapshotVersion) === SNAPSHOT_VERSION;
+  const version = Number(month?.snapshotVersion);
+  return Boolean(month?.financialSnapshot) && Number.isFinite(version) && version >= 1 && version <= SNAPSHOT_VERSION;
 }
 
+/** Snapshot existe, mas foi gravado por uma versão anterior do formato. */
+function isStaleSnapshot(month) {
+  return validSnapshot(month) && Number(month.snapshotVersion) < SNAPSHOT_VERSION;
+}
+
+/** Arquiva a versão atual antes de qualquer substituição. */
+async function archiveSnapshot(tx, monthId, snapshot, version, reason) {
+  if (!snapshot) return;
+  await tx.monthSnapshotVersion.create({
+    data: {
+      monthId,
+      version: Number(version) || 1,
+      snapshot,
+      reason: String(reason).slice(0, 80),
+    },
+  });
+}
+
+/**
+ * Garante que um mês fechado tenha snapshot — SEM NUNCA sobrescrever um
+ * snapshot já existente.
+ *
+ * Comportamento anterior: qualquer divergência de versão disparava uma
+ * reconstrução que gravava por cima. Como a reconstrução é aproximada (ver
+ * `recordedBefore`), subir SNAPSHOT_VERSION teria trocado, de uma só vez,
+ * todos os retratos corretos por estimativas — sem registro do que foi
+ * perdido. Agora só o caso "mês fechado sem nenhum snapshot" gera escrita,
+ * e mesmo esse fica arquivado e marcado como reconstruído.
+ */
 async function ensureClosedMonthSnapshot(userId, month) {
   if (!month || month.status !== 'closed') return null;
   if (validSnapshot(month)) return month.financialSnapshot;
@@ -234,9 +272,9 @@ async function ensureClosedMonthSnapshot(userId, month) {
     `;
     const locked = lockedRows[0];
     if (!locked || locked.status !== 'closed') return null;
-    if (locked.financial_snapshot && Number(locked.snapshot_version) === SNAPSHOT_VERSION) {
-      return locked.financial_snapshot;
-    }
+
+    // Releitura sob lock: outra requisição pode ter criado o snapshot.
+    if (locked.financial_snapshot) return locked.financial_snapshot;
 
     const monthForSnapshot = {
       id: locked.id,
@@ -256,6 +294,50 @@ async function ensureClosedMonthSnapshot(userId, month) {
       where: { id: locked.id },
       data: { financialSnapshot: snapshot, snapshotVersion: SNAPSHOT_VERSION },
     });
+    await archiveSnapshot(tx, locked.id, snapshot, SNAPSHOT_VERSION, 'missing_snapshot_reconstruction');
+    return snapshot;
+  }, SNAPSHOT_TRANSACTION_OPTIONS);
+}
+
+/**
+ * Migração CONTROLADA de um snapshot antigo. Só roda quando chamada
+ * explicitamente (nunca por leitura de tela), arquiva a versão anterior e
+ * registra o motivo. É o caminho seguro para, no futuro, subir
+ * SNAPSHOT_VERSION sem perder os retratos originais.
+ */
+async function rebuildClosedMonthSnapshot(userId, monthId, reason = 'manual_rebuild') {
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw`
+      SELECT id, user_id, month, year, status, closed_at, created_at,
+             financial_snapshot, snapshot_version
+      FROM months
+      WHERE id = ${monthId} AND user_id = ${userId}
+      FOR UPDATE
+    `;
+    const locked = rows[0];
+    if (!locked) throw new AppError('Mês não encontrado.', 404, 'MONTH_NOT_FOUND');
+    if (locked.status !== 'closed') {
+      throw new AppError('Só meses encerrados possuem retrato financeiro.', 409, 'MONTH_NOT_CLOSED');
+    }
+
+    await archiveSnapshot(tx, locked.id, locked.financial_snapshot, locked.snapshot_version, reason);
+
+    const cutoff = locked.closed_at || locked.created_at || new Date();
+    const snapshot = await buildMonthSnapshot(userId, {
+      id: locked.id,
+      userId: locked.user_id,
+      month: Number(locked.month),
+      year: Number(locked.year),
+      status: locked.status,
+      closedAt: locked.closed_at,
+      createdAt: locked.created_at,
+    }, tx, { recordedBefore: cutoff, reconstructed: true });
+
+    await tx.month.update({
+      where: { id: locked.id },
+      data: { financialSnapshot: snapshot, snapshotVersion: SNAPSHOT_VERSION },
+    });
+    await archiveSnapshot(tx, locked.id, snapshot, SNAPSHOT_VERSION, `${reason}:result`);
     return snapshot;
   }, SNAPSHOT_TRANSACTION_OPTIONS);
 }
@@ -264,5 +346,7 @@ module.exports = {
   SNAPSHOT_VERSION,
   buildMonthSnapshot,
   ensureClosedMonthSnapshot,
+  rebuildClosedMonthSnapshot,
   validSnapshot,
+  isStaleSnapshot,
 };

@@ -8,10 +8,18 @@ const ATTR_ORIGINAL = new WeakMap();
 const ATTR_LAST_APPLIED = new WeakMap();
 const TRANSLATABLE_ATTRIBUTES = ['placeholder', 'title', 'aria-label', 'aria-description'];
 
+// Regiões nunca traduzidas:
+//  - [data-i18n-ignore] -> conteúdo do usuário (ver UserText.jsx)
+//  - svg                -> gráficos do Recharts. Não têm texto de interface
+//                          e são milhares de nós redesenhados a cada render;
+//                          percorrê-los era puro desperdício de CPU no celular.
+const IGNORED_REGION_SELECTOR =
+  '[data-i18n-ignore="true"], svg, script, style, textarea, input, [contenteditable="true"]';
+
 function shouldSkipNode(node) {
   const parent = node?.parentElement;
   if (!parent) return true;
-  if (parent.closest('[data-i18n-ignore="true"], script, style, textarea, [contenteditable="true"]')) return true;
+  if (parent.closest(IGNORED_REGION_SELECTOR)) return true;
   return false;
 }
 
@@ -35,7 +43,7 @@ function getAttributeMap(store, element) {
 }
 
 function applyAttributes(element, language) {
-  if (!(element instanceof Element) || element.closest('[data-i18n-ignore="true"]')) return;
+  if (!(element instanceof Element) || element.closest(IGNORED_REGION_SELECTOR)) return;
   const originals = getAttributeMap(ATTR_ORIGINAL, element);
   const applied = getAttributeMap(ATTR_LAST_APPLIED, element);
 
@@ -58,9 +66,25 @@ function walk(root, language) {
     return;
   }
   if (!(root instanceof Element) && root !== document.body) return;
-  if (root instanceof Element) applyAttributes(root, language);
+  if (root instanceof Element) {
+    if (root.matches?.(IGNORED_REGION_SELECTOR)) return;
+    applyAttributes(root, language);
+  }
 
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  // O filtro REJECT poda a subárvore inteira — o walker não desce em
+  // gráficos nem em blocos de conteúdo do usuário.
+  const walker = document.createTreeWalker(
+    root,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+    {
+      acceptNode(node) {
+        if (node.nodeType === Node.ELEMENT_NODE && node.matches?.(IGNORED_REGION_SELECTOR)) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    }
+  );
   let node = walker.nextNode();
   while (node) {
     if (node.nodeType === Node.TEXT_NODE) applyTextNode(node, language);

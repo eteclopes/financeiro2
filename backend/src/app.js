@@ -40,6 +40,10 @@ const corsPolicy = createOriginPolicy({
   configuredOrigins: parseConfiguredOrigins(`${env.CORS_ORIGIN},${env.FRONTEND_URL}`),
   vercelProject: env.CORS_VERCEL_PROJECT,
   vercelTeam: env.CORS_VERCEL_TEAM,
+  // Produção aceita SOMENTE a lista explícita de origens. Para liberar
+  // previews contra um backend de staging, defina CORS_ALLOW_PREVIEWS=true
+  // nesse ambiente — nunca no de produção.
+  allowPreviews: env.NODE_ENV !== 'production' || env.CORS_ALLOW_PREVIEWS === true,
 });
 
 app.use(cors({

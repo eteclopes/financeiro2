@@ -9,6 +9,7 @@ import { FormGroup, Input, Select } from '../components/ui/Modal';
 import { useUIStore } from '../store/uiStore';
 import { useThemeStore } from '../store/themeStore';
 import { ChoiceCards, AnimatedNumber } from '../components/ui/Motion';
+import { UserText } from '../i18n/UserText';
 
 const SCENARIO_TYPES = [
   { value:'pay_debt', label:'Quitar dívida', icon:'⌁', description:'Simule a quitação total.', tone:'choice-card-icon-danger' },
@@ -27,7 +28,7 @@ function CustomTooltip({ active, payload, label }) {
       {payload.map((p) => (
         <div key={p.dataKey} className="flex items-center gap-2 mb-1">
           <div className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
-          <span className="text-muted">{p.name}:</span>
+          <span className="text-muted"><UserText>{p.name}</UserText>:</span>
           <span className="font-mono font-bold" style={{ color: p.color }}>{formatCurrency(p.value)}</span>
         </div>
       ))}
@@ -50,7 +51,7 @@ function ScenarioInputFields({ type, input, setInput, activeDebts }) {
     <FormGroup label="Dívida a quitar">
       <Select value={input.debtId ?? ''} onChange={(e) => setInput({ debtId: e.target.value })}>
         <option value="">Selecione...</option>
-        {activeDebts.map((d) => <option key={d.id} value={d.id}>{d.description} — {formatCurrency(d.remainingBalance)}</option>)}
+        {activeDebts.map((d) => <option data-i18n-ignore="true" key={d.id} value={d.id}>{d.description} — {formatCurrency(d.remainingBalance)}</option>)}
       </Select>
     </FormGroup>
   );
@@ -59,7 +60,7 @@ function ScenarioInputFields({ type, input, setInput, activeDebts }) {
       <FormGroup label="Dívida">
         <Select value={input.debtId ?? ''} onChange={(e) => setInput({...input, debtId: e.target.value})}>
           <option value="">Selecione...</option>
-          {activeDebts.map((d) => <option key={d.id} value={d.id}>{d.description}</option>)}
+          {activeDebts.map((d) => <option data-i18n-ignore="true" key={d.id} value={d.id}>{d.description}</option>)}
         </Select>
       </FormGroup>
       <FormGroup label="Valor a antecipar">
@@ -306,7 +307,7 @@ export default function WhatIfSimulatorPage() {
               return (
                 <div key={sim.id} className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-subtle dark:bg-white/[0.04] rounded-xl">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-zinc-50">{sim.name}</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-zinc-50"><UserText>{sim.name}</UserText></p>
                     <p className="text-xs text-muted mt-0.5">
                       {SCENARIO_TYPES.find((t) => t.value === sim.type)?.label ?? sim.type} · {sim.monthsAhead} meses
                     </p>

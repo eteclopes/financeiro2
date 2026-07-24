@@ -16,6 +16,7 @@ import {
   getPaymentMethodLabel,
   normalizePaymentMethod,
 } from '../lib/paymentMethods';
+import { UserText } from '../i18n/UserText';
 const STATUS_V  = { pending:'warning', partial:'info', paid:'success', late:'danger', settled:'success' };
 const STATUS_L  = { pending:'Pendente', partial:'Parcial', paid:'Pago', late:'Atrasado', settled:'Quitado' };
 
@@ -385,7 +386,7 @@ export default function ExpensesPage() {
               <tbody className="divide-y divide-border/60 dark:divide-white/[0.06]">
                 {filtered.map((e) => (
                   <tr key={e.id} className="hover:bg-subtle/40 dark:hover:bg-white/[0.03] transition-colors">
-                    <td data-label="Descrição" className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{e.description}</td>
+                    <td data-label="Descrição" className="table-cell font-semibold text-slate-800 dark:text-zinc-200"><UserText>{e.description}</UserText></td>
                     <td data-label="Categoria" className="table-cell text-muted">{e.category?.name}</td>
                     <td data-label="Valor" className="table-cell font-mono tabular-nums">{formatCurrency(e.value)}</td>
                     <td data-label="Vencimento" className="table-cell text-muted">{formatShortDate(e.dueDate)}</td>
@@ -435,7 +436,7 @@ export default function ExpensesPage() {
               <tbody className="divide-y divide-border/60 dark:divide-white/[0.06]">
                 {filtered.map((e) => (
                   <tr key={e.id} className="hover:bg-subtle/40 dark:hover:bg-white/[0.03] transition-colors">
-                    <td data-label="Descrição" className="table-cell font-semibold text-slate-800 dark:text-zinc-200">{e.description}</td>
+                    <td data-label="Descrição" className="table-cell font-semibold text-slate-800 dark:text-zinc-200"><UserText>{e.description}</UserText></td>
                     <td data-label="Categoria" className="table-cell text-muted">{e.category?.name}</td>
                     <td data-label="Valor" className="table-cell font-mono tabular-nums">{formatCurrency(e.value)}</td>
                     <td data-label="Data" className="table-cell text-muted">{formatShortDate(e.dueDate)}</td>
@@ -474,7 +475,7 @@ export default function ExpensesPage() {
           <div className="space-y-4">
             <div className="bg-subtle dark:bg-white/[0.04] rounded-2xl p-4">
               <p className="text-xs text-muted mb-1">Despesa</p>
-              <p className="font-semibold text-slate-900 dark:text-zinc-50">{payModal.description}</p>
+              <p className="font-semibold text-slate-900 dark:text-zinc-50"><UserText>{payModal.description}</UserText></p>
               <p className="text-sm text-muted mt-1">Valor da parcela: <span className="font-mono font-semibold text-slate-800 dark:text-zinc-200">{formatCurrency(payModal.value)}</span></p>
             </div>
             <FormGroup label="Valor pago" required>
@@ -526,7 +527,7 @@ export default function ExpensesPage() {
             <FormGroup label="Cartão" required>
               <Select value={varForm.cardId} onChange={(e) => setVarForm({ ...varForm, cardId:e.target.value })}>
                 <option value="">Selecione...</option>
-                {cards.map((card) => <option key={card.id} value={card.id}>{card.name} — disponível {formatCurrency(card.availableLimit)}</option>)}
+                {cards.map((card) => <option data-i18n-ignore="true" key={card.id} value={card.id}>{card.name} — disponível {formatCurrency(card.availableLimit)}</option>)}
               </Select>
               <p className="text-xs text-muted mt-1.5">A compra entra na fatura e reduz o limite disponível imediatamente.</p>
             </FormGroup>
@@ -577,7 +578,7 @@ export default function ExpensesPage() {
               ) : (
                 <Select value={fixForm.cardId} onChange={(e) => setFixForm({...fixForm,cardId:e.target.value})}>
                   <option value="">Selecione...</option>
-                  {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {cards.map((c) => <option data-i18n-ignore="true" key={c.id} value={c.id}>{c.name}</option>)}
                 </Select>
               )}
               <p className="text-xs text-muted mt-1.5">
@@ -616,7 +617,7 @@ export default function ExpensesPage() {
             <FormGroup label="Cartão" required>
               <Select value={editFixForm.cardId} onChange={(e) => setEditFixForm({...editFixForm,cardId:e.target.value})}>
                 <option value="">Selecione...</option>
-                {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {cards.map((c) => <option data-i18n-ignore="true" key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
             </FormGroup>
           )}

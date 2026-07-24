@@ -48,11 +48,27 @@ function buildVercelPreviewRegex(projectName, teamSlug) {
   );
 }
 
-function createOriginPolicy({ configuredOrigins = [], vercelProject, vercelTeam } = {}) {
+/**
+ * @param {object} options
+ * @param {string[]} options.configuredOrigins  lista explícita de origens
+ * @param {string}   options.vercelProject      projeto para URLs de preview
+ * @param {string}   options.vercelTeam         equipe para URLs de preview
+ * @param {boolean}  options.allowPreviews      libera previews automáticos
+ *
+ * `allowPreviews` é FALSE em produção de propósito. Qualquer preview da
+ * Vercel do projeto (inclusive o de um branch qualquer) era uma origem
+ * confiável contra a API e o banco REAIS, com cookie de sessão
+ * (`SameSite=None`). Quem conseguisse abrir um branch ganhava acesso
+ * credenciado aos dados de produção. Previews continuam funcionando
+ * normalmente apontando para um backend de staging.
+ */
+function createOriginPolicy({ configuredOrigins = [], vercelProject, vercelTeam, allowPreviews = true } = {}) {
   const exactOrigins = new Set(
     configuredOrigins.map(normalizeOrigin).filter(Boolean),
   );
-  const vercelPreviewRegex = buildVercelPreviewRegex(vercelProject, vercelTeam);
+  const vercelPreviewRegex = allowPreviews
+    ? buildVercelPreviewRegex(vercelProject, vercelTeam)
+    : null;
 
   function isAllowed(origin) {
     // Requisições servidor-servidor, health checks e ferramentas como curl não

@@ -12,6 +12,7 @@ import { ChoiceCards, SegmentedControl } from '../components/ui/Motion';
 import {
   CURRENCY_OPTIONS, LANGUAGE_OPTIONS, REGION_OPTIONS, TIME_ZONE_OPTIONS, useLocaleStore,
 } from '../store/localeStore';
+import { UserText } from '../i18n/UserText';
 
 export default function SettingsPage() {
   const user  = useAuthStore((s) => s.user);
@@ -318,7 +319,7 @@ export default function SettingsPage() {
                   </div>
                 ) : (
                   <div key={cat.id} className="flex items-center gap-1 bg-subtle dark:bg-white/[0.04] border border-border dark:border-white/10 rounded-xl pl-3 pr-1.5 py-1.5">
-                    <span className="text-sm text-slate-700 dark:text-zinc-300 font-medium">{cat.name}</span>
+                    <span className="text-sm text-slate-700 dark:text-zinc-300 font-medium"><UserText as="span" data-i18n-ignore={cat.isDefault ? undefined : "true"}>{cat.name}</UserText></span>
                     <button onClick={() => startRename(cat)} title="Renomear"
                       className="h-5 w-5 rounded-lg hover:bg-primary-subtle dark:hover:bg-primary/20 text-muted hover:text-primary-dark flex items-center justify-center text-xs transition-colors ml-1">
                       ✎
@@ -340,7 +341,7 @@ export default function SettingsPage() {
           <div className="flex flex-wrap gap-2">
             {defaultCats.map((cat) => (
               <span key={cat.id} className="text-xs bg-white dark:bg-panel-dark border border-border dark:border-white/10 text-muted px-3 py-1.5 rounded-xl font-medium">
-                {cat.name}
+                <UserText as="span" data-i18n-ignore={cat.isDefault ? undefined : "true"}>{cat.name}</UserText>
               </span>
             ))}
           </div>

@@ -15,7 +15,8 @@ import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { QuickActions } from '../components/dashboard/QuickActions';
 import { Modal } from '../components/ui/Modal';
-import { IconWallet, IconPiggy, IconAlert } from '../components/icons';
+import { IconWallet, IconPiggy, IconAlert, IconGoal } from '../components/icons';
+import { UserText } from '../i18n/UserText';
 
 const COMMITMENT_COLOR = { saudavel: 'text-success-dark dark:text-success-light', atencao: 'text-warning-dark dark:text-warning-light', risco: 'text-warning-dark dark:text-warning-light', critico: 'text-danger-dark dark:text-danger-light' };
 const COMMITMENT_BG    = { saudavel: 'bg-success-muted dark:bg-success/10', atencao: 'bg-warning-muted dark:bg-warning/10', risco: 'bg-warning-muted dark:bg-warning/10', critico: 'bg-danger-muted dark:bg-danger/10' };
@@ -261,18 +262,45 @@ export default function DashboardPage() {
             </p>
             <p className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-zinc-50">{formatCurrency(data.physicalCash)}</p>
           </Spotlight>
+          <Spotlight className="premium-card premium-card-hover p-4">
+            <p className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <IconGoal size={13} /> Em metas
+            </p>
+            <p className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-zinc-50">
+              {formatCurrency(data.wealth?.goalsBalance ?? 0)}
+            </p>
+          </Spotlight>
+          <Spotlight className="premium-card premium-card-hover p-4">
+            <p className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <IconWallet size={13} /> Patrimônio financeiro
+            </p>
+            <p className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-zinc-50">
+              {formatCurrency(data.wealth?.financialWealth ?? 0)}
+            </p>
+            <p className="mt-1 text-[10px] leading-snug text-muted">
+              Saldo livre + reservas + metas. Guardar dinheiro move o valor entre eles, sem alterar este total.
+            </p>
+          </Spotlight>
           <Spotlight className="sm:col-span-2 premium-card premium-card-hover p-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
                 <IconAlert size={13} /> Dívida ativa
               </p>
-              <p className={`text-lg font-bold font-mono tabular-nums ${data.totalActiveDebt > 0 ? 'text-danger-dark dark:text-danger-light' : 'text-slate-900 dark:text-zinc-50'}`}>
-                {formatCurrency(data.totalActiveDebt)}
+              <p className={`text-lg font-bold font-mono tabular-nums ${(data.debtIndicators?.totalRemainingBalance ?? 0) > 0 ? 'text-danger-dark dark:text-danger-light' : 'text-slate-900 dark:text-zinc-50'}`}>
+                {formatCurrency(data.debtIndicators?.totalRemainingBalance ?? data.totalActiveDebt)}
               </p>
+              {(data.debtIndicators?.nextInstallment) && (
+                <p className="mt-1 text-[10px] text-muted">
+                  Próxima parcela: {formatCurrency(data.debtIndicators.nextInstallment.value)} em {formatShortDate(data.debtIndicators.nextInstallment.dueDate)}
+                </p>
+              )}
             </div>
-            {data.totalActiveDebt > 0 && (
+            {(data.debtIndicators?.remainingInstallments ?? 0) > 0 && (
+              /* Números REAIS vindos do backend. Antes esta contagem saía da
+                 lista de próximos vencimentos (LIMIT 5), o que produzia o
+                 absurdo "Dívida ativa R$ X — 0 parcelas". */
               <span className="text-[11px] font-semibold bg-danger-subtle dark:bg-danger/10 text-danger-dark dark:text-danger-light px-2.5 py-1 rounded-full">
-                {(data.upcomingDueDates ?? []).filter((e) => e.type === 'priority').length} parcela(s)
+                {data.debtIndicators.remainingInstallments} parcela(s) · {data.debtIndicators.activeDebtsCount} dívida(s)
               </span>
             )}
           </Spotlight>
@@ -371,7 +399,7 @@ export default function DashboardPage() {
               {(data.recommendations ?? []).slice(0, 4).map((r, i) => (
                 <li key={i} className="p-3 rounded-xl bg-primary-subtle dark:bg-primary/10 border border-primary/20 text-xs">
                   <p className="font-semibold text-primary-dark dark:text-primary-light mb-0.5">{r.title}</p>
-                  <p className="text-slate-600 dark:text-zinc-400 leading-relaxed">{r.description}</p>
+                  <p className="text-slate-600 dark:text-zinc-400 leading-relaxed"><UserText>{r.description}</UserText></p>
                 </li>
               ))}
             </ul>
@@ -418,7 +446,7 @@ export default function DashboardPage() {
                   return (
                     <div key={card.id}>
                       <div className="flex justify-between text-xs mb-1.5">
-                        <span className="font-semibold text-slate-800 dark:text-zinc-200">{card.name}</span>
+                        <span className="font-semibold text-slate-800 dark:text-zinc-200"><UserText>{card.name}</UserText></span>
                         <span className="text-muted font-mono">{pct}% usado</span>
                       </div>
                       <div className="h-2 w-full bg-subtle dark:bg-white/5 rounded-full overflow-hidden">
@@ -446,7 +474,7 @@ export default function DashboardPage() {
                   return (
                     <li key={e.id} className="flex items-center justify-between py-3 gap-3">
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold text-slate-800 dark:text-zinc-200 truncate">{e.description}</p>
+                        <p className="text-xs font-semibold text-slate-800 dark:text-zinc-200 truncate"><UserText>{e.description}</UserText></p>
                         <p className="text-[10px] text-muted">{formatShortDate(e.dueDate)}</p>
                       </div>
                       <div className="text-right shrink-0">
@@ -556,7 +584,7 @@ export default function DashboardPage() {
               {categoryPieData.slice(0, 5).map((c, i) => (
                 <span key={c.name} className="inline-flex items-center gap-1.5 text-[11px] text-muted">
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                  {c.name}
+                  <UserText>{c.name}</UserText>
                 </span>
               ))}
             </div>
@@ -572,7 +600,7 @@ export default function DashboardPage() {
           <div className="auto-grid-comfortable">
             {data.goals.map((g) => (
               <div key={g.id} className="bg-subtle dark:bg-white/[0.04] rounded-2xl p-4 transition-all duration-200 hover:bg-subtle/70 dark:hover:bg-white/[0.06]">
-                <p className="text-sm font-semibold text-slate-800 dark:text-zinc-200 mb-3">{g.name}</p>
+                <p className="text-sm font-semibold text-slate-800 dark:text-zinc-200 mb-3"><UserText>{g.name}</UserText></p>
                 <ProgressBar value={g.progress} max={Number(g.targetValue)} height="h-2.5" color="success" />
                 <div className="flex justify-between text-xs text-muted mt-2">
                   <span>{formatCurrency(g.progress)}</span>

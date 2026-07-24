@@ -121,7 +121,12 @@ async function generateNextMonthEntries(tx, userId, current, nextMonth, next) {
   const generated = { incomes: 0, fixedExpenses: 0, debtInstallments: 0 };
 
   if (snapshot.missingIncomeTemplates.length > 0) {
+    // skipDuplicates + índice único (template_id, month_id) tornam a
+    // geração idempotente MESMO se o advisory lock falhar (retry, deploy no
+    // meio da transação, processo derrubado). Antes a proteção era só da
+    // aplicação: uma reexecução podia duplicar o salário do mês.
     const result = await tx.income.createMany({
+      skipDuplicates: true,
       data: snapshot.missingIncomeTemplates.map((template) => ({
         userId,
         monthId: nextMonth.id,

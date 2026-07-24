@@ -11,7 +11,9 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const monthId = parseMonthId(req.query);
-    const alerts = await service.refreshAlerts(req.userId, monthId);
+    // Polling da Topbar cai aqui a cada 60s por aba: leitura pura, com
+    // recomputação no máximo a cada 5 minutos por usuário/mês.
+    const alerts = await service.getAlerts(req.userId, monthId, { windowMs: 5 * 60_000 });
     res.json({ alerts });
   })
 );

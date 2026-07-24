@@ -14,13 +14,36 @@ const create = asyncHandler(async (req, res) => {
 });
 
 const update = asyncHandler(async (req, res) => {
-  const income = await service.updateIncome(req.userId, parseBigIntParam(req.params.id, 'id'), req.body);
-  res.json({ income });
+  const { scope, ...payload } = req.body;
+  const result = await service.updateIncome(
+    req.userId,
+    parseBigIntParam(req.params.id, 'id'),
+    payload,
+    { scope }
+  );
+  res.json(result);
+});
+
+const endRecurrence = asyncHandler(async (req, res) => {
+  const result = await service.endRecurrence(req.userId, parseBigIntParam(req.params.id, 'id'));
+  res.json(result);
 });
 
 const remove = asyncHandler(async (req, res) => {
-  await service.deleteIncome(req.userId, parseBigIntParam(req.params.id, 'id'));
-  res.status(204).send();
+  // Correção de erro de digitação pode exigir saldo negativo. O cliente
+  // precisa confirmar explicitamente (?confirm=true) depois de ver o
+  // impacto devolvido no erro 409.
+  const allowNegativeBalance = req.query.confirm === 'true';
+  const result = await service.deleteIncome(
+    req.userId,
+    parseBigIntParam(req.params.id, 'id'),
+    { allowNegativeBalance }
+  );
+  res.json({
+    deleted: true,
+    resultingBalance: result.resultingBalance,
+    wentNegative: result.wentNegative,
+  });
 });
 
 const deactivateTemplate = asyncHandler(async (req, res) => {
@@ -28,4 +51,4 @@ const deactivateTemplate = asyncHandler(async (req, res) => {
   res.json({ template });
 });
 
-module.exports = { list, create, update, remove, deactivateTemplate };
+module.exports = { list, create, update, endRecurrence, remove, deactivateTemplate };
