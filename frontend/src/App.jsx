@@ -57,20 +57,32 @@ class ErrorBoundary extends Component {
   }
 }
 
-/** Fallback usado enquanto o código da rota é baixado sob demanda. */
+/** Fallback discreto enquanto o código da rota é baixado sob demanda. */
 function RouteFallback() {
   return (
-    <div className="flex min-h-[50dvh] items-center justify-center">
-      <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary text-white shadow-glow animate-pulse-soft">
-        <span className="text-xs font-black tracking-[-0.08em]">FH</span>
-      </div>
+    <div className="flex min-h-[40dvh] items-center justify-center opacity-70">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-primary dark:border-white/15 dark:border-t-primary" />
       <span className="sr-only">Carregando página…</span>
     </div>
   );
 }
 
+/** Envolve cada página lazy com seu próprio limite de erro e Suspense, para
+ *  que o Suspense NÃO troque a tela inteira: a barra lateral e o topo
+ *  continuam montados e só a área de conteúdo mostra o fallback. */
+function Page({ children }) {
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={<RouteFallback />}>{children}</Suspense>
+    </ErrorBoundary>
+  );
+}
+
 function ProtectedRoute({ children }) {
   const status = useAuthStore((s) => s.status);
+  // Só mostra a tela cheia no primeiro acesso real (sem sessão prévia).
+  // No retorno à aba, o status já entra como 'authenticated' e o app
+  // renderiza na hora, revalidando por baixo (bootstrapping).
   if (status === 'idle' || status === 'loading') {
     return (
       <div className="app-shell flex min-h-[100dvh] flex-col items-center justify-center gap-5">
@@ -269,24 +281,24 @@ export default function App() {
         <Route path="/forgot-password" element={<AuthShell><ForgotPasswordPage /></AuthShell>} />
         <Route path="/reset-password" element={<AuthShell><ResetPasswordPage /></AuthShell>} />
 
-        <Route element={<ProtectedRoute><Suspense fallback={<RouteFallback />}><AppLayout /></Suspense></ProtectedRoute>}>
-          <Route path="/dashboard" element={<ErrorBoundary><DashboardPage /></ErrorBoundary>} />
-          <Route path="/incomes" element={<ErrorBoundary><IncomesPage /></ErrorBoundary>} />
-          <Route path="/expenses" element={<ErrorBoundary><ExpensesPage /></ErrorBoundary>} />
-          <Route path="/cards" element={<ErrorBoundary><CardsPage /></ErrorBoundary>} />
-          <Route path="/savings" element={<ErrorBoundary><SavingsPage /></ErrorBoundary>} />
-          <Route path="/goals" element={<ErrorBoundary><GoalsPage /></ErrorBoundary>} />
-          <Route path="/simulator/purchase" element={<ErrorBoundary><ProRoute><PurchaseSimulatorPage /></ProRoute></ErrorBoundary>} />
-          <Route path="/simulator/what-if" element={<ErrorBoundary><ProRoute><WhatIfSimulatorPage /></ProRoute></ErrorBoundary>} />
-          <Route path="/history" element={<ErrorBoundary><HistoryPage /></ErrorBoundary>} />
-          <Route path="/trends" element={<ErrorBoundary><ProRoute><TrendsPage /></ProRoute></ErrorBoundary>} />
-          <Route path="/budgets" element={<ErrorBoundary><BudgetsPage /></ErrorBoundary>} />
-          <Route path="/insights" element={<ErrorBoundary><ProRoute><InsightsPage /></ProRoute></ErrorBoundary>} />
-          <Route path="/reports" element={<ErrorBoundary><ReportsPage /></ErrorBoundary>} />
-          <Route path="/settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
-          <Route path="/calculators" element={<ErrorBoundary><ProRoute><CalculatorsPage /></ProRoute></ErrorBoundary>} />
-          <Route path="/planning" element={<ErrorBoundary><ProRoute><PlanningPage /></ProRoute></ErrorBoundary>} />
-          <Route path="/plan" element={<ErrorBoundary><PlanPage /></ErrorBoundary>} />
+        <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+          <Route path="/dashboard" element={<Page><DashboardPage /></Page>} />
+          <Route path="/incomes" element={<Page><IncomesPage /></Page>} />
+          <Route path="/expenses" element={<Page><ExpensesPage /></Page>} />
+          <Route path="/cards" element={<Page><CardsPage /></Page>} />
+          <Route path="/savings" element={<Page><SavingsPage /></Page>} />
+          <Route path="/goals" element={<Page><GoalsPage /></Page>} />
+          <Route path="/simulator/purchase" element={<Page><ProRoute><PurchaseSimulatorPage /></ProRoute></Page>} />
+          <Route path="/simulator/what-if" element={<Page><ProRoute><WhatIfSimulatorPage /></ProRoute></Page>} />
+          <Route path="/history" element={<Page><HistoryPage /></Page>} />
+          <Route path="/trends" element={<Page><ProRoute><TrendsPage /></ProRoute></Page>} />
+          <Route path="/budgets" element={<Page><BudgetsPage /></Page>} />
+          <Route path="/insights" element={<Page><ProRoute><InsightsPage /></ProRoute></Page>} />
+          <Route path="/reports" element={<Page><ReportsPage /></Page>} />
+          <Route path="/settings" element={<Page><SettingsPage /></Page>} />
+          <Route path="/calculators" element={<Page><ProRoute><CalculatorsPage /></ProRoute></Page>} />
+          <Route path="/planning" element={<Page><ProRoute><PlanningPage /></ProRoute></Page>} />
+          <Route path="/plan" element={<Page><PlanPage /></Page>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

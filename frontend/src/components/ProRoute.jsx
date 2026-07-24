@@ -4,7 +4,21 @@ import { Card, Badge, Button } from './ui/index';
 
 export function ProRoute({ children }) {
   const user = useAuthStore((state) => state.user);
+  const bootstrapping = useAuthStore((state) => state.bootstrapping);
   const location = useLocation();
+
+  // Durante a revalidação silenciosa da sessão (ao voltar para a aba), o
+  // `user` ainda pode não ter chegado. Sem esta espera, uma página Pro
+  // piscaria o aviso de "Recurso Pro" por um instante antes de reconhecer
+  // o usuário. Mostramos um placeholder discreto até o refresh terminar.
+  if (bootstrapping && !user) {
+    return (
+      <div className="mx-auto max-w-3xl py-10">
+        <div className="h-40 animate-pulse rounded-2xl bg-slate-100 dark:bg-white/[0.04]" />
+      </div>
+    );
+  }
+
   if (user?.isPro) return children;
 
   return (
