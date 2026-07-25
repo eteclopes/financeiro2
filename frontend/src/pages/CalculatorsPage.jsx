@@ -10,17 +10,17 @@ import { SegmentedControl } from '../components/ui/Motion';
 const TABS = [
   { value: 'compound', label: 'Juros compostos' },
   { value: 'financing', label: 'Financiamento' },
-  { value: 'cash-vs-installments', label: 'À vista ou parcelado' },
-  { value: 'debt-payoff', label: 'Quitar dívida' },
-  { value: 'emergency-reserve', label: 'Reserva' },
+  { value: 'installment-cost', label: 'Custo do parcelamento' },
+  { value: 'payoff-vs-invest', label: 'Antecipar ou investir' },
+  { value: 'goal-plan', label: 'Meta por prazo' },
 ];
 
 const INITIAL = {
   compound: { initialValue: '1000', monthlyContribution: '300', rate: '10', ratePeriod: 'annual', years: '5', inflationRate: '4.5' },
   financing: { assetValue: '50000', downPayment: '10000', rate: '18', ratePeriod: 'annual', months: '48', system: 'price', extraFees: '0' },
-  'cash-vs-installments': { cashPrice: '950', installmentTotal: '1000', installments: '10', investmentRate: '10', investmentRatePeriod: 'annual', cashback: '0' },
-  'debt-payoff': { balance: '10000', rate: '24', ratePeriod: 'annual', monthlyPayment: '600', extraMonthly: '200' },
-  'emergency-reserve': { monthlyEssentialExpenses: '3000', targetMonths: '6', currentReserve: '5000', monthlyContribution: '500' },
+  'installment-cost': { cashPrice: '1000', installmentValue: '100', installments: '12', investmentRate: '11', investmentRatePeriod: 'annual' },
+  'payoff-vs-invest': { debtBalance: '5000', debtRate: '3', debtRatePeriod: 'monthly', investmentRate: '11', investmentRatePeriod: 'annual', extraAmount: '1000', horizonMonths: '12' },
+  'goal-plan': { targetAmount: '20000', currentAmount: '2000', months: '18', investmentRate: '11', investmentRatePeriod: 'annual' },
 };
 
 function Money({ value }) {
@@ -76,42 +76,70 @@ function ResultView({ type, result }) {
       </div>
     );
   }
-  if (type === 'cash-vs-installments') {
+  if (type === 'installment-cost') {
     return (
       <>
         <div className="mb-3">
-          <Badge variant={result.recommendation === 'cash' ? 'success' : 'purple'}>
-            {result.recommendation === 'cash' ? 'Melhor pagar à vista' : 'Melhor parcelar'}
+          <Badge variant={result.isInterestFree ? 'success' : 'danger'}>
+            {result.isInterestFree ? 'Sem juros de verdade' : `Juros embutido: ${result.monthlyInterestRate}% ao mês`}
           </Badge>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Metric label="Custo à vista"><Money value={result.cashCost} /></Metric>
-          <Metric label="Custo presente parcelado"><Money value={result.adjustedInstallmentCost} /></Metric>
-          <Metric label="Vantagem estimada"><Money value={result.advantage} /></Metric>
-          <Metric label="Total nominal parcelado"><Money value={result.installmentNominalCost} /></Metric>
-          <Metric label="Taxa equivalente mensal">{result.monthlyEquivalentRate}%</Metric>
+          <Metric label="Preço à vista"><Money value={result.cashPrice} /></Metric>
+          <Metric label="Total parcelado"><Money value={result.nominalTotal} /></Metric>
+          <Metric label="Juros embutido (R$)"><Money value={result.embeddedInterest} /></Metric>
+          <Metric label="Taxa embutida mensal">{result.monthlyInterestRate}%</Metric>
+          <Metric label="Taxa embutida anual">{result.annualInterestRate}%</Metric>
+          <Metric label="Recomendação">{result.recommendation === 'cash' ? 'Pagar à vista' : 'Parcelar e investir'}</Metric>
         </div>
+        <p className="mt-3 text-xs text-muted">
+          Se você tem o dinheiro à vista, parcelar só vale a pena quando ele rende mais que a taxa embutida acima.
+        </p>
       </>
     );
   }
-  if (type === 'debt-payoff') {
+  if (type === 'payoff-vs-invest') {
+    const payoff = result.recommendation === 'payoff';
     return (
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Metric label="Prazo atual">{result.baseline.months} meses</Metric>
-        <Metric label="Prazo com valor extra">{result.accelerated.months} meses</Metric>
-        <Metric label="Meses economizados">{result.monthsSaved}</Metric>
-        <Metric label="Juros economizados"><Money value={result.interestSaved} /></Metric>
-        <Metric label="Taxa equivalente mensal">{result.monthlyEquivalentRate}%</Metric>
-      </div>
+      <>
+        <div className="mb-3">
+          <Badge variant={payoff ? 'success' : 'purple'}>
+            {payoff ? 'Melhor antecipar a dívida' : 'Melhor investir o dinheiro'}
+          </Badge>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Metric label="Abatendo a dívida você economiza"><Money value={result.interestAvoided} /></Metric>
+          <Metric label="Investindo você ganharia"><Money value={result.investmentEarnings} /></Metric>
+          <Metric label="Diferença no período"><Money value={result.advantage} /></Metric>
+          <Metric label="Vai para a dívida"><Money value={result.appliedToDebt} /></Metric>
+          <Metric label="Taxa da dívida (mês)">{result.debtMonthlyRate}%</Metric>
+          <Metric label="Taxa do investimento (mês)">{result.investmentMonthlyRate}%</Metric>
+        </div>
+        <p className="mt-3 text-xs text-muted">
+          Compara, no mesmo horizonte de {result.horizonMonths} meses, os juros que você deixa de pagar x o que o dinheiro renderia investido.
+        </p>
+      </>
     );
   }
+  // goal-plan
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      <Metric label="Reserva recomendada"><Money value={result.targetReserve} /></Metric>
-      <Metric label="Quanto falta"><Money value={result.missingAmount} /></Metric>
-      <Metric label="Cobertura atual">{result.coverageMonths} meses</Metric>
-      <Metric label="Prazo estimado">{result.monthsToReach == null ? 'Defina um aporte' : `${result.monthsToReach} meses`}</Metric>
-    </div>
+    <>
+      {result.alreadyReached ? (
+        <div className="mb-3"><Badge variant="success">Meta já alcançada 🎉</Badge></div>
+      ) : (
+        <div className="mb-4 rounded-2xl border border-primary/20 bg-primary-subtle/50 p-4 dark:bg-primary/5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Guarde por mês</p>
+          <p className="mt-1 text-3xl font-black text-primary-dark dark:text-primary-hover"><Money value={result.monthlyContribution} /></p>
+        </div>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Metric label="Objetivo"><Money value={result.targetAmount} /></Metric>
+        <Metric label="Você já tem"><Money value={result.currentAmount} /></Metric>
+        <Metric label="Total que vai aportar"><Money value={result.totalContributed} /></Metric>
+        <Metric label="Rendimento ajuda com"><Money value={result.interestEarned} /></Metric>
+        <Metric label="Prazo">{result.months} meses</Metric>
+      </div>
+    </>
   );
 }
 
@@ -170,29 +198,29 @@ export default function CalculatorsPage() {
                 <FormGroup label="Taxas adicionais"><Input type="number" min="0" value={form.extraFees} onChange={(event) => setField('extraFees', event.target.value)} /></FormGroup>
               </>
             )}
-            {type === 'cash-vs-installments' && (
+            {type === 'installment-cost' && (
               <>
                 <FormGroup label="Preço à vista"><Input type="number" min="0" value={form.cashPrice} onChange={(event) => setField('cashPrice', event.target.value)} /></FormGroup>
-                <FormGroup label="Total parcelado"><Input type="number" min="0" value={form.installmentTotal} onChange={(event) => setField('installmentTotal', event.target.value)} /></FormGroup>
+                <FormGroup label="Valor de cada parcela"><Input type="number" min="0" value={form.installmentValue} onChange={(event) => setField('installmentValue', event.target.value)} /></FormGroup>
                 <FormGroup label="Quantidade de parcelas"><Input type="number" min="1" value={form.installments} onChange={(event) => setField('installments', event.target.value)} /></FormGroup>
-                <RateFields value={form.investmentRate} period={form.investmentRatePeriod} onValueChange={(value) => setField('investmentRate', value)} onPeriodChange={(value) => setField('investmentRatePeriod', value)} label="Rendimento do dinheiro" />
-                <FormGroup label="Cashback"><Input type="number" min="0" value={form.cashback} onChange={(event) => setField('cashback', event.target.value)} /></FormGroup>
+                <RateFields value={form.investmentRate} period={form.investmentRatePeriod} onValueChange={(value) => setField('investmentRate', value)} onPeriodChange={(value) => setField('investmentRatePeriod', value)} label="Rendimento se investir (opcional)" />
               </>
             )}
-            {type === 'debt-payoff' && (
+            {type === 'payoff-vs-invest' && (
               <>
-                <FormGroup label="Saldo da dívida"><Input type="number" min="0" value={form.balance} onChange={(event) => setField('balance', event.target.value)} /></FormGroup>
-                <RateFields value={form.rate} period={form.ratePeriod} onValueChange={(value) => setField('rate', value)} onPeriodChange={(value) => setField('ratePeriod', value)} />
-                <FormGroup label="Parcela atual"><Input type="number" min="0" value={form.monthlyPayment} onChange={(event) => setField('monthlyPayment', event.target.value)} /></FormGroup>
-                <FormGroup label="Valor extra mensal"><Input type="number" min="0" value={form.extraMonthly} onChange={(event) => setField('extraMonthly', event.target.value)} /></FormGroup>
+                <FormGroup label="Saldo da dívida"><Input type="number" min="0" value={form.debtBalance} onChange={(event) => setField('debtBalance', event.target.value)} /></FormGroup>
+                <RateFields value={form.debtRate} period={form.debtRatePeriod} onValueChange={(value) => setField('debtRate', value)} onPeriodChange={(value) => setField('debtRatePeriod', value)} label="Taxa da dívida" />
+                <RateFields value={form.investmentRate} period={form.investmentRatePeriod} onValueChange={(value) => setField('investmentRate', value)} onPeriodChange={(value) => setField('investmentRatePeriod', value)} label="Taxa do investimento" />
+                <FormGroup label="Valor extra disponível"><Input type="number" min="0" value={form.extraAmount} onChange={(event) => setField('extraAmount', event.target.value)} /></FormGroup>
+                <FormGroup label="Horizonte (meses)"><Input type="number" min="1" value={form.horizonMonths} onChange={(event) => setField('horizonMonths', event.target.value)} /></FormGroup>
               </>
             )}
-            {type === 'emergency-reserve' && (
+            {type === 'goal-plan' && (
               <>
-                <FormGroup label="Despesas essenciais/mês"><Input type="number" min="0" value={form.monthlyEssentialExpenses} onChange={(event) => setField('monthlyEssentialExpenses', event.target.value)} /></FormGroup>
-                <FormGroup label="Meses de proteção"><Input type="number" min="1" value={form.targetMonths} onChange={(event) => setField('targetMonths', event.target.value)} /></FormGroup>
-                <FormGroup label="Reserva atual"><Input type="number" min="0" value={form.currentReserve} onChange={(event) => setField('currentReserve', event.target.value)} /></FormGroup>
-                <FormGroup label="Aporte mensal"><Input type="number" min="0" value={form.monthlyContribution} onChange={(event) => setField('monthlyContribution', event.target.value)} /></FormGroup>
+                <FormGroup label="Quanto quer juntar"><Input type="number" min="0" value={form.targetAmount} onChange={(event) => setField('targetAmount', event.target.value)} /></FormGroup>
+                <FormGroup label="Quanto já tem hoje"><Input type="number" min="0" value={form.currentAmount} onChange={(event) => setField('currentAmount', event.target.value)} /></FormGroup>
+                <FormGroup label="Em quantos meses"><Input type="number" min="1" value={form.months} onChange={(event) => setField('months', event.target.value)} /></FormGroup>
+                <RateFields value={form.investmentRate} period={form.investmentRatePeriod} onValueChange={(value) => setField('investmentRate', value)} onPeriodChange={(value) => setField('investmentRatePeriod', value)} label="Rendimento (opcional)" />
               </>
             )}
           </div>

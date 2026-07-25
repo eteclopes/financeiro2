@@ -100,6 +100,32 @@ export const useMonthStore = create((set, get) => ({
     set({ selectedMonthId: monthId });
   },
 
+  // Auto-recuperação: se o backend disser que o mês selecionado não existe
+  // (ex.: seleção antiga guardada no navegador apontando para um mês que
+  // foi removido, ou de outra conta), limpamos a seleção inválida e
+  // re-resolvemos para um mês válido — em vez de ficar preso pedindo um
+  // mês inexistente a cada carregamento.
+  async dropInvalidMonth(badMonthId) {
+    const { selectedMonthId, months } = get();
+    if (String(selectedMonthId) !== String(badMonthId)) return;
+
+    // Remove da lista em memória e da persistência.
+    const remaining = months.filter((m) => String(m.id) !== String(badMonthId));
+    const key = getStorageKey();
+    try { if (key) localStorage.removeItem(key); } catch { /* ok */ }
+
+    // Se ainda houver meses conhecidos, vai para o mais recente; senão,
+    // re-inicializa do zero (busca a lista atual e o mês corrente).
+    if (remaining.length > 0) {
+      const latest = remaining[remaining.length - 1];
+      persistSelection(latest.id);
+      set({ months: remaining, selectedMonthId: latest.id });
+    } else {
+      set({ months: [], selectedMonthId: null });
+      await get().initialize();
+    }
+  },
+
   goToAdjacent(direction) {
     const { months, selectedMonthId } = get();
     const index = months.findIndex((m) => String(m.id) === String(selectedMonthId));

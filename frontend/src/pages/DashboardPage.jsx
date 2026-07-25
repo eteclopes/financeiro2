@@ -102,6 +102,12 @@ export default function DashboardPage() {
       setProjectionView(loadedPreferences.projectionView);
     } catch (e) {
       if (useMonthStore.getState().selectedMonthId !== requestedMonthId) return;
+      // Mês salvo inválido (removido, ou de outra conta): limpa e volta a um
+      // mês válido, em vez de mostrar erro e ficar preso pedindo o mesmo id.
+      if (e?.response?.data?.code === 'MONTH_NOT_FOUND' || e?.code === 'MONTH_NOT_FOUND') {
+        await useMonthStore.getState().dropInvalidMonth(requestedMonthId);
+        return;
+      }
       const msg = extractErrorMessage(e, 'Não foi possível carregar o dashboard.');
       setError(msg);
       errorToast(msg);

@@ -41,6 +41,7 @@ export function Topbar({ title }) {
   const theme = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const user = useAuthStore((s) => s.user);
+  const authStatus = useAuthStore((s) => s.status);
   const timeZone = useLocaleStore((s) => s.timeZone);
   const isPro = Boolean(user?.isPro);
   const navigate = useNavigate();
@@ -52,14 +53,17 @@ export function Topbar({ title }) {
   const notifRef = useRef(null);
 
   const loadAlerts = useCallback(async () => {
-    if (!selectedId) return;
+    // Só busca alertas com sessão confirmada e mês válido selecionado. Isso
+    // evita a rajada de 401 quando o app ainda está revalidando a sessão no
+    // arranque (o polling disparava antes do token estar pronto).
+    if (!selectedId || authStatus !== 'authenticated') return;
     try {
       const { data } = await alertsApi.list(selectedId);
       setAlerts(data.alerts ?? []);
     } catch {
       // A central de alertas já apresenta falhas de carregamento ao usuário.
     }
-  }, [selectedId]);
+  }, [selectedId, authStatus]);
 
   useEffect(() => {
     loadAlerts();

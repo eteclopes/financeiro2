@@ -9,17 +9,17 @@ const service = require('./calculators.service');
 const handlers = {
   compound: service.calculateCompoundInterest,
   financing: service.calculateFinancing,
-  'cash-vs-installments': service.calculateCashVsInstallments,
-  'debt-payoff': service.calculateDebtPayoff,
-  'emergency-reserve': service.calculateEmergencyReserve,
+  'installment-cost': service.calculateInstallmentCost,
+  'payoff-vs-invest': service.calculatePayoffVsInvest,
+  'goal-plan': service.calculateGoalPlan,
 };
 
 const schemaByRoute = {
   compound: schemas.compound,
   financing: schemas.financing,
-  'cash-vs-installments': schemas.cashVsInstallments,
-  'debt-payoff': schemas.debtPayoff,
-  'emergency-reserve': schemas.emergencyReserve,
+  'installment-cost': schemas.installmentCost,
+  'payoff-vs-invest': schemas.payoffVsInvest,
+  'goal-plan': schemas.goalPlan,
 };
 
 const router = Router();

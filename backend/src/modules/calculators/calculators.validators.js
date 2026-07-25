@@ -36,28 +36,36 @@ const schemas = {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Entrada inválida.', path: ['downPayment'] });
     }
   }),
-  cashVsInstallments: z.object({
+  // Custo do parcelamento (CET / juros embutidos). A taxa de investimento é
+  // opcional: se informada, compara "parcelar e investir" x "à vista".
+  installmentCost: z.object({
     cashPrice: positiveMoney,
-    installmentTotal: positiveMoney,
+    installmentValue: positiveMoney,
     installments: z.coerce.number().int().min(1).max(120),
     investmentRate: rate.optional(),
     annualInvestmentRate: rate.optional(),
     investmentRatePeriod: ratePeriod,
-    cashback: money.default(0),
-  }).superRefine((data, ctx) => requireRate(data, ctx, 'investmentRate', 'annualInvestmentRate')),
-  debtPayoff: z.object({
-    balance: positiveMoney,
-    rate: rate.optional(),
-    annualRate: rate.optional(),
-    ratePeriod,
-    monthlyPayment: positiveMoney,
-    extraMonthly: money.default(0),
-  }).superRefine((data, ctx) => requireRate(data, ctx)),
-  emergencyReserve: z.object({
-    monthlyEssentialExpenses: positiveMoney,
-    targetMonths: z.coerce.number().min(1).max(36),
-    currentReserve: money.default(0),
-    monthlyContribution: money.default(0),
+  }),
+  // Antecipar a dívida ou investir? Compara a taxa da dívida com a do
+  // investimento sobre um valor extra, num horizonte de meses.
+  payoffVsInvest: z.object({
+    debtBalance: positiveMoney,
+    debtRate: rate,
+    debtRatePeriod: ratePeriod,
+    investmentRate: rate,
+    investmentRatePeriod: ratePeriod,
+    extraAmount: positiveMoney,
+    horizonMonths: z.coerce.number().int().min(1).max(600).default(12),
+  }),
+  // Meta por prazo: quanto guardar por mês para chegar a um valor até uma
+  // data. Rendimento é opcional (0 = só divide o que falta pelos meses).
+  goalPlan: z.object({
+    targetAmount: positiveMoney,
+    currentAmount: money.default(0),
+    months: z.coerce.number().int().min(1).max(600),
+    investmentRate: rate.optional(),
+    annualInvestmentRate: rate.optional(),
+    investmentRatePeriod: ratePeriod,
   }),
 };
 
