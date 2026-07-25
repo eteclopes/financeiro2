@@ -65,6 +65,8 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   const [batchSelected, setBatchSelected] = useState(() => new Set());
   const [batchMethod, setBatchMethod] = useState(ACCOUNT_BALANCE_METHOD);
   const [batchLoading, setBatchLoading] = useState(false);
+  // Modo "pagar várias" dentro do próprio modal Pagar Conta.
+  const [payMulti, setPayMulti] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [incForm, setIncForm] = useState(() => createIncomeForm(selectedMonth));
@@ -424,29 +426,40 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     };
   }
 
-  async function openPayBatch() {
-    if (isClosedMonth) { toast.error(closedMonthNotice); return; }
-    setBatch({ bills: [], invoices: [] });
-    setBatchSelected(new Set());
-    setBatchMethod(ACCOUNT_BALANCE_METHOD);
+  // Liga/desliga o modo "pagar várias" dentro do modal Pagar Conta. Ao ligar,
+  // busca contas pendentes + faturas em aberto e já deixa tudo marcado
+  // (caso comum "pagar tudo"); o usuário desmarca o que não quiser.
+  async function toggleMultiPay(on) {
+    setPayMulti(on);
+    if (!on) return;
     setBatchLoading(true);
-    setModal('payBatch');
     try {
       const { data } = await paymentsApi.payable(selectedMonthId);
-      setBatch({ bills: data.bills ?? [], invoices: data.invoices ?? [] });
-      // Por padrão, tudo vem marcado — é o caso de uso mais comum ("pagar
-      // tudo"), e o usuário desmarca o que não quiser.
-      const all = new Set([
-        ...(data.bills ?? []).map((b) => `expense:${b.id}`),
-        ...(data.invoices ?? []).map((i) => `invoice:${i.id}`),
-      ]);
-      setBatchSelected(all);
+      const bills = data.bills ?? [];
+      const invoices = data.invoices ?? [];
+      setBatch({ bills, invoices });
+      setBatchMethod(payMethod);
+      setBatchSelected(new Set([
+        ...bills.map((b) => `expense:${b.id}`),
+        ...invoices.map((i) => `invoice:${i.id}`),
+      ]));
     } catch (error) {
       toast.error(extractErrorMessage(error, 'Não foi possível carregar as contas a pagar.'));
-      setModal(null);
+      setPayMulti(false);
     } finally {
       setBatchLoading(false);
     }
+  }
+
+  function toggleSelectAllBatch() {
+    setBatchSelected((prev) => {
+      const allKeys = [
+        ...batch.bills.map((b) => `expense:${b.id}`),
+        ...batch.invoices.map((i) => `invoice:${i.id}`),
+      ];
+      // Se já está tudo marcado, desmarca tudo; senão, marca tudo.
+      return prev.size >= allKeys.length ? new Set() : new Set(allKeys);
+    });
   }
 
   function toggleBatchItem(key) {
@@ -492,8 +505,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   const ACTIONS = [
     { Icon: IconIncome, label: 'Receita', iconBg: 'bg-primary-muted dark:bg-primary/20', iconColor: 'text-primary-dark dark:text-primary-light', onClick: guardClosedMonth(openIncome), disabled: isClosedMonth },
     { Icon: IconExpense, label: 'Despesa', iconBg: 'bg-danger-muted dark:bg-danger/20', iconColor: 'text-danger-dark dark:text-danger-light', onClick: guardClosedMonth(openExpense), disabled: isClosedMonth },
-    { Icon: IconCheck, label: 'Pagar conta', iconBg: 'bg-info-muted dark:bg-info/20', iconColor: 'text-info-dark dark:text-info-light', onClick: guardClosedMonth(() => { setPayTarget(null); setPayAmount(''); setPayMethod(ACCOUNT_BALANCE_METHOD); setModal('pay'); }), disabled: isClosedMonth },
-    { Icon: IconCheck, label: 'Pagar em lote', iconBg: 'bg-success-subtle dark:bg-success/15', iconColor: 'text-success-dark dark:text-success-light', onClick: guardClosedMonth(openPayBatch), disabled: isClosedMonth },
+    { Icon: IconCheck, label: 'Pagar conta', iconBg: 'bg-info-muted dark:bg-info/20', iconColor: 'text-info-dark dark:text-info-light', onClick: guardClosedMonth(() => { setPayTarget(null); setPayAmount(''); setPayMethod(ACCOUNT_BALANCE_METHOD); setPayMulti(false); setBatch({ bills: [], invoices: [] }); setBatchSelected(new Set()); setModal('pay'); }), disabled: isClosedMonth },
     { Icon: IconCard, label: 'Fatura', iconBg: 'bg-warning-muted dark:bg-warning/20', iconColor: 'text-warning-dark dark:text-warning-light', onClick: guardClosedMonth(openFatura), disabled: isClosedMonth },
     { Icon: IconGoal, label: 'Meta', iconBg: 'bg-purple-100 dark:bg-accentpurple/20', iconColor: 'text-purple-700 dark:text-accentpurple-light', onClick: guardClosedMonth(() => { setGoalTarget(null); setContribForm({ value: '', date: ledgerMonthDateInputValue(selectedMonth) }); setModal('goal'); }), disabled: isClosedMonth },
     {
@@ -798,47 +810,136 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
         </div>
       </Modal>
 
-      {/* ── Pagar Conta ── */}
+      {/* ── Pagar Conta (uma ou várias de uma vez) ── */}
       <Modal open={modal === 'pay'} onClose={() => setModal(null)} title="Pagar Conta" size="sm">
         <div className="space-y-4">
-          {pendingExpenses.length === 0 ? (
-            <p className="text-sm text-muted text-center py-4">Nenhuma conta pendente neste mês.</p>
-          ) : (
-            <>
-              <FormGroup label="Conta a pagar">
-                <Select value={payTarget?.id ?? ''} onChange={(event) => {
-                  const expense = pendingExpenses.find((item) => String(item.id) === event.target.value);
-                  setPayTarget(expense ?? null);
-                  setPayAmount(String(expense?.value ?? ''));
-                }}>
-                  <option value="">Selecione...</option>
-                  {pendingExpenses.map((expense) => (
-                    <option data-i18n-ignore="true" key={expense.id} value={expense.id}>{expense.description} — {formatCurrency(expense.value)}</option>
-                  ))}
-                </Select>
-              </FormGroup>
-              {payTarget && (
-                <div className="bg-subtle dark:bg-white/[0.04] rounded-xl p-3 text-sm">
-                  <p className="font-semibold text-slate-900 dark:text-zinc-50"><UserText>{payTarget.description}</UserText></p>
-                  <p className="mt-1 text-xs text-muted">Valor previsto: {formatCurrency(payTarget.value)}</p>
-                </div>
-              )}
-              <FormGroup label="Valor pago" required>
-                <Input type="number" min="0" step="0.01" value={payAmount} onChange={(event) => setPayAmount(event.target.value)} />
-              </FormGroup>
-              <FormGroup label="Forma de pagamento">
-                <ChoiceCards compact columns={2} value={payMethod} onChange={setPayMethod} options={BALANCE_PAYMENT_OPTIONS} />
-              </FormGroup>
-              {payTarget?.type === 'priority' && (
-                <p className="text-xs text-info bg-info-subtle p-3 rounded-xl border border-info/20">
-                  💡 Em dívidas flexíveis, o saldo não pago será acumulado para a próxima parcela.
-                </p>
-              )}
-              <div className="modal-actions">
-                <Button variant="outline" onClick={() => setModal(null)}>Cancelar</Button>
-                <Button onClick={payExpense} loading={saving}>Confirmar Pagamento</Button>
+          {/* Interruptor: pagar uma conta OU selecionar várias (e a fatura) de uma vez */}
+          <ToggleSwitch
+            checked={payMulti}
+            onChange={toggleMultiPay}
+            label="Pagar várias de uma vez"
+            description="Selecione várias contas e faturas de cartão e pague tudo numa operação só."
+          />
+
+          {payMulti ? (
+            /* ---------- MODO MÚLTIPLO ---------- */
+            batchLoading ? (
+              <div className="py-6 text-center" aria-live="polite">
+                <p className="text-sm font-medium text-slate-700 dark:text-zinc-200">Carregando contas e faturas...</p>
               </div>
-            </>
+            ) : batchAllItems.length === 0 ? (
+              <p className="text-sm text-muted text-center py-6">Nenhuma conta ou fatura em aberto neste mês. Tudo em dia! 🎉</p>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted">Marque o que deseja pagar.</p>
+                  <button type="button" onClick={toggleSelectAllBatch} className="text-xs font-semibold text-primary-dark hover:underline dark:text-primary-hover">
+                    {batchSelected.size >= batchAllItems.length ? 'Desmarcar tudo' : 'Selecionar tudo'}
+                  </button>
+                </div>
+
+                {batch.bills.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted">Contas</p>
+                    <div className="space-y-1.5">
+                      {batch.bills.map((bill) => {
+                        const key = `expense:${bill.id}`;
+                        return (
+                          <label key={key} className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition-colors hover:border-primary/30 dark:border-white/[0.07] dark:bg-white/[0.03]">
+                            <input type="checkbox" className="h-4 w-4 accent-[--color-primary]" checked={batchSelected.has(key)} onChange={() => toggleBatchItem(key)} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium text-slate-800 dark:text-zinc-100"><UserText>{bill.description}</UserText></span>
+                              {bill.category?.name && <span className="block truncate text-[11px] text-muted">{bill.category.name}</span>}
+                            </span>
+                            <span className="shrink-0 font-mono text-sm font-semibold text-slate-900 dark:text-zinc-50">{formatCurrency(bill.amount)}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {batch.invoices.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted">Faturas de cartão</p>
+                    <div className="space-y-1.5">
+                      {batch.invoices.map((invoice) => {
+                        const key = `invoice:${invoice.id}`;
+                        return (
+                          <label key={key} className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition-colors hover:border-primary/30 dark:border-white/[0.07] dark:bg-white/[0.03]">
+                            <input type="checkbox" className="h-4 w-4 accent-[--color-primary]" checked={batchSelected.has(key)} onChange={() => toggleBatchItem(key)} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium text-slate-800 dark:text-zinc-100">{invoice.description}</span>
+                              <span className="block truncate text-[11px] text-muted">Venc. {String(invoice.referenceMonth).padStart(2, '0')}/{invoice.referenceYear}</span>
+                            </span>
+                            <span className="shrink-0 font-mono text-sm font-semibold text-slate-900 dark:text-zinc-50">{formatCurrency(invoice.amount)}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="rounded-2xl bg-subtle p-4 dark:bg-white/[0.04]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted">{batchSelectedCount} item(ns) selecionado(s)</span>
+                    <span className="font-mono text-xl font-bold text-slate-900 dark:text-zinc-50">{formatCurrency(batchSelectedTotal)}</span>
+                  </div>
+                </div>
+
+                <FormGroup label="Forma de pagamento">
+                  <ChoiceCards compact columns={2} value={batchMethod} onChange={setBatchMethod} options={BALANCE_PAYMENT_OPTIONS} />
+                </FormGroup>
+
+                <div className="modal-actions">
+                  <Button variant="outline" onClick={() => setModal(null)}>Cancelar</Button>
+                  <Button onClick={payBatch} loading={saving} disabled={batchSelectedCount === 0}>
+                    Pagar {formatCurrency(batchSelectedTotal)}
+                  </Button>
+                </div>
+              </>
+            )
+          ) : (
+            /* ---------- MODO UMA CONTA (comportamento original) ---------- */
+            pendingExpenses.length === 0 ? (
+              <p className="text-sm text-muted text-center py-4">Nenhuma conta pendente neste mês.</p>
+            ) : (
+              <>
+                <FormGroup label="Conta a pagar">
+                  <Select value={payTarget?.id ?? ''} onChange={(event) => {
+                    const expense = pendingExpenses.find((item) => String(item.id) === event.target.value);
+                    setPayTarget(expense ?? null);
+                    setPayAmount(String(expense?.value ?? ''));
+                  }}>
+                    <option value="">Selecione...</option>
+                    {pendingExpenses.map((expense) => (
+                      <option data-i18n-ignore="true" key={expense.id} value={expense.id}>{expense.description} — {formatCurrency(expense.value)}</option>
+                    ))}
+                  </Select>
+                </FormGroup>
+                {payTarget && (
+                  <div className="bg-subtle dark:bg-white/[0.04] rounded-xl p-3 text-sm">
+                    <p className="font-semibold text-slate-900 dark:text-zinc-50"><UserText>{payTarget.description}</UserText></p>
+                    <p className="mt-1 text-xs text-muted">Valor previsto: {formatCurrency(payTarget.value)}</p>
+                  </div>
+                )}
+                <FormGroup label="Valor pago" required>
+                  <Input type="number" min="0" step="0.01" value={payAmount} onChange={(event) => setPayAmount(event.target.value)} />
+                </FormGroup>
+                <FormGroup label="Forma de pagamento">
+                  <ChoiceCards compact columns={2} value={payMethod} onChange={setPayMethod} options={BALANCE_PAYMENT_OPTIONS} />
+                </FormGroup>
+                {payTarget?.type === 'priority' && (
+                  <p className="text-xs text-info bg-info-subtle p-3 rounded-xl border border-info/20">
+                    💡 Em dívidas flexíveis, o saldo não pago será acumulado para a próxima parcela.
+                  </p>
+                )}
+                <div className="modal-actions">
+                  <Button variant="outline" onClick={() => setModal(null)}>Cancelar</Button>
+                  <Button onClick={payExpense} loading={saving}>Confirmar Pagamento</Button>
+                </div>
+              </>
+            )
           )}
         </div>
       </Modal>
@@ -887,84 +988,6 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
         </div>
       </Modal>
 
-      {/* ── Pagar em lote (várias contas + faturas) ── */}
-      <Modal open={modal === 'payBatch'} onClose={() => setModal(null)} title="Pagar em lote" size="md">
-        <div className="space-y-4">
-          {batchLoading ? (
-            <div className="py-6 text-center" aria-live="polite">
-              <p className="text-sm font-medium text-slate-700 dark:text-zinc-200">Carregando contas e faturas...</p>
-            </div>
-          ) : batchAllItems.length === 0 ? (
-            <p className="text-sm text-muted text-center py-6">Nenhuma conta ou fatura em aberto neste mês. Tudo em dia! 🎉</p>
-          ) : (
-            <>
-              <p className="text-xs text-muted">
-                Marque o que deseja pagar. Tudo é debitado de uma vez, na mesma operação.
-              </p>
-
-              {batch.bills.length > 0 && (
-                <div>
-                  <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted">Contas</p>
-                  <div className="space-y-1.5">
-                    {batch.bills.map((bill) => {
-                      const key = `expense:${bill.id}`;
-                      return (
-                        <label key={key} className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition-colors hover:border-primary/30 dark:border-white/[0.07] dark:bg-white/[0.03]">
-                          <input type="checkbox" className="h-4 w-4 accent-[--color-primary]" checked={batchSelected.has(key)} onChange={() => toggleBatchItem(key)} />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium text-slate-800 dark:text-zinc-100"><UserText>{bill.description}</UserText></span>
-                            {bill.category?.name && <span className="block truncate text-[11px] text-muted">{bill.category.name}</span>}
-                          </span>
-                          <span className="shrink-0 font-mono text-sm font-semibold text-slate-900 dark:text-zinc-50">{formatCurrency(bill.amount)}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {batch.invoices.length > 0 && (
-                <div>
-                  <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted">Faturas de cartão</p>
-                  <div className="space-y-1.5">
-                    {batch.invoices.map((invoice) => {
-                      const key = `invoice:${invoice.id}`;
-                      return (
-                        <label key={key} className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition-colors hover:border-primary/30 dark:border-white/[0.07] dark:bg-white/[0.03]">
-                          <input type="checkbox" className="h-4 w-4 accent-[--color-primary]" checked={batchSelected.has(key)} onChange={() => toggleBatchItem(key)} />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium text-slate-800 dark:text-zinc-100">{invoice.description}</span>
-                            <span className="block truncate text-[11px] text-muted">Venc. {String(invoice.referenceMonth).padStart(2, '0')}/{invoice.referenceYear}</span>
-                          </span>
-                          <span className="shrink-0 font-mono text-sm font-semibold text-slate-900 dark:text-zinc-50">{formatCurrency(invoice.amount)}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div className="rounded-2xl bg-subtle p-4 dark:bg-white/[0.04]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted">{batchSelectedCount} item(ns) selecionado(s)</span>
-                  <span className="font-mono text-xl font-bold text-slate-900 dark:text-zinc-50">{formatCurrency(batchSelectedTotal)}</span>
-                </div>
-              </div>
-
-              <FormGroup label="Forma de pagamento">
-                <ChoiceCards compact columns={2} value={batchMethod} onChange={setBatchMethod} options={BALANCE_PAYMENT_OPTIONS} />
-              </FormGroup>
-
-              <div className="modal-actions">
-                <Button variant="outline" onClick={() => setModal(null)}>Cancelar</Button>
-                <Button onClick={payBatch} loading={saving} disabled={batchSelectedCount === 0}>
-                  Pagar {formatCurrency(batchSelectedTotal)}
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
-      </Modal>
 
       {/* ── Aporte em Meta ── */}
       <Modal open={modal === 'goal'} onClose={() => setModal(null)} title="Aporte em Meta" size="sm">
