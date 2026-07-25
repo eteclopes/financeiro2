@@ -30,4 +30,9 @@ const updateDebtSchema = z.object({
   dueDay: z.coerce.number().int().min(1).max(31).optional(),
 });
 
-module.exports = { createDebtSchema, updateDebtSchema };
+const renegotiateDebtSchema = z.object({
+  monthId: z.coerce.number().int().positive(),
+  installments: z.coerce.number().int().min(1, 'Mínimo de 1 parcela.').max(360),
+});
+
+module.exports = { createDebtSchema, updateDebtSchema, renegotiateDebtSchema };

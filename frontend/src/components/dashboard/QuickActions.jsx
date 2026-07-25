@@ -436,11 +436,13 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     try {
       const { data } = await paymentsApi.payable(selectedMonthId);
       const bills = data.bills ?? [];
+      const debts = data.debts ?? [];
       const invoices = data.invoices ?? [];
-      setBatch({ bills, invoices });
+      setBatch({ bills, debts, invoices });
       setBatchMethod(payMethod);
       setBatchSelected(new Set([
         ...bills.map((b) => `expense:${b.id}`),
+        ...debts.map((d) => `expense:${d.id}`),
         ...invoices.map((i) => `invoice:${i.id}`),
       ]));
     } catch (error) {
@@ -455,6 +457,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     setBatchSelected((prev) => {
       const allKeys = [
         ...batch.bills.map((b) => `expense:${b.id}`),
+        ...(batch.debts ?? []).map((d) => `expense:${d.id}`),
         ...batch.invoices.map((i) => `invoice:${i.id}`),
       ];
       // Se já está tudo marcado, desmarca tudo; senão, marca tudo.
@@ -472,6 +475,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
 
   const batchAllItems = [
     ...batch.bills.map((b) => ({ ...b, key: `expense:${b.id}` })),
+    ...(batch.debts ?? []).map((d) => ({ ...d, key: `expense:${d.id}` })),
     ...batch.invoices.map((i) => ({ ...i, key: `invoice:${i.id}` })),
   ];
   const batchSelectedTotal = batchAllItems
@@ -480,7 +484,10 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   const batchSelectedCount = batchSelected.size;
 
   async function payBatch() {
-    const expenseIds = batch.bills.filter((b) => batchSelected.has(`expense:${b.id}`)).map((b) => b.id);
+    const expenseIds = [
+      ...batch.bills.filter((b) => batchSelected.has(`expense:${b.id}`)).map((b) => b.id),
+      ...(batch.debts ?? []).filter((d) => batchSelected.has(`expense:${d.id}`)).map((d) => d.id),
+    ];
     const invoiceIds = batch.invoices.filter((i) => batchSelected.has(`invoice:${i.id}`)).map((i) => i.id);
     if (expenseIds.length === 0 && invoiceIds.length === 0) {
       toast.error('Selecione ao menos uma conta ou fatura.');
@@ -491,8 +498,9 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
       const { data } = await paymentsApi.payBatch({ expenseIds, invoiceIds, paymentMethod: batchMethod });
       const parts = [];
       if (data.paidBillsCount) parts.push(`${data.paidBillsCount} conta(s)`);
+      if (data.paidDebtsCount) parts.push(`${data.paidDebtsCount} parcela(s) de dívida`);
       if (data.paidInvoicesCount) parts.push(`${data.paidInvoicesCount} fatura(s)`);
-      toast.success(`Pago: ${parts.join(' e ')} — ${formatCurrency(data.total)}.`);
+      toast.success(`Pago: ${parts.join(', ')} — ${formatCurrency(data.total)}.`);
       setModal(null);
       onRefresh?.();
     } catch (error) {
@@ -505,7 +513,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   const ACTIONS = [
     { Icon: IconIncome, label: 'Receita', iconBg: 'bg-primary-muted dark:bg-primary/20', iconColor: 'text-primary-dark dark:text-primary-light', onClick: guardClosedMonth(openIncome), disabled: isClosedMonth },
     { Icon: IconExpense, label: 'Despesa', iconBg: 'bg-danger-muted dark:bg-danger/20', iconColor: 'text-danger-dark dark:text-danger-light', onClick: guardClosedMonth(openExpense), disabled: isClosedMonth },
-    { Icon: IconCheck, label: 'Pagar conta', iconBg: 'bg-info-muted dark:bg-info/20', iconColor: 'text-info-dark dark:text-info-light', onClick: guardClosedMonth(() => { setPayTarget(null); setPayAmount(''); setPayMethod(ACCOUNT_BALANCE_METHOD); setPayMulti(false); setBatch({ bills: [], invoices: [] }); setBatchSelected(new Set()); setModal('pay'); }), disabled: isClosedMonth },
+    { Icon: IconCheck, label: 'Pagar conta', iconBg: 'bg-info-muted dark:bg-info/20', iconColor: 'text-info-dark dark:text-info-light', onClick: guardClosedMonth(() => { setPayTarget(null); setPayAmount(''); setPayMethod(ACCOUNT_BALANCE_METHOD); setPayMulti(false); setBatch({ bills: [], debts: [], invoices: [] }); setBatchSelected(new Set()); setModal('pay'); }), disabled: isClosedMonth },
     { Icon: IconCard, label: 'Fatura', iconBg: 'bg-warning-muted dark:bg-warning/20', iconColor: 'text-warning-dark dark:text-warning-light', onClick: guardClosedMonth(openFatura), disabled: isClosedMonth },
     { Icon: IconGoal, label: 'Meta', iconBg: 'bg-purple-100 dark:bg-accentpurple/20', iconColor: 'text-purple-700 dark:text-accentpurple-light', onClick: guardClosedMonth(() => { setGoalTarget(null); setContribForm({ value: '', date: ledgerMonthDateInputValue(selectedMonth) }); setModal('goal'); }), disabled: isClosedMonth },
     {
@@ -852,6 +860,27 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                               {bill.category?.name && <span className="block truncate text-[11px] text-muted">{bill.category.name}</span>}
                             </span>
                             <span className="shrink-0 font-mono text-sm font-semibold text-slate-900 dark:text-zinc-50">{formatCurrency(bill.amount)}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {(batch.debts ?? []).length > 0 && (
+                  <div>
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted">Parcelas de dívida</p>
+                    <div className="space-y-1.5">
+                      {batch.debts.map((debt) => {
+                        const key = `expense:${debt.id}`;
+                        return (
+                          <label key={key} className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition-colors hover:border-primary/30 dark:border-white/[0.07] dark:bg-white/[0.03]">
+                            <input type="checkbox" className="h-4 w-4 accent-[--color-primary]" checked={batchSelected.has(key)} onChange={() => toggleBatchItem(key)} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium text-slate-800 dark:text-zinc-100"><UserText>{debt.description}</UserText></span>
+                              {debt.status === 'late' && <span className="block truncate text-[11px] font-semibold text-danger-dark dark:text-danger-light">Atrasada</span>}
+                            </span>
+                            <span className="shrink-0 font-mono text-sm font-semibold text-slate-900 dark:text-zinc-50">{formatCurrency(debt.amount)}</span>
                           </label>
                         );
                       })}

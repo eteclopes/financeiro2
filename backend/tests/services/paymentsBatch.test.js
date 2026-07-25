@@ -66,13 +66,38 @@ describe('payBillsBatch — pagamento de várias contas + fatura', () => {
     expect(result.total).toBe(150);
   });
 
-  test('recusa parcela de dívida no lote (pagamento flexível é individual)', async () => {
+  test('paga parcela de dívida no lote e reduz o saldo devedor', async () => {
     prismaMock.expense.findMany.mockResolvedValueOnce([
-      { id: 7n, userId: 10n, type: 'priority', status: 'pending', value: 300 },
+      { id: 7n, userId: 10n, type: 'priority', status: 'pending', value: 300, paidAmount: 0, debtId: 1n, dueDate: '2026-09-10' },
     ]);
-    await expect(
-      payBillsBatch(10n, { expenseIds: ['7'], invoiceIds: [], paymentMethod: 'debit' })
-    ).rejects.toMatchObject({ code: 'PAY_DEBT_INDIVIDUALLY' });
+    prismaMock.debt.findMany.mockResolvedValue([
+      { id: 1n, userId: 10n, remainingBalance: 900, pendingCarryOver: 0 },
+    ]);
+
+    const result = await payBillsBatch(10n, { expenseIds: ['7'], invoiceIds: [], paymentMethod: 'debit' });
+    expect(result.paidDebtsCount).toBe(1);
+    expect(result.debtsTotal).toBe(300);
+    expect(prismaMock.debt.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ remainingBalance: 600 }) })
+    );
+  });
+
+  test('duas parcelas da mesma dívida não abatem além do saldo devedor', async () => {
+    prismaMock.expense.findMany.mockResolvedValueOnce([
+      { id: 7n, userId: 10n, type: 'priority', status: 'pending', value: 300, paidAmount: 0, debtId: 1n, dueDate: '2026-09-10' },
+      { id: 8n, userId: 10n, type: 'priority', status: 'late', value: 300, paidAmount: 0, debtId: 1n, dueDate: '2026-08-10' },
+    ]);
+    // Dívida só deve R$ 400 no total, embora as 2 parcelas somem R$ 600.
+    prismaMock.debt.findMany.mockResolvedValue([
+      { id: 1n, userId: 10n, remainingBalance: 400, pendingCarryOver: 0 },
+    ]);
+
+    const result = await payBillsBatch(10n, { expenseIds: ['7', '8'], invoiceIds: [], paymentMethod: 'debit' });
+    // Paga no máximo o saldo devedor: 400, não 600.
+    expect(result.debtsTotal).toBe(400);
+    expect(prismaMock.debt.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ remainingBalance: 0, status: 'settled' }) })
+    );
   });
 
   test('recusa parcela de cartão avulsa no lote (paga pela fatura)', async () => {

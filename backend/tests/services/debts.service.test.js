@@ -102,46 +102,67 @@ describe('applyPaymentToInstallment — bloqueio de saldo insuficiente (REGRESS�
   });
 });
 
-describe('generateNextInstallment — aplica o carryOver pendente ao gerar a próxima parcela', () => {
-  test('carryOver negativo (crédito de excedente) reduz a próxima parcela', async () => {
-    const debt = makeDebt({ remainingBalance: 1740, pendingCarryOver: -60 });
-    prismaMock.expense.count.mockResolvedValue(2); // 2 já geradas, 10 restantes
+describe('generateNextInstallment — rolagem do saldo não pago para a parcela atual', () => {
+  // Sem parcelas anteriores em aberto por padrão.
+  beforeEach(() => { prismaMock.expense.findMany.mockResolvedValue([]); });
+
+  test('sem parcela anterior em aberto: próxima parcela é o valor nominal', async () => {
+    const debt = makeDebt({ remainingBalance: 1800 }); // nominal 200, 12x
+    prismaMock.expense.count.mockResolvedValue(2);      // 2 geradas, faltam 10
 
     const created = await generateNextInstallment(debt, { id: 2n });
-
-    expect(created.value).toBe(140); // 200 - 60
+    expect(created.value).toBe(200);
   });
 
-  test('carryOver positivo (falta de pagamento anterior) aumenta a próxima parcela', async () => {
-    const debt = makeDebt({ remainingBalance: 1850, pendingCarryOver: 50 });
+  test('pagou só parte da parcela anterior: o que faltou é SOMADO à próxima', async () => {
+    // Regra do usuário: parcela de 200, pagou 60 -> próxima = 200 + 140.
+    const debt = makeDebt({ remainingBalance: 1740 });
     prismaMock.expense.count.mockResolvedValue(2);
+    prismaMock.expense.findMany.mockResolvedValue([{ id: 5n, value: 200, paidAmount: 60 }]);
 
     const created = await generateNextInstallment(debt, { id: 2n });
-
-    expect(created.value).toBe(250); // 200 + 50
+    expect(created.value).toBe(340); // 200 nominal + 140 atrasado
+    // A parcela anterior é fechada (marcada como paga) — não fica dobrando.
+    expect(prismaMock.expense.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 5n }, data: { status: 'paid' } })
+    );
   });
 
-  test('depois de aplicado, o carryOver é zerado (não se repete nas parcelas seguintes)', async () => {
-    const debt = makeDebt({ remainingBalance: 1740, pendingCarryOver: -60 });
+  test('pulou a parcela anterior inteira: valor inteiro é somado à próxima', async () => {
+    const debt = makeDebt({ remainingBalance: 1800 });
     prismaMock.expense.count.mockResolvedValue(2);
-
-    await generateNextInstallment(debt, { id: 2n });
-
-    const [{ data }] = prismaMock.debt.update.mock.calls[0];
-    expect(data.pendingCarryOver).toBe(0);
-  });
-
-  test('carryOver maior que o nominal é parcialmente aplicado, e a sobra persiste para a parcela seguinte', async () => {
-    // excedente de 500 numa parcela nominal de 200: zera esta parcela e
-    // ainda sobram 300 de crédito para a parcela DEPOIS desta.
-    const debt = makeDebt({ remainingBalance: 5000, pendingCarryOver: -500 });
-    prismaMock.expense.count.mockResolvedValue(2);
+    prismaMock.expense.findMany.mockResolvedValue([{ id: 5n, value: 200, paidAmount: 0 }]);
 
     const created = await generateNextInstallment(debt, { id: 2n });
+    expect(created.value).toBe(400); // 200 + 200
+  });
 
-    expect(created.value).toBe(0);
-    const [{ data }] = prismaMock.debt.update.mock.calls[0];
-    expect(data.pendingCarryOver).toBe(-300);
+  test('última parcela carrega TODO o saldo devedor restante', async () => {
+    // 11 de 12 geradas -> a próxima é a última (12/12) e fecha o saldo.
+    const debt = makeDebt({ remainingBalance: 1500 });
+    prismaMock.expense.count.mockResolvedValue(11);
+    prismaMock.expense.findMany.mockResolvedValue([{ id: 5n, value: 200, paidAmount: 0 }]);
+
+    const created = await generateNextInstallment(debt, { id: 2n });
+    expect(created.value).toBe(1500); // saldo devedor inteiro
+  });
+
+  test('plano de parcelas esgotado e ainda há saldo: NÃO gera parcela nova (fica p/ renegociar)', async () => {
+    const debt = makeDebt({ remainingBalance: 1000 });
+    prismaMock.expense.count.mockResolvedValue(12); // todas as 12 já geradas
+
+    const created = await generateNextInstallment(debt, { id: 2n });
+    expect(created).toBeNull();
+    expect(prismaMock.expense.create).not.toHaveBeenCalled();
+  });
+
+  test('saldo devedor zerado encerra a dívida', async () => {
+    const debt = makeDebt({ remainingBalance: 0.005 });
+    const created = await generateNextInstallment(debt, { id: 2n });
+    expect(created).toBeNull();
+    expect(prismaMock.debt.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'settled' }) })
+    );
   });
 });
 

@@ -58,6 +58,7 @@ export const debtsApi = {
   list: () => api.get('/debts'),
   create: (data) => api.post('/debts', data),
   update: (id, data) => api.patch(`/debts/${id}`, data),
+  renegotiate: (id, data) => api.post(`/debts/${id}/renegotiate`, data),
   delete: (id) => api.delete(`/debts/${id}`),
 };
 

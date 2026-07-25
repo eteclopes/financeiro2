@@ -14,42 +14,22 @@ const MONTH = { id: 50n, month: 9, year: 2026 };
 // F-02 — dívida NUNCA é encerrada com saldo devedor em aberto
 // ---------------------------------------------------------------
 describe('generateNextInstallment — quitação só com saldo zero (F-02)', () => {
-  test('plano original esgotado mas com saldo devedor gera parcela RESIDUAL em vez de apagar a dívida', async () => {
+  test('plano original esgotado + saldo restante NÃO gera parcela nova (fica para renegociar/pagar quando quiser)', async () => {
     const debt = {
       id: 1n, userId: 10n, description: 'Notebook', categoryId: 3n,
       status: 'active', installmentsCount: 12, installmentValue: 100,
       remainingBalance: 250, pendingCarryOver: 0, dueDay: 10,
     };
-    prismaMock.expense.create.mockResolvedValue({ id: 99n });
+    prismaMock.expense.findMany.mockResolvedValue([]);
 
     const created = await debtsService.generateNextInstallment(
       debt, MONTH, prismaMock, { installmentsGenerated: 12 }
     );
 
-    expect(created).not.toBeNull();
-    // Não pode ter sido marcada como quitada.
-    const updateData = prismaMock.debt.update.mock.calls[0][0].data;
-    expect(updateData.status).toBeUndefined();
-    // O total de parcelas é estendido para o rótulo continuar coerente.
-    expect(updateData.installmentsCount).toBe(13);
-    expect(prismaMock.expense.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ value: 100, debtId: 1n }) })
-    );
-  });
-
-  test('parcela residual nunca cobra mais que o saldo devedor restante', async () => {
-    const debt = {
-      id: 1n, userId: 10n, description: 'Notebook', categoryId: 3n,
-      status: 'active', installmentsCount: 12, installmentValue: 100,
-      remainingBalance: 30, pendingCarryOver: 0, dueDay: 10,
-    };
-    prismaMock.expense.create.mockResolvedValue({ id: 99n });
-
-    await debtsService.generateNextInstallment(debt, MONTH, prismaMock, { installmentsGenerated: 12 });
-
-    expect(prismaMock.expense.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ value: 30 }) })
-    );
+    // Regra do usuário (Opção A): número de parcelas é fixo; a última fica
+    // em aberto com o saldo e o usuário renegocia ou paga quando quiser.
+    expect(created).toBeNull();
+    expect(prismaMock.expense.create).not.toHaveBeenCalled();
   });
 
   test('saldo devedor zerado (dentro da tolerância de centavos) encerra a dívida', async () => {
@@ -226,5 +206,45 @@ describe('normalizeFacts — snapshot antigo ou corrompido não quebra a tela', 
     const facts = normalizeFacts({ currentBalance: 'quebrado', incomeTotal: null });
     expect(facts.currentBalance).toBe(0);
     expect(facts.incomeTotal).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------
+// Cenário do usuário: não pagar por vários meses NÃO pode estourar o
+// número de parcelas (dupla contagem). Quando as parcelas em aberto já
+// cobrem o saldo devedor, nenhuma nova é gerada.
+// ---------------------------------------------------------------
+describe('generateNextInstallment — não gera parcela em excesso quando já está tudo lançado', () => {
+  test('parcelas em aberto já cobrem o saldo devedor => não cria nova', async () => {
+    const debt = {
+      id: 1n, userId: 10n, description: 'TV', categoryId: 3n,
+      status: 'active', installmentsCount: 4, installmentValue: 100,
+      remainingBalance: 400, pendingCarryOver: 0, dueDay: 10,
+    };
+    // 4 parcelas de 100 já existem, todas em aberto e não pagas (soma 400).
+    prismaMock.expense.aggregate.mockResolvedValue({ _sum: { value: 400, paidAmount: 0 } });
+
+    const created = await debtsService.generateNextInstallment(debt, MONTH, prismaMock, { installmentsGenerated: 4 });
+
+    expect(created).toBeNull(); // nada de 5ª parcela "fantasma"
+    expect(prismaMock.expense.create).not.toHaveBeenCalled();
+  });
+
+  test('há saldo ainda não coberto por parcelas => gera só o que falta', async () => {
+    const debt = {
+      id: 1n, userId: 10n, description: 'TV', categoryId: 3n,
+      status: 'active', installmentsCount: 4, installmentValue: 100,
+      remainingBalance: 400, pendingCarryOver: 0, dueDay: 10,
+    };
+    // Só 1 parcela de 100 lançada; faltam 300 sem parcela.
+    prismaMock.expense.aggregate.mockResolvedValue({ _sum: { value: 100, paidAmount: 0 } });
+
+    const created = await debtsService.generateNextInstallment(debt, MONTH, prismaMock, { installmentsGenerated: 1 });
+
+    expect(created).not.toBeNull();
+    // Cobra a parcela nominal (100), nunca mais do que os 300 descobertos.
+    expect(prismaMock.expense.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ value: 100 }) })
+    );
   });
 });

@@ -114,6 +114,21 @@ async function createDebt(userId, payload) {
 }
 
 async function listDebts(userId) {
+  // Marca como ATRASADA toda parcela de dívida vencida e ainda não paga
+  // (em meses abertos). Assim o Dashboard e a lista de dívidas mostram o
+  // atraso de verdade, em vez de "pendente" para sempre.
+  await prisma.expense.updateMany({
+    where: {
+      userId,
+      debtId: { not: null },
+      deletedAt: null,
+      status: { in: ['pending', 'partial'] },
+      dueDate: { lt: todayUtcDate() },
+      month: { status: 'open' },
+    },
+    data: { status: 'late' },
+  });
+
   const debts = await prisma.debt.findMany({
     where: { userId },
     include: { category: true, _count: { select: { expenses: true } } },
@@ -333,10 +348,7 @@ async function generateNextInstallment(debt, month, client = prisma, options = {
 
   const remainingBalance = Number(debt.remainingBalance);
 
-  // QUITAÇÃO REAL: a única condição para encerrar uma dívida é o saldo
-  // devedor chegar a zero. Antes, esgotar as parcelas originalmente
-  // planejadas também encerrava a dívida — e o saldo restante era apagado
-  // do sistema (o usuário deixava de ver que ainda devia).
+  // Quitação real: única condição de encerrar é o saldo devedor zerar.
   if (remainingBalance <= SETTLE_TOLERANCE) {
     await client.debt.update({
       where: { id: debt.id },
@@ -348,51 +360,144 @@ async function generateNextInstallment(debt, month, client = prisma, options = {
   const installmentsGenerated = options.installmentsGenerated
     ?? await client.expense.count({ where: { debtId: debt.id, deletedAt: null } });
   const plannedRemaining = debt.installmentsCount - installmentsGenerated;
-  const carryOver = Number(debt.pendingCarryOver ?? 0);
 
-  // O plano original acabou mas ainda há saldo devedor (típico de pagamento
-  // flexível com parcelas menores). Em vez de apagar o resto, a dívida ganha
-  // uma parcela RESIDUAL e o total de parcelas é estendido — assim o rótulo
-  // "(n/total)" continua coerente e a dívida some do total ativo apenas
-  // quando for realmente paga.
-  const isResidual = plannedRemaining <= 0;
-  const nominal = Number(debt.installmentValue);
+  // O plano de parcelas acabou e ainda há saldo (a última parcela foi paga
+  // só em parte). NÃO cria parcela nova automaticamente: a última fica em
+  // aberto/atrasada com o saldo total, e o usuário decide RENEGOCIAR em
+  // mais meses ou pagar quando quiser (decisão de produto — Opção A).
+  if (plannedRemaining <= 0) return null;
 
-  let value;
-  if (isResidual) {
-    const target = nominal + carryOver;
-    value = round2(Math.min(target > 0 ? target : remainingBalance, remainingBalance));
-    if (value <= 0) value = round2(remainingBalance);
-  } else {
-    value = computeInstallmentValue(remainingBalance, plannedRemaining, nominal, carryOver);
+  // ROLAGEM (regra do usuário): o que ficou em aberto nas parcelas
+  // anteriores é SOMADO à parcela atual. As anteriores são "fechadas"
+  // (marcadas como pagas pelo que foi efetivamente pago) porque seu saldo
+  // passou para a parcela atual — assim não há dupla contagem e só a
+  // parcela corrente carrega o valor acumulado.
+  //
+  // Ex.: dívida 2000 em 4x de 500. Paga 100 na 1ª -> 2ª vem 500+400=900.
+  // Paga 200 -> 3ª vem 500+700=1200. Paga 200 -> 4ª (última) = 1500 e, se
+  // não paga, fica atrasada mostrando o saldo total.
+  const previousOpen = await client.expense.findMany({
+    where: {
+      debtId: debt.id,
+      deletedAt: null,
+      status: { in: ['pending', 'partial', 'late'] },
+      monthId: { not: month.id },
+    },
+    select: { id: true, value: true, paidAmount: true },
+  });
+  const arrears = round2(
+    previousOpen.reduce((sum, e) => sum + (Number(e.value) - Number(e.paidAmount ?? 0)), 0)
+  );
+  for (const prev of previousOpen) {
+    // Fecha a parcela anterior: o que faltava dela já está embutido na
+    // parcela atual. Mantém value/paidAmount originais como histórico.
+    await client.expense.update({ where: { id: prev.id }, data: { status: 'paid' } });
   }
 
-  // Sobra do ajuste que não coube nesta parcela continua valendo para a
-  // seguinte, em vez de ser descartada.
-  const remainingCarryOver = isResidual ? 0 : round2((nominal + carryOver) - value);
+  const nominal = Number(debt.installmentValue);
+  const isLast = plannedRemaining === 1;
+  // Última parcela fecha TODO o saldo restante; as demais somam
+  // nominal + atrasado, sempre limitado ao saldo devedor.
+  let value = isLast
+    ? round2(remainingBalance)
+    : round2(Math.min(nominal + arrears, remainingBalance));
+  if (value <= 0) value = round2(Math.min(nominal, remainingBalance));
 
-  await client.debt.update({
-    where: { id: debt.id },
-    data: {
-      pendingCarryOver: remainingCarryOver,
-      ...(isResidual ? { installmentsCount: debt.installmentsCount + 1 } : {}),
-    },
-  });
+  await client.debt.update({ where: { id: debt.id }, data: { pendingCarryOver: 0 } });
 
-  const totalLabel = isResidual ? debt.installmentsCount + 1 : debt.installmentsCount;
-
+  const dueDate = expensesService.dueDateFromDay(month, debt.dueDay);
   return client.expense.create({
     data: {
       userId: debt.userId,
       monthId: month.id,
       type: 'priority',
-      description: `${debt.description} (${installmentsGenerated + 1}/${totalLabel})`,
+      description: `${debt.description} (${installmentsGenerated + 1}/${debt.installmentsCount})`,
       categoryId: debt.categoryId,
-      dueDate: expensesService.dueDateFromDay(month, debt.dueDay),
+      dueDate,
       value,
-      status: 'pending',
+      status: dueDate < todayUtcDate() ? 'late' : 'pending',
       debtId: debt.id,
     },
+  });
+}
+
+/**
+ * RENEGOCIAÇÃO: reparcelar o saldo devedor restante em N novos meses.
+ *
+ * Usada quando a última parcela ficou com o saldo acumulado e o usuário
+ * quer voltar a dividir. Substitui a parcela em aberto atual pela primeira
+ * parcela do novo plano; as demais são geradas nos próximos fechamentos.
+ * Não toca em parcelas já pagas nem em meses fechados.
+ */
+async function renegotiateDebt(userId, debtId, { installments, monthId }) {
+  const debt = await getDebtOrThrow(userId, debtId);
+  if (debt.status === 'settled') {
+    throw new AppError('Esta dívida já está quitada.', 409, 'DEBT_ALREADY_SETTLED');
+  }
+  const remaining = Number(debt.remainingBalance);
+  if (remaining <= SETTLE_TOLERANCE) {
+    throw new AppError('Não há saldo devedor para reparcelar.', 409, 'NOTHING_TO_RENEGOTIATE');
+  }
+
+  const month = await monthsService.getMonthOrThrow(userId, monthId);
+  monthsService.assertMonthIsOpen(month);
+
+  const newCount = Number(installments);
+  const newValue = round2(remaining / newCount);
+
+  return prisma.$transaction(async (tx) => {
+    await lockUserBalance(tx, userId);
+
+    // Fecha (soft delete) as parcelas em ABERTO em meses ABERTOS: elas são
+    // substituídas pelo novo plano. Parcelas pagas e de meses fechados
+    // ficam intactas (histórico).
+    const openNow = await tx.expense.findMany({
+      where: { debtId, deletedAt: null, status: { in: ['pending', 'partial', 'late'] }, month: { status: 'open' } },
+    });
+    for (const inst of openNow) {
+      await tx.expense.update({ where: { id: inst.id }, data: { deletedAt: new Date() } });
+    }
+
+    const paidInstallments = await tx.expense.count({
+      where: { debtId, deletedAt: null },
+    });
+
+    // A dívida passa a ter (parcelas já registradas + novas) e valor de
+    // parcela = saldo / N.
+    await tx.debt.update({
+      where: { id: debtId },
+      data: {
+        installmentValue: newValue,
+        installmentsCount: paidInstallments + newCount,
+        pendingCarryOver: 0,
+        status: 'active',
+      },
+    });
+
+    // Cria já a primeira parcela do novo plano no mês selecionado.
+    const dueDate = expensesService.dueDateFromDay(month, debt.dueDay);
+    const firstValue = computeInstallmentValue(remaining, newCount, newValue);
+    const created = await tx.expense.create({
+      data: {
+        userId,
+        monthId: month.id,
+        type: 'priority',
+        description: `${debt.description} (${paidInstallments + 1}/${paidInstallments + newCount})`,
+        categoryId: debt.categoryId,
+        dueDate,
+        value: firstValue,
+        status: dueDate < todayUtcDate() ? 'late' : 'pending',
+        debtId,
+      },
+      include: { category: true },
+    });
+
+    return { debtId: String(debtId), installments: newCount, installmentValue: newValue, firstInstallment: created };
+  }).then(async (res) => {
+    await recordAuditLog(userId, 'debt', debtId, 'renegotiate', {
+      newValue: { installments: newCount, installmentValue: newValue },
+    });
+    return res;
   });
 }
 
@@ -460,5 +565,6 @@ module.exports = {
   computeInstallmentValue,
   getDebtIndicators,
   remainingInstallmentsFor,
+  renegotiateDebt,
   SETTLE_TOLERANCE,
 };

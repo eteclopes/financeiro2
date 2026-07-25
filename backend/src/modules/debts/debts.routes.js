@@ -3,7 +3,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const authenticate = require('../../middlewares/authenticate');
 const validate = require('../../middlewares/validate');
 const service = require('./debts.service');
-const { createDebtSchema, updateDebtSchema } = require('./debts.validators');
+const { createDebtSchema, updateDebtSchema, renegotiateDebtSchema } = require('./debts.validators');
 const { parseBigIntParam } = require('../../utils/parseParams');
 
 const router = Router();
@@ -32,6 +32,16 @@ router.patch(
   asyncHandler(async (req, res) => {
     const debt = await service.updateDebt(req.userId, parseBigIntParam(req.params.id, 'id'), req.body);
     res.json({ debt });
+  })
+);
+
+// Reparcelar o saldo devedor restante em N novos meses.
+router.post(
+  '/:id/renegotiate',
+  validate(renegotiateDebtSchema),
+  asyncHandler(async (req, res) => {
+    const result = await service.renegotiateDebt(req.userId, parseBigIntParam(req.params.id, 'id'), req.body);
+    res.json(result);
   })
 );
 

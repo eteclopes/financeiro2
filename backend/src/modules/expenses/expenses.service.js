@@ -88,9 +88,13 @@ async function createVariableExpense(userId, payload) {
     return result.expenses[0];
   }
 
-  if (payload.paid && isFutureDate(payload.date)) {
-    throw new AppError('Uma despesa paga não pode ter data futura.', 422, 'FUTURE_TRANSACTION_DATE');
-  }
+  // Observação de produto: a data é COMPETÊNCIA, não a data do caixa —
+  // mesma regra já usada em receitas (uma receita com data futura entra no
+  // saldo na hora). Por isso uma despesa marcada como paga é aceita com
+  // qualquer data DENTRO do mês selecionado, mesmo que a data seja "futura"
+  // em relação a hoje. `assertDateMatchesMonth` (acima) já impede datas
+  // fora do mês. O bloqueio anterior confundia o usuário e era incoerente
+  // com a regra das receitas.
 
   if (!payload.paid) {
     return prisma.expense.create({

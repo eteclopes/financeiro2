@@ -60,6 +60,7 @@ export default function ExpensesPage() {
   // ── Modal editar dívida ──
   const [editDebtModal, setEditDebtModal] = useState(null);
   const [editDebtForm, setEditDebtForm]   = useState({ description:'', categoryId:'', dueDay:'', flexiblePayment:false });
+  const [renegForm, setRenegForm]         = useState({ open:false, installments:'2' });
 
   // ── Delete e saving ──
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -230,6 +231,19 @@ export default function ExpensesPage() {
       });
       toast.success('Dívida atualizada.'); setEditDebtModal(null); load();
     } catch (e) { toast.error(extractErrorMessage(e, 'Erro.')); }
+    finally { setSaving(false); }
+  }
+
+  async function saveRenegotiate() {
+    const n = parseInt(renegForm.installments);
+    if (!n || n < 1) { toast.error('Informe em quantas parcelas.'); return; }
+    setSaving(true);
+    try {
+      const res = await debtsApi.renegotiate(editDebtModal.id, { installments: n, monthId: selectedMonthId });
+      toast.success(`Reparcelado em ${n}x de ${formatCurrency(res.data.installmentValue)}.`);
+      setRenegForm({ open:false, installments:'2' });
+      setEditDebtModal(null); load();
+    } catch (e) { toast.error(extractErrorMessage(e, 'Não foi possível reparcelar.')); }
     finally { setSaving(false); }
   }
 
@@ -716,7 +730,7 @@ export default function ExpensesPage() {
       <Modal open={!!editDebtModal} onClose={() => setEditDebtModal(null)} title="Editar Dívida" size="sm">
         <div className="space-y-4">
           <p className="text-xs bg-info-subtle text-info-dark p-3 rounded-xl border border-info/20">
-            ℹ Valor total e número de parcelas não podem ser alterados depois de criada a dívida. Para isso, remova esta dívida e crie uma nova.
+            ℹ Para mudar o número de parcelas, use \"Renegociar\" abaixo — ele reparcela o saldo que ainda falta, sem apagar o histórico.
           </p>
           <FormGroup label="Descrição" required>
             <Input value={editDebtForm.description} onChange={(e) => setEditDebtForm({...editDebtForm,description:e.target.value})} />
@@ -734,6 +748,29 @@ export default function ExpensesPage() {
             <Input type="number" min="1" max="31" value={editDebtForm.dueDay} onChange={(e) => setEditDebtForm({...editDebtForm,dueDay:e.target.value})} />
           </FormGroup>
           <ToggleSwitch checked={editDebtForm.flexiblePayment} onChange={(flexiblePayment) => setEditDebtForm({ ...editDebtForm, flexiblePayment })} label="Aceitar pagamento parcial" description="O valor não pago será somado à próxima parcela." />
+
+          {/* Renegociar: reparcelar o saldo devedor restante em mais meses. */}
+          <div className="rounded-2xl border border-border p-4 dark:border-white/[0.07]">
+            {!renegForm.open ? (
+              <button type="button" onClick={() => setRenegForm({ ...renegForm, open:true })} className="text-sm font-semibold text-primary-dark hover:underline dark:text-primary-hover">
+                Renegociar / reparcelar saldo restante
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-muted">
+                  Divide o saldo devedor que ainda falta em novas parcelas, a partir do mês selecionado. As parcelas já pagas não são alteradas.
+                </p>
+                <FormGroup label="Reparcelar em quantas vezes">
+                  <Input type="number" min="1" max="360" value={renegForm.installments} onChange={(e) => setRenegForm({ ...renegForm, installments:e.target.value })} />
+                </FormGroup>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setRenegForm({ open:false, installments:'2' })}>Cancelar</Button>
+                  <Button onClick={saveRenegotiate} loading={saving}>Reparcelar</Button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="modal-actions">
             <Button variant="outline" onClick={() => setEditDebtModal(null)}>Cancelar</Button>
             <Button onClick={saveEditDebt} loading={saving}>Salvar Alteração</Button>
