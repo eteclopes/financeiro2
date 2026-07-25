@@ -112,6 +112,12 @@ export const reportsApi = {
   get: (monthId) => api.get('/reports', { params: { monthId } }),
 };
 
+// ---- Pagamento em lote (várias contas + faturas de uma vez) ----
+export const paymentsApi = {
+  payable: (monthId) => api.get('/payments/payable', { params: { monthId } }),
+  payBatch: (payload) => api.post('/payments/batch', payload),
+};
+
 // ---- Financial Health ----
 export const financialHealthApi = {
   get: (monthId) => api.get('/financial-health', { params: { monthId } }),

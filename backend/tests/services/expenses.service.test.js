@@ -26,7 +26,7 @@ describe('createVariableExpense — bloqueio de saldo ao criar já como paga (RE
     prismaMock.expense.aggregate.mockResolvedValue({ _sum: { paidAmount: 0 } });
 
     const promise = createVariableExpense(10n, {
-      monthId: 1n, description: 'Jantar', categoryId: 1n, date: new Date(),
+      monthId: 1n, description: 'Jantar', categoryId: 1n, date: new Date(Date.UTC(2026, 6, 10)), // data fixa e passada (evita depender do relógio/fuso ao rodar)
       value: 500, paid: true, paymentMethod: 'pix',
     });
 
@@ -39,7 +39,7 @@ describe('createVariableExpense — bloqueio de saldo ao criar já como paga (RE
     prismaMock.expense.aggregate.mockResolvedValue({ _sum: { paidAmount: 0 } });
 
     await expect(createVariableExpense(10n, {
-      monthId: 1n, description: 'Conta de luz', categoryId: 1n, date: new Date(),
+      monthId: 1n, description: 'Conta de luz', categoryId: 1n, date: new Date(Date.UTC(2026, 6, 10)), // data fixa e passada (evita depender do relógio/fuso ao rodar)
       value: 500, paid: false,
     })).resolves.toBeDefined();
   });
@@ -49,7 +49,7 @@ describe('createVariableExpense — bloqueio de saldo ao criar já como paga (RE
     prismaMock.expense.aggregate.mockResolvedValue({ _sum: { paidAmount: 0 } });
 
     await expect(createVariableExpense(10n, {
-      monthId: 1n, description: 'Mercado', categoryId: 1n, date: new Date(),
+      monthId: 1n, description: 'Mercado', categoryId: 1n, date: new Date(Date.UTC(2026, 6, 10)), // data fixa e passada (evita depender do relógio/fuso ao rodar)
       value: 300, paid: true, paymentMethod: 'debit',
     })).resolves.toBeDefined();
   });
