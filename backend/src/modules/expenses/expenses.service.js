@@ -83,9 +83,12 @@ async function createVariableExpense(userId, payload) {
       totalValue: payload.value,
       installmentsCount: 1,
       startingInstallment: 1,
-      purchaseDate: payload.date,
+      // A data da compra (não a competência) decide a fatura.
+      purchaseDate: payload.purchaseDate ?? payload.date,
     });
-    return result.expenses[0];
+    // Devolve a despesa com a referência da fatura onde ela caiu, para a
+    // tela confirmar "registrada na fatura de MÊS/ANO — ver no cartão".
+    return { ...result.expenses[0], cardInvoiceRef: result.firstInvoice ?? null };
   }
 
   // Observação de produto: a data é COMPETÊNCIA, não a data do caixa —
@@ -416,10 +419,10 @@ async function updateExpense(userId, expenseId, payload) {
 
     const effectiveDate = payload.dueDate ?? expense.dueDate;
     const effectiveValue = payload.value !== undefined ? Number(payload.value) : Number(expense.value);
+    // A data é competência, não a data do caixa (mesma regra das receitas):
+    // basta estar dentro do mês selecionado, mesmo que seja "futura" em
+    // relação a hoje. `assertDateMatchesMonth` já impede datas fora do mês.
     assertDateMatchesMonth(effectiveDate, expense.month);
-    if (isFutureDate(effectiveDate)) {
-      throw new AppError('Uma despesa já paga não pode ter data futura.', 422, 'FUTURE_TRANSACTION_DATE');
-    }
 
     const additionalConsumption = round2(effectiveValue - Number(expense.paidAmount));
     if (additionalConsumption > 0) {

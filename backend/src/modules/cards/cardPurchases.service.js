@@ -152,10 +152,12 @@ async function createCardPurchase(userId, payload) {
 
     const expenses = [];
     let accumulated = 0;
+    let firstInvoice = null;
 
     for (let i = startingInstallment; i <= installmentsCount; i += 1) {
       const ref = addMonths(base.month, base.year, i - 1);
       const invoice = await getOrCreateInvoice(lockedCard, ref.month, ref.year, tx);
+      if (!firstInvoice) firstInvoice = invoice;
       const value = i === installmentsCount ? round2(remainingTotalValue - accumulated) : nominal;
       accumulated = round2(accumulated + value);
 
@@ -184,7 +186,16 @@ async function createCardPurchase(userId, payload) {
       expenses.push(expense);
     }
 
-    return { purchase, expenses };
+    return {
+      purchase,
+      expenses,
+      firstInvoice: firstInvoice && {
+        id: String(firstInvoice.id),
+        referenceMonth: firstInvoice.referenceMonth,
+        referenceYear: firstInvoice.referenceYear,
+        dueDate: firstInvoice.dueDate,
+      },
+    };
   }).then(async (result) => {
     await recordAuditLog(userId, 'cardPurchase', result.purchase.id, 'create', { newValue: result.purchase });
     return result;

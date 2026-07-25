@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useMonthStore } from '../store/monthStore';
+import { useNavigate } from 'react-router-dom';
 import { expensesApi, debtsApi, categoriesApi, cardsApi } from '../lib/services';
 import { extractErrorMessage } from '../lib/api';
 import { formatCurrency, formatShortDate } from '../lib/format';
@@ -39,7 +40,7 @@ export default function ExpensesPage() {
 
   // ── Modal nova despesa variável ──
   const [varModal, setVarModal] = useState(false);
-  const [varForm, setVarForm]   = useState(() => ({ description:'', value:'', categoryId:'', date: ledgerMonthDateInputValue(selectedMonth), paymentMethod: ACCOUNT_BALANCE_METHOD, paid:true, cardId:'' }));
+  const [varForm, setVarForm]   = useState(() => ({ description:'', value:'', categoryId:'', date: ledgerMonthDateInputValue(selectedMonth), paymentMethod: ACCOUNT_BALANCE_METHOD, paid:true, cardId:'', purchaseDate:'' }));
 
   // ── Modal editar despesa variável ──
   const [editVarModal, setEditVarModal] = useState(null);
@@ -61,6 +62,10 @@ export default function ExpensesPage() {
   const [editDebtModal, setEditDebtModal] = useState(null);
   const [editDebtForm, setEditDebtForm]   = useState({ description:'', categoryId:'', dueDay:'', flexiblePayment:false });
   const [renegForm, setRenegForm]         = useState({ open:false, installments:'2' });
+  // Confirmação após registrar uma compra no cartão (A2): mostra em qual
+  // fatura caiu e um atalho para ver no cartão.
+  const [cardConfirm, setCardConfirm]     = useState(null);
+  const navigate = useNavigate();
 
   // ── Delete e saving ──
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -112,21 +117,45 @@ export default function ExpensesPage() {
     finally { setPaying(false); }
   }
 
+  // Prevê em qual fatura a compra entra, dado o dia de fechamento do cartão.
+  function previewInvoice(purchaseDateStr, card) {
+    if (!purchaseDateStr || !card) return null;
+    const d = new Date(`${purchaseDateStr}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) return null;
+    const day = d.getUTCDate();
+    const closing = Number(card.closingDay);
+    let m = d.getUTCMonth() + 1;
+    let y = d.getUTCFullYear();
+    const beforeClosing = day <= closing;
+    if (!beforeClosing) { m += 1; if (m > 12) { m = 1; y += 1; } }
+    const meses = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+    return { label: `${meses[m - 1]}/${y}`, beforeClosing, closing };
+  }
+
   async function saveVariable() {
     if (!varForm.description || !varForm.value) { toast.error('Preencha descrição e valor.'); return; }
     setSaving(true);
     try {
       const cat = varForm.categoryId || (categories[0]?.id ?? '');
       if (varForm.paymentMethod === 'credit' && !varForm.cardId) { toast.error('Selecione o cartão.'); return; }
-      const { cardId, ...rest } = varForm;
-      await expensesApi.createVariable({
+      const { cardId, purchaseDate, ...rest } = varForm;
+      const res = await expensesApi.createVariable({
         ...rest,
         value: parseFloat(varForm.value),
         categoryId: String(cat),
         monthId: selectedMonthId,
-        ...(varForm.paymentMethod === 'credit' ? { cardId } : {}),
+        ...(varForm.paymentMethod === 'credit' ? { cardId, ...(purchaseDate ? { purchaseDate } : {}) } : {}),
       });
-      toast.success('Despesa variável criada.'); setVarModal(false); load();
+      setVarModal(false);
+      const ref = res?.data?.expense?.cardInvoiceRef;
+      if (ref) {
+        const meses = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+        const cardName = cards.find((c) => String(c.id) === String(cardId))?.name ?? 'cartão';
+        setCardConfirm({ invoiceLabel: `${meses[(ref.referenceMonth || 1) - 1]}/${ref.referenceYear}`, cardName });
+      } else {
+        toast.success('Despesa variável criada.');
+      }
+      load();
     } catch (e) { toast.error(extractErrorMessage(e, 'Erro.')); }
     finally { setSaving(false); }
   }
@@ -537,21 +566,56 @@ export default function ExpensesPage() {
           <FormGroup label="Forma de pagamento">
             <ChoiceCards compact columns={expensePaymentOptions.length} value={varForm.paymentMethod} onChange={(paymentMethod) => setVarForm({ ...varForm, paymentMethod, cardId: paymentMethod === 'credit' ? varForm.cardId : '', paid: paymentMethod === 'credit' ? true : varForm.paid })} options={expensePaymentOptions} />
           </FormGroup>
-          {varForm.paymentMethod === 'credit' && (
-            <FormGroup label="Cartão" required>
-              <Select value={varForm.cardId} onChange={(e) => setVarForm({ ...varForm, cardId:e.target.value })}>
-                <option value="">Selecione...</option>
-                {cards.map((card) => <option data-i18n-ignore="true" key={card.id} value={card.id}>{card.name} — disponível {formatCurrency(card.availableLimit)}</option>)}
-              </Select>
-              <p className="text-xs text-muted mt-1.5">A compra entra na fatura e reduz o limite disponível imediatamente.</p>
-            </FormGroup>
-          )}
+          {varForm.paymentMethod === 'credit' && (() => {
+            const selectedCard = cards.find((c) => String(c.id) === String(varForm.cardId));
+            const preview = previewInvoice(varForm.purchaseDate, selectedCard);
+            return (
+              <>
+                <FormGroup label="Cartão" required>
+                  <Select value={varForm.cardId} onChange={(e) => setVarForm({ ...varForm, cardId:e.target.value })}>
+                    <option value="">Selecione...</option>
+                    {cards.map((card) => <option data-i18n-ignore="true" key={card.id} value={card.id}>{card.name} — disponível {formatCurrency(card.availableLimit)}</option>)}
+                  </Select>
+                </FormGroup>
+                <FormGroup label="Data da compra">
+                  <Input type="date" value={varForm.purchaseDate} onChange={(e) => setVarForm({ ...varForm, purchaseDate:e.target.value })} />
+                  <p className="text-xs text-muted mt-1.5">
+                    {selectedCard
+                      ? (preview
+                          ? <>Fecha dia {selectedCard.closingDay}. Esta compra {preview.beforeClosing ? 'entra na fatura' : 'cai na próxima fatura'} de <strong>{preview.label}</strong>.</>
+                          : <>Fechamento dia {selectedCard.closingDay}. Informe a data da compra para ver em qual fatura ela entra. Se deixar em branco, usamos a data acima.</>)
+                      : 'Selecione o cartão para ver o fechamento.'}
+                  </p>
+                </FormGroup>
+                <p className="text-xs text-muted">A compra entra na fatura e reduz o limite disponível imediatamente.</p>
+              </>
+            );
+          })()}
           {varForm.paymentMethod !== 'credit' && <ToggleSwitch checked={varForm.paid} onChange={(paid) => setVarForm({ ...varForm, paid })} label="Já foi pago" description="Desative para deixar a despesa pendente neste mês." />}
           <div className="modal-actions">
             <Button variant="outline" onClick={() => setVarModal(false)}>Cancelar</Button>
             <Button onClick={saveVariable} loading={saving}>Salvar</Button>
           </div>
         </div>
+      </Modal>
+
+      {/* ── Confirmação: compra no cartão registrada (A2) ── */}
+      <Modal open={!!cardConfirm} onClose={() => setCardConfirm(null)} title="Compra registrada no cartão" size="sm">
+        {cardConfirm && (
+          <div className="space-y-4 text-center">
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-success-subtle text-2xl dark:bg-success/15">✓</div>
+            <p className="text-sm text-slate-700 dark:text-zinc-200">
+              A compra foi lançada na fatura de <strong>{cardConfirm.invoiceLabel}</strong> do <UserText>{cardConfirm.cardName}</UserText> e já reduziu o limite disponível.
+            </p>
+            <p className="text-xs text-muted">
+              Ela não aparece na aba de despesas variáveis porque compras no cartão ficam na fatura. O saldo da conta só diminui quando você pagar a fatura.
+            </p>
+            <div className="flex justify-center gap-2">
+              <Button variant="outline" onClick={() => setCardConfirm(null)}>Ok</Button>
+              <Button onClick={() => { setCardConfirm(null); navigate('/cards'); }}>Ver no cartão</Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* ── Modal Nova Fixa ── */}

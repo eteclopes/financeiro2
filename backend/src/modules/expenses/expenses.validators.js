@@ -10,6 +10,10 @@ const createVariableExpenseSchema = z.object({
   date: z.coerce.date(),
   paymentMethod: z.enum(PAYMENT_METHODS),
   cardId: z.coerce.bigint().optional(),
+  // Data REAL da compra no cartão — decide em qual fatura a compra entra
+  // (antes/depois do dia de fechamento). Opcional: se ausente, usa `date`.
+  // Só faz sentido para pagamento no crédito.
+  purchaseDate: z.coerce.date().optional(),
   // Despesa variável normalmente já representa um gasto que aconteceu
   // (ex.: compra no mercado) — por isso nasce paga por padrão. O usuário
   // pode desmarcar para registrar algo planejado e ainda não pago.
