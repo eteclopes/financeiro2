@@ -17,4 +17,13 @@ router.get(
   })
 );
 
+// Extrato detalhado do mês: cada lançamento, o que foi pago e o que faltou.
+router.get(
+  '/statement',
+  asyncHandler(async (req, res) => {
+    const monthId = parseMonthId(req.query);
+    res.json(await service.getMonthStatement(req.userId, monthId));
+  })
+);
+
 module.exports = router;

@@ -29,10 +29,17 @@ async function listInvoices(userId, cardId) {
     orderBy: [{ referenceYear: 'desc' }, { referenceMonth: 'desc' }],
   });
 
-  return invoices.map((invoice) => ({
-    ...invoice,
-    totalValue: round2(invoice.expenses.reduce((sum, expense) => sum + Number(expense.value), 0)),
-  }));
+  return invoices
+    // Fatura SEM nenhum lançamento é um artefato: ela é criada quando uma
+    // cobrança vai cair ali, mas pode acabar vazia se a despesa for excluída
+    // depois. Aparecia na tela como "fatura de R$ 0,00" que não dá para pagar
+    // (payInvoice recusa com EMPTY_INVOICE). Some da lista — nada é apagado,
+    // e se um lançamento voltar a cair nela, ela reaparece com o valor certo.
+    .filter((invoice) => invoice.expenses.length > 0)
+    .map((invoice) => ({
+      ...invoice,
+      totalValue: round2(invoice.expenses.reduce((sum, expense) => sum + Number(expense.value), 0)),
+    }));
 }
 
 async function getOwnedInvoiceOrThrow(userId, invoiceId, client = prisma) {

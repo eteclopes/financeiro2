@@ -26,8 +26,8 @@ describe('generateNextInstallment — quitação só com saldo zero (F-02)', () 
       debt, MONTH, prismaMock, { installmentsGenerated: 12 }
     );
 
-    // Regra do usuário (Opção A): número de parcelas é fixo; a última fica
-    // em aberto com o saldo e o usuário renegocia ou paga quando quiser.
+    // Número de parcelas é FIXO: nada novo é criado. A última fica em aberto
+    // com o valor acumulado e é levada adiante como atrasada.
     expect(created).toBeNull();
     expect(prismaMock.expense.create).not.toHaveBeenCalled();
   });
@@ -216,18 +216,23 @@ describe('normalizeFacts — snapshot antigo ou corrompido não quebra a tela', 
 // cobrem o saldo devedor, nenhuma nova é gerada.
 // ---------------------------------------------------------------
 describe('generateNextInstallment — não gera parcela em excesso quando já está tudo lançado', () => {
-  test('parcelas em aberto já cobrem o saldo devedor => não cria nova', async () => {
+  test('parcelas antigas em aberto ROLAM para a parcela extra (sem dobrar a dívida)', async () => {
     const debt = {
       id: 1n, userId: 10n, description: 'TV', categoryId: 3n,
       status: 'active', installmentsCount: 4, installmentValue: 100,
       remainingBalance: 400, pendingCarryOver: 0, dueDay: 10,
     };
-    // 4 parcelas de 100 já existem, todas em aberto e não pagas (soma 400).
-    prismaMock.expense.aggregate.mockResolvedValue({ _sum: { value: 400, paidAmount: 0 } });
+    // 4 parcelas de 100 em aberto em meses anteriores (nada pago).
+    prismaMock.expense.findMany.mockResolvedValue([
+      { id: 1n, value: 100, paidAmount: 0 }, { id: 2n, value: 100, paidAmount: 0 },
+      { id: 3n, value: 100, paidAmount: 0 }, { id: 4n, value: 100, paidAmount: 0 },
+    ]);
 
     const created = await debtsService.generateNextInstallment(debt, MONTH, prismaMock, { installmentsGenerated: 4 });
 
-    expect(created).toBeNull(); // nada de 5ª parcela "fantasma"
+    // Plano esgotado: NÃO cria parcela nova. A última segue em aberto com o
+    // valor acumulado e é levada adiante como atrasada (ver arrasto).
+    expect(created).toBeNull();
     expect(prismaMock.expense.create).not.toHaveBeenCalled();
   });
 
@@ -287,12 +292,15 @@ describe('Dívida prioridade — fluxo de pagamento parcial mês a mês (cenári
     expect(created.value).toBe(1500); // última = saldo devedor inteiro
   });
 
-  test('última parcela não paga NÃO some: plano esgotado não gera nada, a última fica em aberto e pagável', async () => {
-    // 4 de 4 geradas, ainda deve 1500 (última parcial/atrasada).
+  test('plano esgotado: número de parcelas é FIXO, nada novo é criado', async () => {
+    // 4 de 4 geradas, ainda deve 1500 (acumulado na última).
     prismaMock.expense.count.mockResolvedValue(4);
     prismaMock.expense.findMany.mockResolvedValue([]);
     const created = await debtsService.generateNextInstallment(makeDebtState(1500), MES, prismaMock, { installmentsGenerated: 4 });
-    // Não cria parcela nova (número fixo); a última permanece pagável.
+
+    // A 4ª permanece em aberto com o valor acumulado; o arrasto a mostra
+    // como atrasada no mês corrente e ela pode ser paga a qualquer momento.
+    // Parcelar de novo só via renegociação, se o usuário quiser.
     expect(created).toBeNull();
     expect(prismaMock.expense.create).not.toHaveBeenCalled();
   });

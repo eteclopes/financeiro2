@@ -389,11 +389,16 @@ async function generateNextInstallment(debt, month, client = prisma, options = {
     ?? await client.expense.count({ where: { debtId: debt.id, deletedAt: null } });
   const plannedRemaining = debt.installmentsCount - installmentsGenerated;
 
-  // O plano de parcelas acabou e ainda há saldo (a última parcela foi paga
-  // só em parte). NÃO cria parcela nova automaticamente: a última fica em
-  // aberto/atrasada com o saldo total, e o usuário decide RENEGOCIAR em
-  // mais meses ou pagar quando quiser (decisão de produto — Opção A).
+  // O NÚMERO DE PARCELAS É FIXO. Se o plano acabou e ainda há saldo devedor,
+  // o sistema NÃO inventa parcelas novas: a última permanece em aberto,
+  // carregando todo o valor acumulado.
+  //
+  // Ela não fica "presa" no mês antigo: parcelas de dívida em aberto de meses
+  // anteriores são levadas adiante e aparecem como ATRASADAS no mês corrente
+  // (ver listOverdueFromPreviousMonths), podendo ser pagas a qualquer momento.
+  // Criar parcelas novas só acontece se o usuário pedir, pela renegociação.
   if (plannedRemaining <= 0) return null;
+  const isExtra = false;
 
   // ROLAGEM (regra do usuário): o que ficou em aberto nas parcelas
   // anteriores é SOMADO à parcela atual. As anteriores são "fechadas"
@@ -428,15 +433,26 @@ async function generateNextInstallment(debt, month, client = prisma, options = {
   }
 
   const nominal = Number(debt.installmentValue);
-  const isLast = plannedRemaining === 1;
-  // Última parcela fecha TODO o saldo restante; as demais somam
-  // nominal + atrasado, sempre limitado ao saldo devedor.
+  const isLast = !isExtra && plannedRemaining === 1;
+  // Última parcela do plano fecha TODO o saldo restante. As demais — e as
+  // EXTRAS — cobram nominal + atrasado, limitado ao saldo devedor: é a mesma
+  // acumulação que já acontece no pagamento parcial.
   let value = isLast
     ? round2(remainingBalance)
     : round2(Math.min(nominal + arrears, remainingBalance));
   if (value <= 0) value = round2(Math.min(nominal, remainingBalance));
 
-  await client.debt.update({ where: { id: debt.id }, data: { pendingCarryOver: 0 } });
+  // Cada parcela extra estende o plano, para o rótulo "n/total" seguir
+  // coerente (uma dívida de 4x que precisou de mais uma vira 5/5).
+  const totalLabel = isExtra ? installmentsGenerated + 1 : debt.installmentsCount;
+
+  await client.debt.update({
+    where: { id: debt.id },
+    data: {
+      pendingCarryOver: 0,
+      ...(isExtra ? { installmentsCount: totalLabel } : {}),
+    },
+  });
 
   const dueDate = expensesService.dueDateFromDay(month, debt.dueDay);
   return client.expense.create({
@@ -444,7 +460,7 @@ async function generateNextInstallment(debt, month, client = prisma, options = {
       userId: debt.userId,
       monthId: month.id,
       type: 'priority',
-      description: `${debt.description} (${installmentsGenerated + 1}/${debt.installmentsCount})`,
+      description: `${debt.description} (${installmentsGenerated + 1}/${totalLabel}${isExtra ? ' · parcela extra' : ''})`,
       categoryId: debt.categoryId,
       dueDate,
       value,

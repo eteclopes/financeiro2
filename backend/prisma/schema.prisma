@@ -652,6 +652,16 @@ model AutomationSetting {
   /// Método usado nos pagamentos automáticos: 'debit' (saldo) ou 'cash'.
   payDuesMethod  String  @default("debit") @map("pay_dues_method") @db.VarChar(10)
 
+  /// Quais grupos entram no pagamento automático. Permite, por exemplo,
+  /// quitar dívidas e contas mas deixar a fatura do cartão para decidir na mão.
+  payDebts    Boolean @default(true) @map("pay_debts")
+  payBills    Boolean @default(true) @map("pay_bills")
+  payInvoices Boolean @default(true) @map("pay_invoices")
+
+  /// Piso de segurança: a automação nunca deixa o saldo abaixo deste valor.
+  /// Vale tanto para os pagamentos quanto para o quanto vai para a reserva.
+  minimumBalance Decimal @default(0) @map("minimum_balance") @db.Decimal(12, 2)
+
   /// Ao fechar o mês, guardar parte da sobra numa caixinha de reserva.
   saveLeftoverOnClose Boolean @default(false) @map("save_leftover_on_close")
   /// Como calcular quanto guardar: 'percent' (% da sobra) ou 'fixed' (valor fixo, se couber).

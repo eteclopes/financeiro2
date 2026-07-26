@@ -62,7 +62,14 @@ async function listOverdueFromPreviousMonths(userId, monthId) {
     where: {
       userId,
       deletedAt: null,
-      type: { in: ['variable', 'fixed'] },
+      // Inclui PARCELAS DE DÍVIDA ('priority'). É seguro e necessário:
+      // quando o fechamento gera a próxima parcela, ele FECHA as anteriores
+      // em aberto e soma o não pago à nova (rolagem) — então a única parcela
+      // que continua aberta num mês passado é a de um plano já esgotado,
+      // aquela que precisa ser levada adiante como atrasada. Sem isso, o
+      // usuário era obrigado a voltar ao mês antigo para pagá-la.
+      // Parcelas de CARTÃO seguem de fora: são quitadas pela fatura.
+      type: { in: ['variable', 'fixed', 'priority'] },
       status: { in: ['pending', 'late', 'partial'] },
       month: {
         userId,
@@ -74,6 +81,7 @@ async function listOverdueFromPreviousMonths(userId, monthId) {
     },
     include: {
       category: true,
+      debt: { select: { id: true, description: true, remainingBalance: true, installmentsCount: true } },
       month: { select: { id: true, month: true, year: true, status: true } },
     },
     orderBy: [{ dueDate: 'asc' }],

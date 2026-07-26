@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { useMonthStore } from '../store/monthStore';
 import { historyApi } from '../lib/services';
-import { formatCurrency } from '../lib/format';
+import { formatCurrency, formatShortDate } from '../lib/format';
+import { UserText } from '../i18n/UserText';
 import { Card, CardHeader, Badge, Skeleton, TabGroup } from '../components/ui/index';
 import { useUIStore } from '../store/uiStore';
 import { useThemeStore } from '../store/themeStore';
@@ -35,6 +36,8 @@ export default function HistoryPage() {
   const [period, setPeriod]   = useState(6);
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
+  // Extrato detalhado do mês selecionado (lançamento a lançamento).
+  const [statement, setStatement] = useState(null);
   const toast = useUIStore((s) => s);
   const theme = useThemeStore((s) => s.theme);
   const gridStroke = theme === 'dark' ? 'rgba(255,255,255,0.06)' : '#F1F5F9';
@@ -43,7 +46,14 @@ export default function HistoryPage() {
   const load = useCallback(async () => {
     if (!selectedMonthId) return;
     setLoading(true);
-    try { const r = await historyApi.get(selectedMonthId, period); setData(r.data); }
+    try {
+      const [r, st] = await Promise.all([
+        historyApi.get(selectedMonthId, period),
+        historyApi.statement(selectedMonthId).catch(() => null),
+      ]);
+      setData(r.data);
+      setStatement(st?.data ?? null);
+    }
     catch { toast.error('Erro ao carregar histórico.'); }
     finally { setLoading(false); }
   }, [selectedMonthId, period]);
@@ -51,6 +61,14 @@ export default function HistoryPage() {
   useEffect(() => { load(); }, [load]);
 
   const months = data?.months ?? [];
+  const KIND_LABEL = {
+    income: { txt: 'Receita', cls: 'text-success-dark dark:text-success-light', sign: '+' },
+    expense: { txt: 'Despesa', cls: 'text-danger-dark dark:text-danger-light', sign: '−' },
+    savings_deposit: { txt: 'Reserva', cls: 'text-primary-dark dark:text-primary-hover', sign: '→' },
+    savings_withdraw: { txt: 'Resgate', cls: 'text-success-dark dark:text-success-light', sign: '←' },
+    goal_contribution: { txt: 'Meta', cls: 'text-purple-700 dark:text-accentpurple-light', sign: '→' },
+    goal_refund: { txt: 'Estorno de meta', cls: 'text-success-dark dark:text-success-light', sign: '←' },
+  };
   const chartData = months.map((m) => ({
     name: `${String(m.month).padStart(2,'0')}/${String(m.year).slice(-2)}`,
     receita: m.income, despesas: m.paidExpenses, líquido: m.netBalance, acumulado: m.cumulativeBalance, dívidas: m.debtInstallments,
@@ -193,6 +211,66 @@ export default function HistoryPage() {
           </Card>
         </>
       )}
+
+      {/* ── Extrato detalhado do mês ──
+          Responde "o que paguei, quanto foi, quanto faltou da parcela" —
+          o histórico acima é agregado; aqui é lançamento a lançamento. */}
+      {statement && statement.entries?.length > 0 && (
+        <Card padding={false}>
+          <div className="border-b border-border px-5 py-4 dark:border-white/[0.07]">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-50">
+              Extrato de {String(statement.month.month).padStart(2, '0')}/{statement.month.year}
+            </h3>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted">
+              <span>Recebido: <strong className="text-success-dark dark:text-success-light">{formatCurrency(statement.totals.received)}</strong></span>
+              <span>Pago: <strong className="text-danger-dark dark:text-danger-light">{formatCurrency(statement.totals.paid)}</strong></span>
+              {statement.totals.stillOwed > 0 && (
+                <span>Em aberto: <strong className="text-warning-dark dark:text-warning-light">{formatCurrency(statement.totals.stillOwed)}</strong></span>
+              )}
+              {statement.totals.partialCount > 0 && (
+                <span>{statement.totals.partialCount} pagamento(s) parcial(is)</span>
+              )}
+            </div>
+          </div>
+          <div className="divide-y divide-border dark:divide-white/[0.07]">
+            {statement.entries.map((e) => {
+              const meta = KIND_LABEL[e.kind] ?? { txt: e.kind, cls: 'text-muted', sign: '' };
+              const isExp = e.kind === 'expense';
+              const amount = isExp ? (e.paidAmount > 0 ? e.paidAmount : e.installmentValue) : e.amount;
+              return (
+                <div key={`${e.kind}-${e.id}`} className="flex items-start gap-3 px-5 py-3">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-slate-800 dark:text-zinc-100">
+                      <UserText>{e.description}</UserText>
+                    </span>
+                    <span className="mt-0.5 block text-[11px] text-muted">
+                      <span className={`font-semibold ${meta.cls}`}>{meta.txt}</span>
+                      {e.date && ` · ${formatShortDate(e.date)}`}
+                      {e.category && ` · ${e.category}`}
+                      {e.card && ` · ${e.card}`}
+                      {e.invoiceRef && ` · fatura ${String(e.invoiceRef.month).padStart(2,'0')}/${e.invoiceRef.year}`}
+                      {e.bucket && ` · ${e.bucket}`}
+                    </span>
+                    {/* Detalhe que faltava: quanto era a parcela, quanto saiu e o residual. */}
+                    {isExp && e.isPartial && (
+                      <span className="mt-1 block text-[11px] font-medium text-warning-dark dark:text-warning-light">
+                        Parcela de {formatCurrency(e.installmentValue)} · pago {formatCurrency(e.paidAmount)} · faltou {formatCurrency(e.remaining)}
+                      </span>
+                    )}
+                    {isExp && !e.isPartial && e.paidAmount === 0 && (
+                      <span className="mt-1 block text-[11px] text-muted">Não pago neste mês</span>
+                    )}
+                  </span>
+                  <span className={`shrink-0 font-mono text-sm font-semibold ${meta.cls}`}>
+                    {meta.sign} {formatCurrency(amount)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
     </div>
   );
 }

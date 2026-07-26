@@ -349,7 +349,9 @@ export default function ExpensesPage() {
                       <UserText>{e.description}</UserText>
                     </span>
                     <span className="block text-[11px] text-muted">
-                      de {String(e.month?.month ?? '').padStart(2, '0')}/{e.month?.year}
+                      <span className="font-semibold text-danger-dark dark:text-danger-light">Atrasada</span>
+                      {' · de '}{String(e.month?.month ?? '').padStart(2, '0')}/{e.month?.year}
+                      {e.debt ? ' · parcela de dívida (valor acumulado)' : ''}
                       {e.category?.name ? ` · ${e.category.name}` : ''}
                       {Number(e.paidAmount ?? 0) > 0 ? ` · falta ${formatCurrency(falta)}` : ''}
                     </span>
@@ -358,6 +360,21 @@ export default function ExpensesPage() {
                     {formatCurrency(falta)}
                   </span>
                   <Button size="sm" onClick={() => openPay(e)}>Pagar</Button>
+                  {/* Parcela de dívida com plano esgotado: em vez de o sistema
+                      inventar parcelas, o usuário decide se quer dividir o que
+                      sobrou. O atalho abre a renegociação já preparada. */}
+                  {e.debt && (
+                    <Button size="sm" variant="outline" onClick={() => {
+                      setEditDebtModal(e.debt);
+                      setEditDebtForm({
+                        description: e.debt.description,
+                        categoryId: String(e.debt.categoryId ?? ''),
+                        dueDay: String(e.debt.dueDay ?? '10'),
+                        flexiblePayment: !!e.debt.flexiblePayment,
+                      });
+                      setRenegForm({ open: true, installments: '2' });
+                    }}>Parcelar</Button>
+                  )}
                 </div>
               );
             })}
@@ -717,6 +734,32 @@ export default function ExpensesPage() {
               <p className="text-xs text-muted mt-1.5">
                 Lançada direto na fatura deste cartão todo mês — não desconta do saldo até a fatura ser paga.
               </p>
+              {(() => {
+                // Mostra em qual fatura a cobrança cai, considerando o dia de
+                // fechamento e o dia de vencimento escolhido. O backend já
+                // roteava certo; faltava o usuário enxergar isso na hora.
+                const card = cards.find((c) => String(c.id) === String(fixForm.cardId));
+                if (!card || !fixForm.dueDay) return null;
+                const dia = parseInt(fixForm.dueDay);
+                const fecha = Number(card.closingDay);
+                const base = selectedMonth ? { m: Number(selectedMonth.month), y: Number(selectedMonth.year) } : null;
+                if (!base) return null;
+                let m = base.m, y = base.y;
+                const antesDoFechamento = dia <= fecha;
+                if (!antesDoFechamento) { m += 1; if (m > 12) { m = 1; y += 1; } }
+                const meses = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+                return (
+                  <div className="mt-2 rounded-xl border border-primary/20 bg-primary-subtle p-3 text-xs text-primary-dark dark:bg-primary/10 dark:text-primary-hover">
+                    Este cartão fecha dia {fecha}. Vencendo dia {dia}, a cobrança
+                    {antesDoFechamento ? ' entra na fatura' : ' já passa do fechamento e cai na fatura'} de <strong>{meses[m-1]}/{y}</strong>.
+                  </div>
+                );
+              })()}
+              <div className="mt-2 rounded-xl border border-border p-3 text-xs text-muted dark:border-white/[0.07]">
+                <strong className="text-slate-700 dark:text-zinc-200">Sem data de término.</strong> Uma despesa fixa
+                é recorrente por natureza: repete todo mês automaticamente ao fechar o período, até você desativá-la.
+                É assim que se cadastra uma assinatura.
+              </div>
             </FormGroup>
           )}
           <div className="modal-actions">

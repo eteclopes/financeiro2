@@ -170,11 +170,12 @@ describe('generateNextInstallment — rolagem do saldo não pago para a parcela 
     expect(created.value).toBe(1500); // saldo devedor inteiro
   });
 
-  test('plano de parcelas esgotado e ainda há saldo: NÃO gera parcela nova (fica p/ renegociar)', async () => {
-    const debt = makeDebt({ remainingBalance: 1000 });
-    prismaMock.expense.count.mockResolvedValue(12); // todas as 12 já geradas
+  test('plano esgotado: não cria parcela nova (número fixo)', async () => {
+    const debt = makeDebt({ remainingBalance: 1000 }); // 12x
+    prismaMock.expense.count.mockResolvedValue(12);     // todas já geradas
 
     const created = await generateNextInstallment(debt, { id: 2n });
+
     expect(created).toBeNull();
     expect(prismaMock.expense.create).not.toHaveBeenCalled();
   });

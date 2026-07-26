@@ -162,10 +162,10 @@ describe('getPayableItems — escopo das faturas', () => {
     await getPayableItems(10n, 60n);
 
     const where = prismaMock.cardInvoice.findMany.mock.calls[0][0].where;
-    // Não busca "todas as não pagas": há recorte por referência.
-    expect(where.OR).toEqual([
-      { referenceYear: { lt: 2026 } },
-      { referenceYear: 2026, referenceMonth: { lte: 9 } },
-    ]);
+    // O recorte é por VENCIMENTO (ou fatura já fechada), não por mês de
+    // referência: uma compra de julho cai na fatura de agosto e precisa
+    // continuar pagável.
+    expect(where.OR[0]).toEqual({ status: 'closed' });
+    expect(where.OR[1].dueDate.lte instanceof Date).toBe(true);
   });
 });

@@ -23,13 +23,13 @@ describe('Contas atrasadas de meses anteriores', () => {
     ]);
   });
 
-  test('NÃO arrasta parcela de dívida (ela já rola sozinha na virada)', async () => {
+  test('ARRASTA parcela de dívida em aberto (plano esgotado) sem duplicar', async () => {
     await listOverdueFromPreviousMonths(10n, 60n);
     const where = prismaMock.expense.findMany.mock.calls[0][0].where;
-    // Só despesas comuns: incluir 'priority' contaria a mesma dívida 2x,
-    // porque o não pago já é somado à parcela seguinte.
-    expect(where.type).toEqual({ in: ['variable', 'fixed'] });
-    expect(where.type.in).not.toContain('priority');
+    // 'priority' entra: ao gerar a próxima parcela, a rolagem FECHA as
+    // anteriores em aberto, então a única que sobra num mês passado é a de
+    // um plano já esgotado — exatamente a que precisa ser levada adiante.
+    expect(where.type).toEqual({ in: ['variable', 'fixed', 'priority'] });
   });
 
   test('NÃO arrasta parcela de cartão (quitada pela fatura)', async () => {

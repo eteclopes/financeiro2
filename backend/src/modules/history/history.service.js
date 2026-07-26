@@ -85,6 +85,135 @@ async function getFinancialHistory(userId, monthId, periodMonths = 6) {
   };
 }
 
+
+/**
+ * EXTRATO DETALHADO DO MÊS — lançamento a lançamento, com o que foi pago,
+ * quanto foi pago e quanto faltou.
+ *
+ * O histórico existente é agregado (totais por mês). Este extrato responde às
+ * perguntas do dia a dia: "o que eu paguei?", "paguei quanto dessa parcela?",
+ * "quanto ainda falta nela?".
+ *
+ * Para parcelas de dívida mostra o rótulo (3/12), o valor cheio da parcela, o
+ * quanto foi efetivamente pago e o residual — que é justamente o valor que
+ * rola para a parcela seguinte no pagamento parcial.
+ */
+async function getMonthStatement(userId, monthId) {
+  const month = await monthsService.getMonthOrThrow(userId, monthId);
+  const monthStart = new Date(Date.UTC(Number(month.year), Number(month.month) - 1, 1));
+  const monthEnd = new Date(Date.UTC(Number(month.year), Number(month.month), 0, 23, 59, 59, 999));
+
+  const [expenses, incomes, savings, goalContribs] = await Promise.all([
+    prisma.expense.findMany({
+      where: { userId, monthId, deletedAt: null },
+      include: {
+        category: true,
+        debt: { select: { id: true, description: true, installmentsCount: true } },
+        cardInvoice: { include: { card: { select: { name: true } } } },
+      },
+      orderBy: [{ dueDate: 'asc' }],
+    }),
+    prisma.income.findMany({
+      where: { userId, monthId, deletedAt: null },
+      include: { category: true },
+      orderBy: [{ incomeDate: 'asc' }],
+    }),
+    // SavingsTransaction não guarda monthId: o recorte é por data.
+    prisma.savingsTransaction.findMany({
+      where: { userId, transactionDate: { gte: monthStart, lte: monthEnd } },
+      include: { bucket: { select: { name: true } } },
+      orderBy: [{ transactionDate: 'asc' }],
+    }),
+    prisma.goalContribution.findMany({
+      where: { userId, monthId },
+      include: { goal: { select: { name: true } } },
+      orderBy: [{ contributionDate: 'asc' }],
+    }),
+  ]);
+
+  const entries = [];
+
+  for (const e of expenses) {
+    const full = Number(e.value);
+    const paid = Number(e.paidAmount ?? 0);
+    const remaining = round2(Math.max(full - paid, 0));
+    const isDebt = e.type === 'priority';
+
+    entries.push({
+      kind: 'expense',
+      subtype: e.type,
+      id: String(e.id),
+      date: e.paidAt ?? e.dueDate,
+      dueDate: e.dueDate,
+      paidAt: e.paidAt ?? null,
+      description: e.description,
+      category: e.category?.name ?? null,
+      status: e.status,
+      paymentMethod: e.paymentMethod ?? null,
+      // Valores: o combinado, o que saiu e o que ficou faltando.
+      installmentValue: round2(full),
+      paidAmount: round2(paid),
+      remaining,
+      isPartial: paid > 0 && remaining > 0.009,
+      // Contexto de dívida e de cartão.
+      debt: isDebt && e.debt ? { id: String(e.debt.id), name: e.debt.description } : null,
+      card: e.cardInvoice?.card?.name ?? null,
+      invoiceRef: e.cardInvoice
+        ? { month: e.cardInvoice.referenceMonth, year: e.cardInvoice.referenceYear }
+        : null,
+    });
+  }
+
+  for (const i of incomes) {
+    entries.push({
+      kind: 'income',
+      id: String(i.id),
+      date: i.incomeDate,
+      description: i.description,
+      category: i.category?.name ?? null,
+      amount: round2(Number(i.value)),
+      origin: i.origin ?? null,
+    });
+  }
+
+  for (const t of savings) {
+    entries.push({
+      kind: t.type === 'withdraw' ? 'savings_withdraw' : 'savings_deposit',
+      id: String(t.id),
+      date: t.transactionDate,
+      description: t.observation || (t.type === 'withdraw' ? 'Resgate da reserva' : 'Depósito na reserva'),
+      bucket: t.bucket?.name ?? null,
+      amount: round2(Number(t.value)),
+      origin: t.origin ?? null,
+    });
+  }
+
+  for (const c of goalContribs) {
+    entries.push({
+      kind: c.type === 'refund' ? 'goal_refund' : 'goal_contribution',
+      id: String(c.id),
+      date: c.contributionDate,
+      description: c.goal?.name ?? 'Meta',
+      amount: round2(Number(c.value)),
+    });
+  }
+
+  entries.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const sumBy = (fn) => round2(entries.reduce((acc, e) => acc + (fn(e) || 0), 0));
+  const totals = {
+    received: sumBy((e) => (e.kind === 'income' ? e.amount : 0)),
+    paid: sumBy((e) => (e.kind === 'expense' ? e.paidAmount : 0)),
+    stillOwed: sumBy((e) => (e.kind === 'expense' ? e.remaining : 0)),
+    savedToReserve: sumBy((e) => (e.kind === 'savings_deposit' ? e.amount : 0)),
+    withdrawnFromReserve: sumBy((e) => (e.kind === 'savings_withdraw' ? e.amount : 0)),
+    contributedToGoals: sumBy((e) => (e.kind === 'goal_contribution' ? e.amount : 0)),
+    partialCount: entries.filter((e) => e.isPartial).length,
+  };
+
+  return { month: { id: String(month.id), month: month.month, year: month.year, status: month.status }, entries, totals };
+}
+
 function buildSummary(months) {
   if (months.length === 0) return {};
   const incomes = months.map((month) => month.income);
@@ -102,4 +231,4 @@ function buildSummary(months) {
   };
 }
 
-module.exports = { getFinancialHistory, buildSummary };
+module.exports = { getFinancialHistory, getMonthStatement, buildSummary };

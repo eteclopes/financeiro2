@@ -122,6 +122,7 @@ export const paymentsApi = {
 // ---- Automações (pagar ao fechar o mês, guardar sobra, rodar agora) ----
 export const automationsApi = {
   get: () => api.get('/automations'),
+  preview: (monthId, scope = 'current') => api.get('/automations/preview', { params: { monthId, scope } }),
   update: (data) => api.put('/automations', data),
   runNow: (monthId) => api.post('/automations/run', { monthId }),
 };
@@ -153,6 +154,7 @@ export const recommendationsApi = {
 // ---- History ----
 export const historyApi = {
   get: (monthId, periods = 6) => api.get('/history', { params: { monthId, periods } }),
+  statement: (monthId) => api.get('/history/statement', { params: { monthId } }),
 };
 
 // ---- Alerts ----

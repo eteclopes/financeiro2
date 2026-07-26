@@ -46,11 +46,27 @@ export const RECEIPT_OPTIONS = [
 
 export const BALANCE_PAYMENT_OPTIONS = [ACCOUNT_BALANCE_OPTION, PHYSICAL_CASH_OPTION];
 
+/**
+ * Opções de pagamento de uma despesa.
+ *
+ * Sem cartão cadastrado, o cartão NÃO some da lista: ele aparece apagado e
+ * não clicável, com a instrução do que fazer. Esconder a opção fazia parecer
+ * que o sistema não aceita crédito; mostrá-la desabilitada ensina o caminho.
+ */
 export function getExpensePaymentOptions(cards = []) {
   const hasActiveCard = cards.some((card) => card?.active !== false);
-  return hasActiveCard
-    ? [ACCOUNT_BALANCE_OPTION, CREDIT_CARD_OPTION, PHYSICAL_CASH_OPTION]
-    : BALANCE_PAYMENT_OPTIONS;
+  if (hasActiveCard) {
+    return [ACCOUNT_BALANCE_OPTION, CREDIT_CARD_OPTION, PHYSICAL_CASH_OPTION];
+  }
+  return [
+    ACCOUNT_BALANCE_OPTION,
+    {
+      ...CREDIT_CARD_OPTION,
+      disabled: true,
+      description: 'Cadastre um cartão para liberar',
+    },
+    PHYSICAL_CASH_OPTION,
+  ];
 }
 
 export function normalizePaymentMethod(method, { allowCredit = true } = {}) {

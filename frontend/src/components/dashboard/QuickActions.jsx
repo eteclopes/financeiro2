@@ -80,6 +80,9 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   const [autoBuckets, setAutoBuckets] = useState([]);
   const [autoLoading, setAutoLoading] = useState(false);
   const [autoRunning, setAutoRunning] = useState(false);
+  const [autoPreview, setAutoPreview] = useState(null);
+  const [autoScope, setAutoScope] = useState('next'); // 'next' = ao fechar o mês
+  const [autoPreviewLoading, setAutoPreviewLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [incForm, setIncForm] = useState(() => createIncomeForm(selectedMonth));
@@ -546,11 +549,25 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
       const [cfg, sav] = await Promise.all([automationsApi.get(), savingsApi.get()]);
       setAuto(cfg.data.settings);
       setAutoBuckets((sav.data.buckets ?? []).filter((b) => !b.isArchived));
+      loadAutoPreview(autoScope);
     } catch (error) {
       toast.error(extractErrorMessage(error, 'Não foi possível carregar as automações.'));
       setModal(null);
     } finally {
       setAutoLoading(false);
+    }
+  }
+
+  async function loadAutoPreview(scope = autoScope) {
+    if (!selectedMonthId) return;
+    setAutoPreviewLoading(true);
+    try {
+      const { data } = await automationsApi.preview(selectedMonthId, scope);
+      setAutoPreview(data.preview);
+    } catch {
+      setAutoPreview(null); // a prévia é auxiliar; falha nela não trava o painel
+    } finally {
+      setAutoPreviewLoading(false);
     }
   }
 
@@ -560,6 +577,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     try {
       const { data } = await automationsApi.update(next);
       setAuto(data.settings);
+      loadAutoPreview(); // a simulação precisa refletir a mudança na hora
     } catch (error) {
       toast.error(extractErrorMessage(error, 'Não foi possível salvar.'));
     }
@@ -917,9 +935,33 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                 description="Dívidas, contas e faturas do novo mês — na ordem de prioridade, só se houver saldo."
               />
               {auto.payDuesOnClose && (
-                <div className="mt-3 pl-1">
+                <div className="mt-3 space-y-3 pl-1">
                   <FormGroup label="Pagar usando">
                     <ChoiceCards compact columns={2} value={auto.payDuesMethod} onChange={(v) => saveAutomations({ payDuesMethod: v })} options={BALANCE_PAYMENT_OPTIONS} />
+                  </FormGroup>
+                  <FormGroup label="O que pagar automaticamente">
+                    <div className="space-y-1.5">
+                      {[
+                        { key: 'payDebts', label: 'Parcelas de dívida' },
+                        { key: 'payBills', label: 'Contas (variáveis e fixas)' },
+                        { key: 'payInvoices', label: 'Faturas de cartão' },
+                      ].map((g) => (
+                        <label key={g.key} className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-white/[0.07] dark:bg-white/[0.03]">
+                          <input type="checkbox" className="h-4 w-4 accent-[--color-primary]"
+                            checked={auto[g.key] !== false}
+                            onChange={(e) => saveAutomations({ [g.key]: e.target.checked })} />
+                          <span className="text-slate-800 dark:text-zinc-100">{g.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </FormGroup>
+                  <FormGroup label="Nunca deixar o saldo abaixo de (R$)">
+                    <Input type="number" min="0" step="0.01" value={auto.minimumBalance ?? 0}
+                      onChange={(e) => setAuto({ ...auto, minimumBalance: e.target.value })}
+                      onBlur={(e) => saveAutomations({ minimumBalance: parseFloat(e.target.value) || 0 })} />
+                    <p className="mt-1 text-xs text-muted">
+                      Reserva de segurança. A automação só paga (e só guarda) o que couber acima deste valor.
+                    </p>
                   </FormGroup>
                 </div>
               )}
@@ -951,6 +993,87 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                       {autoBuckets.map((b) => <option data-i18n-ignore="true" key={b.id} value={b.id}>{b.name}</option>)}
                     </Select>
                   </FormGroup>
+                </div>
+              )}
+            </div>
+
+            {/* ── Simulação: o que vai acontecer, antes de qualquer dinheiro sair ── */}
+            <div className="rounded-2xl border border-border p-4 dark:border-white/[0.07]">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-sm font-bold text-slate-900 dark:text-zinc-50">Simulação</p>
+                <div className="flex gap-1 rounded-lg bg-subtle p-0.5 dark:bg-white/[0.06]">
+                  {[{ v: 'next', l: 'Ao fechar o mês' }, { v: 'current', l: 'Agora' }].map((o) => (
+                    <button key={o.v} type="button"
+                      onClick={() => { setAutoScope(o.v); loadAutoPreview(o.v); }}
+                      className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${autoScope === o.v ? 'bg-white text-primary-dark shadow-sm dark:bg-white/10 dark:text-primary-hover' : 'text-muted'}`}>
+                      {o.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {autoPreviewLoading ? (
+                <p className="py-3 text-center text-xs text-muted">Calculando…</p>
+              ) : !autoPreview ? (
+                <p className="py-3 text-center text-xs text-muted">Não foi possível calcular a simulação agora.</p>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted">Saldo hoje</span>
+                    <span className="font-mono font-semibold text-slate-900 dark:text-zinc-50">{formatCurrency(autoPreview.balanceNow)}</span>
+                  </div>
+                  {autoPreview.expectedIncome > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted">+ Receitas previstas</span>
+                      <span className="font-mono font-semibold text-success-dark dark:text-success-light">{formatCurrency(autoPreview.expectedIncome)}</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5 border-t border-border pt-2 dark:border-white/[0.07]">
+                    {autoPreview.groups.map((g) => (
+                      <div key={g.key} className="flex items-center justify-between gap-2 text-xs">
+                        <span className={g.willPay ? 'text-slate-700 dark:text-zinc-200' : 'text-muted line-through'}>
+                          {g.name}
+                          {g.reason === 'desligado' && ' (desligado)'}
+                          {g.reason === 'nada_a_pagar' && ' (nada a pagar)'}
+                        </span>
+                        <span className={`shrink-0 font-mono ${g.willPay ? 'text-danger-dark dark:text-danger-light' : 'text-muted'}`}>
+                          {g.total > 0 ? `− ${formatCurrency(g.total)}` : '—'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-border pt-2 text-xs dark:border-white/[0.07]">
+                    <span className="text-muted">Sobra após pagar</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-zinc-50">{formatCurrency(autoPreview.balanceAfterPayments)}</span>
+                  </div>
+                  {autoPreview.savings?.enabled && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted">Vai para a reserva</span>
+                      <span className="font-mono font-semibold text-primary-dark dark:text-primary-hover">{formatCurrency(autoPreview.savings.amount)}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between rounded-xl bg-subtle px-3 py-2 dark:bg-white/[0.04]">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-zinc-200">Saldo final</span>
+                    <span className="font-mono text-base font-bold text-slate-900 dark:text-zinc-50">{formatCurrency(autoPreview.balanceAfterSavings)}</span>
+                  </div>
+
+                  {autoPreview.warnings?.length > 0 && (
+                    <div className="space-y-1.5">
+                      {autoPreview.warnings.map((w, i) => (
+                        <p key={i} className={`rounded-lg px-3 py-2 text-[11px] ${
+                          w.level === 'error'
+                            ? 'bg-danger-subtle text-danger-dark dark:bg-danger/10 dark:text-danger-light'
+                            : w.level === 'warn'
+                              ? 'bg-warning-subtle text-warning-dark dark:bg-warning/10 dark:text-warning-light'
+                              : 'bg-subtle text-muted dark:bg-white/[0.04]'
+                        }`}>
+                          {w.level === 'error' ? '⚠ ' : ''}{w.message}
+                        </p>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

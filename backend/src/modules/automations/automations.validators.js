@@ -5,6 +5,10 @@ const idSchema = z.union([z.string().regex(/^\d+$/), z.number().int().positive()
 const updateSettingsSchema = z.object({
   payDuesOnClose: z.boolean().optional(),
   payDuesMethod: z.enum(['debit', 'cash']).optional(),
+  payDebts: z.boolean().optional(),
+  payBills: z.boolean().optional(),
+  payInvoices: z.boolean().optional(),
+  minimumBalance: z.coerce.number().min(0).max(100000000).optional(),
   saveLeftoverOnClose: z.boolean().optional(),
   saveLeftoverType: z.enum(['percent', 'fixed']).optional(),
   saveLeftoverValue: z.coerce.number().min(0).max(1000000).optional(),

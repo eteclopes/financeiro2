@@ -4,6 +4,7 @@ const { round2 } = require('../../utils/math');
 const { todayUtcDate } = require('../../utils/dateTime');
 const { assertSufficientBalance, lockUserBalance } = require('../_shared/balance');
 const { normalizePaymentMethod } = require('../../utils/paymentMethods');
+const cardInvoicesService = require('../cards/cardInvoices.service');
 
 const SETTLE_TOLERANCE = 0.009;
 
@@ -15,23 +16,37 @@ const SETTLE_TOLERANCE = 0.009;
  * a fatura inteira.
  */
 async function getPayableItems(userId, monthId) {
-  // Faturas de meses FUTUROS não entram na lista. Uma fatura futura pode
-  // existir só porque uma compra caiu depois do fechamento do cartão — ela
-  // ainda está acumulando lançamentos, e pagá-la adiantado (sobretudo pela
-  // automação, sem escolha do usuário) tira dinheiro de uma conta que ainda
-  // não fechou. Só entram faturas com referência até o mês selecionado.
   const targetMonth = await prisma.month.findFirst({
     where: { id: monthId, userId },
     select: { month: true, year: true },
   });
-  const invoiceScope = targetMonth
-    ? {
-        OR: [
-          { referenceYear: { lt: targetMonth.year } },
-          { referenceYear: targetMonth.year, referenceMonth: { lte: targetMonth.month } },
-        ],
-      }
-    : {};
+
+  // Mantém os status em dia (fatura cujo fechamento já passou vira 'closed').
+  await cardInvoicesService.syncInvoiceStatuses(userId);
+
+  // QUAIS FATURAS PODEM SER PAGAS AQUI
+  //
+  // O critério é a data de VENCIMENTO, não o mês de referência. Uma compra
+  // feita em julho depois do fechamento cai na fatura de agosto — usar o mês
+  // de referência escondia essa fatura de quem estava trabalhando em julho.
+  //
+  // Entram:
+  //   - faturas já FECHADAS (o fechamento passou, o valor é final e ela é
+  //     exatamente a conta que se paga agora); e
+  //   - faturas que vencem até o fim do mês selecionado.
+  // Ficam de fora as faturas ainda ABERTAS que só vencem em meses à frente:
+  // elas continuam recebendo lançamentos, e pagá-las adiantado — sobretudo
+  // pela automação, sem escolha do usuário — cobraria uma conta não fechada.
+  let invoiceScope = {};
+  if (targetMonth) {
+    const endOfTargetMonth = new Date(Date.UTC(targetMonth.year, targetMonth.month, 0, 23, 59, 59, 999));
+    invoiceScope = {
+      OR: [
+        { status: 'closed' },
+        { dueDate: { lte: endOfTargetMonth } },
+      ],
+    };
+  }
 
   const [bills, debtInstallments, invoices] = await Promise.all([
     // Contas do mês + contas em aberto que ficaram de meses anteriores, para
@@ -58,8 +73,28 @@ async function getPayableItems(userId, monthId) {
       include: { category: true, month: { select: { month: true, year: true } } },
       orderBy: { dueDate: 'asc' },
     }),
+    // Parcelas de dívida do mês + as que ficaram em aberto em meses
+    // anteriores (plano esgotado, levadas adiante como atrasadas).
     prisma.expense.findMany({
-      where: { userId, monthId, deletedAt: null, status: { in: ['pending', 'late'] }, type: 'priority' },
+      where: {
+        userId,
+        deletedAt: null,
+        status: { in: ['pending', 'late', 'partial'] },
+        type: 'priority',
+        OR: [
+          { monthId },
+          {
+            month: {
+              userId,
+              OR: [
+                { year: { lt: targetMonth?.year ?? 0 } },
+                { year: targetMonth?.year ?? 0, month: { lt: targetMonth?.month ?? 0 } },
+              ],
+            },
+          },
+        ],
+      },
+      include: { month: { select: { month: true, year: true } } },
       orderBy: { dueDate: 'asc' },
     }),
     prisma.cardInvoice.findMany({
