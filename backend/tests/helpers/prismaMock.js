@@ -50,6 +50,7 @@ function createPrismaMock() {
     billingPurchase: modelMock(['findUnique', 'findFirst', 'upsert', 'update', 'updateMany']),
     stripeEvent: modelMock(['findUnique', 'create']),
     dashboardPreference: modelMock(['findUnique', 'upsert']),
+    automationSetting: modelMock(['findUnique', 'upsert', 'create', 'update']),
     $transaction: jest.fn(),
     $executeRaw: jest.fn(),
     $queryRaw: jest.fn(),
@@ -92,6 +93,8 @@ function installDefaults(mock) {
   mock.stripeEvent.create.mockImplementation(({ data }) => Promise.resolve({ id: 445n, ...data }));
   mock.dashboardPreference.findUnique.mockResolvedValue(null);
   mock.dashboardPreference.upsert.mockImplementation(({ create, update }) => Promise.resolve({ ...create, ...update }));
+  mock.automationSetting.findUnique.mockResolvedValue(null);
+  mock.automationSetting.upsert.mockImplementation(({ create, update }) => Promise.resolve({ ...create, ...update }));
 
   mock.expense.findMany.mockResolvedValue([]);
   mock.expense.aggregate.mockResolvedValue({ _sum: { value: null, paidAmount: null } });

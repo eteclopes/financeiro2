@@ -129,3 +129,22 @@ describe('payBillsBatch — pagamento de várias contas + fatura', () => {
     ).rejects.toMatchObject({ code: 'NOTHING_TO_PAY' });
   });
 });
+
+describe('payBillsBatch — parcela de dívida PARCIAL acumula (não sobrescreve)', () => {
+  test('parcela com pagamento anterior é completada e marcada como paga', async () => {
+    // Parcela value 500, já paga 100. Pagar no lote deve pagar os 400 que
+    // faltam e marcar como PAGA (100 + 400 = 500), não como parcial.
+    prismaMock.expense.findMany.mockResolvedValueOnce([
+      { id: 9n, userId: 10n, type: 'priority', status: 'partial', value: 500, paidAmount: 100, debtId: 1n, dueDate: '2026-09-10' },
+    ]);
+    prismaMock.debt.findMany.mockResolvedValue([
+      { id: 1n, userId: 10n, remainingBalance: 400, pendingCarryOver: 0 },
+    ]);
+
+    await payBillsBatch(10n, { expenseIds: ['9'], invoiceIds: [], paymentMethod: 'debit' });
+
+    const upd = prismaMock.expense.update.mock.calls.find((c) => c[0].where.id === 9n)[0].data;
+    expect(upd.paidAmount).toBe(500); // 100 anterior + 400 do lote
+    expect(upd.status).toBe('paid');
+  });
+});

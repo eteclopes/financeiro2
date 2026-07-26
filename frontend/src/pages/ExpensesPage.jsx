@@ -103,7 +103,7 @@ export default function ExpensesPage() {
   const filtered = expenses.filter((e) => tab === 'fixed' ? !!e.fixedTemplateId : e.type === tab);
 
   // ── Handlers ────────────────────────────────────────────
-  function openPay(e) { setPayModal(e); setPayAmount(String(e.value)); setPayMethod(ACCOUNT_BALANCE_METHOD); }
+  function openPay(e) { const falta = Math.max(Number(e.value) - Number(e.paidAmount ?? 0), 0); setPayModal(e); setPayAmount(String(falta || e.value)); setPayMethod(ACCOUNT_BALANCE_METHOD); }
 
   async function handlePay() {
     if (!payAmount || parseFloat(payAmount) <= 0) { toast.error('Informe um valor válido.'); return; }
@@ -328,7 +328,9 @@ export default function ExpensesPage() {
           <div className="auto-grid-wide p-4 sm:p-5">
             {filtered.map((e) => {
               const debt = debts.find((d) => String(d.id) === String(e.debtId));
-              const alreadyPaid = ['paid','settled','partial'].includes(e.status);
+              const alreadyPaid = ['paid','settled'].includes(e.status);
+              const isPartial = e.status === 'partial';
+              const installmentRemaining = Math.max(Number(e.value) - Number(e.paidAmount ?? 0), 0);
               const match = String(e.description ?? '').match(/\((\d+)\/(\d+)\)$/);
               const installmentLabel = match
                 ? `${match[1]}/${match[2]}`
@@ -384,15 +386,19 @@ export default function ExpensesPage() {
                         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted">Vencimento</p>
                         <p className="mt-0.5 text-sm font-semibold text-slate-800 dark:text-zinc-200">{formatShortDate(e.dueDate)}</p>
                       </div>
-                      {alreadyPaid && (
+                      {alreadyPaid ? (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-success-subtle px-3 py-1.5 text-xs font-bold text-success-dark dark:bg-success/10 dark:text-success-light">
-                          ✓ {e.status === 'partial' ? 'Pago com ajuste' : 'Pagamento concluído'}
+                          ✓ Pagamento concluído
                         </span>
-                      )}
+                      ) : isPartial ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-warning-subtle px-3 py-1.5 text-xs font-bold text-warning-dark dark:bg-warning/10 dark:text-warning-light">
+                          Parcialmente pago · falta {formatCurrency(installmentRemaining)}
+                        </span>
+                      ) : null}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 border-t border-slate-200/70 pt-4 dark:border-white/[0.07]">
-                      {!alreadyPaid && <Button size="sm" onClick={() => openPay(e)}>Pagar parcela</Button>}
+                      {!alreadyPaid && <Button size="sm" onClick={() => openPay(e)}>{isPartial ? 'Pagar restante' : 'Pagar parcela'}</Button>}
                       {debt && (
                         <>
                           <Button size="sm" variant="outline" onClick={() => {

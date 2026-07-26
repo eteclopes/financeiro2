@@ -165,6 +165,7 @@ model User {
   simulations        Simulation[]
   billingPurchases   BillingPurchase[]
   dashboardPreference DashboardPreference?
+  automationSetting  AutomationSetting?
 
   @@map("users")
 }
@@ -466,6 +467,8 @@ model SavingsBucket {
   transactions SavingsTransaction[]
 
   @@index([userId, isArchived])
+  automationSettings AutomationSetting[]
+
   @@map("savings_buckets")
 }
 
@@ -635,6 +638,36 @@ model DashboardPreference {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("dashboard_preferences")
+}
+
+/// Configuração de automações do usuário (uma linha por usuário).
+/// Tudo é opcional e desligado por padrão — ligar não altera dados, só
+/// habilita ações que rodam ao fechar o mês ou no botão "Rodar agora".
+model AutomationSetting {
+  id        BigInt @id @default(autoincrement())
+  userId    BigInt @unique @map("user_id")
+
+  /// Ao fechar o mês, pagar o que vencer (dívidas, contas, faturas) se houver saldo.
+  payDuesOnClose Boolean @default(false) @map("pay_dues_on_close")
+  /// Método usado nos pagamentos automáticos: 'debit' (saldo) ou 'cash'.
+  payDuesMethod  String  @default("debit") @map("pay_dues_method") @db.VarChar(10)
+
+  /// Ao fechar o mês, guardar parte da sobra numa caixinha de reserva.
+  saveLeftoverOnClose Boolean @default(false) @map("save_leftover_on_close")
+  /// Como calcular quanto guardar: 'percent' (% da sobra) ou 'fixed' (valor fixo, se couber).
+  saveLeftoverType    String  @default("percent") @map("save_leftover_type") @db.VarChar(10)
+  /// Valor da regra acima (porcentagem 0-100, ou valor fixo em reais).
+  saveLeftoverValue   Decimal @default(0) @map("save_leftover_value") @db.Decimal(12, 2)
+  /// Caixinha destino (se nula, usa a caixinha principal).
+  saveLeftoverBucketId BigInt? @map("save_leftover_bucket_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bucket SavingsBucket? @relation(fields: [saveLeftoverBucketId], references: [id], onDelete: SetNull)
+
+  @@map("automation_settings")
 }
 
 model BillingPurchase {

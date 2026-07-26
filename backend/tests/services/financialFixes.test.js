@@ -90,15 +90,16 @@ describe('getDebtIndicators — números reais para o Dashboard (F-29)', () => {
 describe('applyPaymentToInstallment — pagamento acima do saldo devedor', () => {
   test('recusa valor maior que o saldo devedor em vez de absorvê-lo em silêncio', async () => {
     prismaMock.expense.findFirst.mockResolvedValue({
-      id: 7n, userId: 10n, debtId: 1n, value: 100, status: 'pending', deletedAt: null,
+      id: 7n, userId: 10n, debtId: 1n, value: 100, paidAmount: 0, status: 'pending', deletedAt: null,
     });
     prismaMock.debt.findFirst.mockResolvedValue({
       id: 1n, userId: 10n, remainingBalance: 100, pendingCarryOver: 0, flexiblePayment: true,
     });
 
+    // Paga 500 numa parcela onde só faltam 100 -> recusado (o resto fica nas próximas).
     await expect(
       debtsService.applyPaymentToInstallment(10n, { id: 7n }, 500, 'debit')
-    ).rejects.toMatchObject({ code: 'PAYMENT_ABOVE_DEBT_BALANCE' });
+    ).rejects.toMatchObject({ code: 'PAYMENT_ABOVE_INSTALLMENT' });
   });
 });
 
@@ -245,6 +246,94 @@ describe('generateNextInstallment — não gera parcela em excesso quando já es
     // Cobra a parcela nominal (100), nunca mais do que os 300 descobertos.
     expect(prismaMock.expense.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ value: 100 }) })
+    );
+  });
+});
+
+// ===============================================================
+// FLUXO COMPLETO do cenário do usuário: dívida 2000 em 4x de 500,
+// pagando parcial a cada mês. Verifica que a parcela seguinte
+// acumula o não pago e que a dívida NUNCA fica sem parcela pagável.
+// ===============================================================
+describe('Dívida prioridade — fluxo de pagamento parcial mês a mês (cenário do usuário)', () => {
+  const MES = { id: 60n, month: 10, year: 2026 };
+
+  function makeDebtState(remaining, installmentsCount = 4) {
+    return {
+      id: 1n, userId: 10n, description: 'Compra', categoryId: 3n,
+      status: 'active', installmentsCount, installmentValue: 500,
+      remainingBalance: remaining, pendingCarryOver: 0, dueDay: 10,
+    };
+  }
+
+  test('a próxima parcela acumula o que não foi pago na anterior (500 -> 900 -> 1200 -> última = saldo)', async () => {
+    // Mês 1 fecha: 1ª parcela (500) foi paga só 100 -> falta 400.
+    prismaMock.expense.count.mockResolvedValue(1);
+    prismaMock.expense.findMany.mockResolvedValue([{ id: 5n, value: 500, paidAmount: 100 }]);
+    let created = await debtsService.generateNextInstallment(makeDebtState(1900), MES, prismaMock, { installmentsGenerated: 1 });
+    expect(created.value).toBe(900); // 500 + 400
+
+    // Mês 2 fecha: 2ª (900) foi paga 200 -> falta 700.
+    prismaMock.expense.count.mockResolvedValue(2);
+    prismaMock.expense.findMany.mockResolvedValue([{ id: 6n, value: 900, paidAmount: 200 }]);
+    created = await debtsService.generateNextInstallment(makeDebtState(1700), MES, prismaMock, { installmentsGenerated: 2 });
+    expect(created.value).toBe(1200); // 500 + 700
+
+    // Mês 3 fecha: 3ª (1200) foi paga 200 -> falta 1000. A 4ª é a ÚLTIMA:
+    // carrega TODO o saldo devedor (1500).
+    prismaMock.expense.count.mockResolvedValue(3);
+    prismaMock.expense.findMany.mockResolvedValue([{ id: 7n, value: 1200, paidAmount: 200 }]);
+    created = await debtsService.generateNextInstallment(makeDebtState(1500), MES, prismaMock, { installmentsGenerated: 3 });
+    expect(created.value).toBe(1500); // última = saldo devedor inteiro
+  });
+
+  test('última parcela não paga NÃO some: plano esgotado não gera nada, a última fica em aberto e pagável', async () => {
+    // 4 de 4 geradas, ainda deve 1500 (última parcial/atrasada).
+    prismaMock.expense.count.mockResolvedValue(4);
+    prismaMock.expense.findMany.mockResolvedValue([]);
+    const created = await debtsService.generateNextInstallment(makeDebtState(1500), MES, prismaMock, { installmentsGenerated: 4 });
+    // Não cria parcela nova (número fixo); a última permanece pagável.
+    expect(created).toBeNull();
+    expect(prismaMock.expense.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('deleteDebt — parciais são fechadas sem devolver dinheiro pago', () => {
+  test('apaga só as não pagas e fecha a parcial (preservando o paidAmount)', async () => {
+    prismaMock.debt.findFirst.mockResolvedValue({ id: 1n, userId: 10n, remainingBalance: 300, status: 'active' });
+    prismaMock.expense.findMany.mockResolvedValue([{ id: 8n, paidAmount: 200 }]);
+
+    await debtsService.deleteDebt(10n, 1n);
+
+    // deleteMany apaga só parcelas sem pagamento.
+    const where = prismaMock.expense.deleteMany.mock.calls[0][0].where;
+    expect(where.paidAmount).toBe(0);
+    // a parcial é fechada (value = pago, status paid), não apagada.
+    expect(prismaMock.expense.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 8n }, data: { value: 200, status: 'paid' } })
+    );
+  });
+});
+
+describe('renegotiateDebt — parcial é fechada (não devolve dinheiro)', () => {
+  test('reparcela o saldo e fecha a parcela parcial em vez de apagá-la', async () => {
+    prismaMock.debt.findFirst.mockResolvedValue({ id: 1n, userId: 10n, status: 'active', remainingBalance: 900, description: 'X', categoryId: 3n, dueDay: 10 });
+    prismaMock.month.findFirst.mockResolvedValue({ id: 60n, month: 10, year: 2026, status: 'open' });
+    // uma parcela em aberto parcial (paidAmount 100) e uma pendente (0).
+    prismaMock.expense.findMany.mockResolvedValue([
+      { id: 8n, paidAmount: 100 },
+      { id: 9n, paidAmount: 0 },
+    ]);
+    prismaMock.expense.count.mockResolvedValue(3);
+
+    await debtsService.renegotiateDebt(10n, 1n, { installments: 3, monthId: 60n });
+
+    // a parcial (8) é fechada, a pendente (9) é apagada.
+    expect(prismaMock.expense.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 8n }, data: expect.objectContaining({ status: 'paid', value: 100 }) })
+    );
+    expect(prismaMock.expense.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 9n }, data: { deletedAt: expect.anything() } })
     );
   });
 });

@@ -21,6 +21,7 @@ const calculatorsRoutes = require('../modules/calculators/calculators.routes');
 const reportsRoutes = require('../modules/reports/reports.routes');
 const planningRoutes = require('../modules/planning/planning.routes');
 const paymentsRoutes = require('../modules/payments/payments.routes');
+const automationsRoutes = require('../modules/automations/automations.routes');
 const { heavyLimiter } = require('../middlewares/rateLimiters');
 
 const router = Router();
@@ -35,6 +36,7 @@ router.use('/categories',         categoriesRoutes);
 router.use('/incomes',            incomesRoutes);
 router.use('/expenses',           expensesRoutes);
 router.use('/payments',           paymentsRoutes);
+router.use('/automations',        automationsRoutes);
 router.use('/debts',              debtsRoutes);
 router.use('/cards',              cardsRoutes);
 router.use('/savings',            savingsRoutes);

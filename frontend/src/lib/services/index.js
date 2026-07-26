@@ -119,6 +119,13 @@ export const paymentsApi = {
   payBatch: (payload) => api.post('/payments/batch', payload),
 };
 
+// ---- Automações (pagar ao fechar o mês, guardar sobra, rodar agora) ----
+export const automationsApi = {
+  get: () => api.get('/automations'),
+  update: (data) => api.put('/automations', data),
+  runNow: (monthId) => api.post('/automations/run', { monthId }),
+};
+
 // ---- Financial Health ----
 export const financialHealthApi = {
   get: (monthId) => api.get('/financial-health', { params: { monthId } }),

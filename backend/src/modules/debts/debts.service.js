@@ -232,14 +232,27 @@ async function deleteDebt(userId, debtId) {
   const debt = await getDebtOrThrow(userId, debtId);
 
   return prisma.$transaction(async (tx) => {
+    // Parcelas SEM nenhum pagamento (em meses abertos) são apagadas — não
+    // afetam o saldo, pois nada foi pago nelas.
     await tx.expense.deleteMany({
-      where: {
-        debtId,
-        status: { in: ['pending', 'late'] },
-        paidAmount: 0,
-        month: { status: 'open' },
-      },
+      where: { debtId, paidAmount: 0, status: { in: ['pending', 'late'] }, month: { status: 'open' } },
     });
+
+    // Parcelas com pagamento PARCIAL não podem ser apagadas: o saldo conta o
+    // `paidAmount`, então apagá-las DEVOLVERIA o dinheiro pago (bug). Em vez
+    // disso, são FECHADAS: o valor é reduzido ao que já foi pago e viram
+    // 'paid'. Assim o dinheiro pago continua contabilizado e não sobra
+    // nenhuma parte "em aberto" órfã depois que a dívida some.
+    const partials = await tx.expense.findMany({
+      where: { debtId, paidAmount: { gt: 0 }, status: { in: ['pending', 'late', 'partial'] }, month: { status: 'open' } },
+      select: { id: true, paidAmount: true },
+    });
+    for (const inst of partials) {
+      await tx.expense.update({
+        where: { id: inst.id },
+        data: { value: round2(Number(inst.paidAmount ?? 0)), status: 'paid' },
+      });
+    }
 
     return tx.debt.update({ where: { id: debtId }, data: { status: 'settled' } });
   }).then(async (updated) => {
@@ -249,16 +262,17 @@ async function deleteDebt(userId, debtId) {
 }
 
 /**
- * Núcleo da Etapa 10 (pagamento flexível) e da regra de excedente.
+ * Pagamento de uma parcela de dívida (flexível).
  * Chamado por expenses.service.payExpense quando expense.type === 'priority'.
  *
- * Pagar mais ou menos que o valor da parcela não fica "perdido" até a
- * parcela final — ajusta diretamente a PRÓXIMA parcela a gerar, via
- * `pendingCarryOver` (excesso paga a menos na próxima; falta paga a mais
- * na próxima). Uma vez que esta parcela recebe QUALQUER pagamento (mesmo
- * parcial), ela está encerrada — não é possível "completá-la" depois com
- * um segundo pagamento, porque o ajuste da diferença já foi propagado
- * para a parcela seguinte; um segundo pagamento aqui contaria a mesma
+ * MODELO ATUAL (pagamento parcial acumulável):
+ *  - Você pode pagar uma parcela em VÁRIAS vezes (top-up) até completá-la;
+ *    `paidAmount` acumula e o saldo devedor cai a cada pagamento.
+ *  - O que sobrar sem pagar não fica "perdido": ao fechar o mês, a rolagem
+ *    em `generateNextInstallment` soma o não pago à parcela seguinte.
+ *  - Só uma parcela TOTALMENTE paga recusa novo pagamento.
+ *
+ * (Observação histórica: um segundo pagamento aqui NÃO contaria a mesma
  * diferença duas vezes.
  */
 async function applyPaymentToInstallment(userId, expense, amount, paymentMethod) {
@@ -273,17 +287,23 @@ async function applyPaymentToInstallment(userId, expense, amount, paymentMethod)
       where: { id: expense.id, userId, deletedAt: null },
     });
     if (!currentExpense) throw new AppError('Despesa não encontrada.', 404, 'EXPENSE_NOT_FOUND');
-    if (['partial', 'paid', 'settled'].includes(currentExpense.status)) {
-      throw new AppError(
-        'Esta parcela já recebeu um pagamento — o ajuste já foi aplicado à próxima parcela.',
-        409,
-        'INSTALLMENT_ALREADY_SETTLED'
-      );
+    // A parcela pode ser paga enquanto ainda houver saldo nela — inclusive
+    // completando aos poucos uma parcela já parcialmente paga (top-up). Só
+    // uma parcela TOTALMENTE quitada é recusada.
+    if (['paid', 'settled'].includes(currentExpense.status)) {
+      throw new AppError('Esta parcela já está totalmente paga.', 409, 'INSTALLMENT_ALREADY_PAID');
     }
 
     const debt = await getDebtOrThrow(userId, currentExpense.debtId, tx);
+    const remainingBalance = Number(debt.remainingBalance);
     const installmentValue = Number(currentExpense.value);
-    const isShortfall = amount < installmentValue - 0.009;
+    const alreadyPaid = Number(currentExpense.paidAmount ?? 0);
+    const installmentOutstanding = round2(installmentValue - alreadyPaid);
+
+    // Quanto ainda falta nesta parcela, sem passar do saldo devedor total.
+    const maxPayable = round2(Math.min(installmentOutstanding, remainingBalance));
+
+    const isShortfall = amount < maxPayable - 0.009;
     if (isShortfall && !debt.flexiblePayment) {
       throw new AppError(
         'Esta dívida exige pagamento exato da parcela (pagamento flexível desativado).',
@@ -292,32 +312,38 @@ async function applyPaymentToInstallment(userId, expense, amount, paymentMethod)
       );
     }
 
-    // Pagar acima do saldo devedor apagaria dinheiro silenciosamente: o
-    // excedente sumiria do sistema sem virar saldo nem reduzir outra dívida.
-    const remainingBalance = Number(debt.remainingBalance);
-    if (amount > remainingBalance + SETTLE_TOLERANCE) {
+    // Pagar acima do que falta nesta parcela apagaria dinheiro ou abateria
+    // parcelas futuras sem controle. O excedente deve ir para a próxima
+    // parcela — aqui limitamos ao que falta nesta.
+    if (amount > maxPayable + SETTLE_TOLERANCE) {
       throw new AppError(
-        `O valor informado é maior que o saldo devedor desta dívida (R$ ${remainingBalance.toFixed(2)}). Para quitar, pague exatamente o saldo devedor.`,
+        `O valor é maior do que falta nesta parcela (R$ ${maxPayable.toFixed(2)}). Pague no máximo esse valor; o restante da dívida fica nas próximas parcelas.`,
         422,
-        'PAYMENT_ABOVE_DEBT_BALANCE',
-        { remainingBalance: round2(remainingBalance), requestedAmount: round2(amount) }
+        'PAYMENT_ABOVE_INSTALLMENT',
+        { installmentOutstanding: maxPayable, requestedAmount: round2(amount), remainingBalance: round2(remainingBalance) }
       );
     }
 
     await assertSufficientBalance(userId, amount, tx);
 
+    const newPaidAmount = round2(alreadyPaid + amount);
     const newRemainingBalance = round2(Math.max(remainingBalance - amount, 0));
     const isSettled = newRemainingBalance <= SETTLE_TOLERANCE;
-    const newExpenseStatus = amount >= installmentValue - 0.009 ? 'paid' : 'partial';
-    const delta = round2(amount - installmentValue);
-    const newCarryOver = isSettled ? 0 : round2(Number(debt.pendingCarryOver) - delta);
+    const fullyPaidInstallment = newPaidAmount >= installmentValue - 0.009;
+
+    // Status da parcela: paga se completou (ou quitou a dívida); senão,
+    // atrasada se venceu, ou parcial.
+    let installmentStatus;
+    if (isSettled || fullyPaidInstallment) installmentStatus = 'paid';
+    else if (currentExpense.dueDate && new Date(currentExpense.dueDate) < todayUtcDate()) installmentStatus = 'late';
+    else installmentStatus = 'partial';
 
     const updatedExpense = await tx.expense.update({
       where: { id: currentExpense.id },
       data: {
-        paidAmount: amount,
+        paidAmount: newPaidAmount,
         paidAt: todayUtcDate(),
-        status: isSettled ? 'paid' : newExpenseStatus,
+        status: installmentStatus,
         paymentMethod,
       },
       include: { category: true },
@@ -327,7 +353,9 @@ async function applyPaymentToInstallment(userId, expense, amount, paymentMethod)
       where: { id: debt.id },
       data: {
         remainingBalance: newRemainingBalance,
-        pendingCarryOver: newCarryOver,
+        // carryOver não é mais usado para calcular parcelas (a rolagem do
+        // saldo é feita na geração, a partir das parcelas em aberto).
+        pendingCarryOver: 0,
         status: isSettled ? 'settled' : 'active',
       },
     });
@@ -390,8 +418,13 @@ async function generateNextInstallment(debt, month, client = prisma, options = {
   );
   for (const prev of previousOpen) {
     // Fecha a parcela anterior: o que faltava dela já está embutido na
-    // parcela atual. Mantém value/paidAmount originais como histórico.
-    await client.expense.update({ where: { id: prev.id }, data: { status: 'paid' } });
+    // parcela ATUAL. O value é reduzido ao que foi efetivamente pago, para
+    // que a parcela antiga mostre exatamente o que você pagou naquele mês e
+    // o saldo não seja contado duas vezes.
+    await client.expense.update({
+      where: { id: prev.id },
+      data: { status: 'paid', value: round2(Number(prev.paidAmount ?? 0)) },
+    });
   }
 
   const nominal = Number(debt.installmentValue);
@@ -453,9 +486,20 @@ async function renegotiateDebt(userId, debtId, { installments, monthId }) {
     // ficam intactas (histórico).
     const openNow = await tx.expense.findMany({
       where: { debtId, deletedAt: null, status: { in: ['pending', 'partial', 'late'] }, month: { status: 'open' } },
+      select: { id: true, paidAmount: true },
     });
     for (const inst of openNow) {
-      await tx.expense.update({ where: { id: inst.id }, data: { deletedAt: new Date() } });
+      if (Number(inst.paidAmount ?? 0) > 0) {
+        // Parcela com pagamento parcial: NÃO apaga (o saldo conta o
+        // paidAmount, apagar devolveria o dinheiro). Fecha reduzindo o
+        // valor ao que foi pago; o restante entra no novo parcelamento.
+        await tx.expense.update({
+          where: { id: inst.id },
+          data: { value: round2(Number(inst.paidAmount)), status: 'paid', deletedAt: null },
+        });
+      } else {
+        await tx.expense.update({ where: { id: inst.id }, data: { deletedAt: new Date() } });
+      }
     }
 
     const paidInstallments = await tx.expense.count({

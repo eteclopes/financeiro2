@@ -147,7 +147,13 @@ async function payBillsBatch(userId, { expenseIds = [], invoiceIds = [], payment
       const amount = round2(Math.min(due, debt.running));
       if (amount <= 0) continue;
       debt.running = round2(debt.running - amount);
-      debtPayments.push({ expenseId: inst.id, amount, fullValue: Number(inst.value), debtId: inst.debtId });
+      debtPayments.push({
+        expenseId: inst.id,
+        amount,
+        fullValue: Number(inst.value),
+        priorPaid: Number(inst.paidAmount ?? 0),
+        debtId: inst.debtId,
+      });
     }
 
     // ---------- Faturas ----------
@@ -189,10 +195,13 @@ async function payBillsBatch(userId, { expenseIds = [], invoiceIds = [], payment
 
     // ---------- Aplica: parcelas de dívida ----------
     for (const dp of debtPayments) {
-      const isFull = dp.amount >= dp.fullValue - SETTLE_TOLERANCE;
+      // ACUMULA sobre o que já havia sido pago na parcela — nunca sobrescreve
+      // (senão um pagamento parcial anterior seria perdido).
+      const newPaid = round2(dp.priorPaid + dp.amount);
+      const isFull = newPaid >= dp.fullValue - SETTLE_TOLERANCE;
       await tx.expense.update({
         where: { id: dp.expenseId },
-        data: { paidAmount: dp.amount, paidAt, status: isFull ? 'paid' : 'partial', paymentMethod: method },
+        data: { paidAmount: newPaid, paidAt, status: isFull ? 'paid' : 'partial', paymentMethod: method },
       });
     }
     // Atualiza o saldo devedor de cada dívida (uma vez por dívida).

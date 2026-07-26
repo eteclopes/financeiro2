@@ -36,58 +36,80 @@ function makeExpense(overrides = {}) {
   return { id: 1n, userId: 10n, debtId: 5n, value: 200, status: 'pending', ...overrides };
 }
 
-describe('applyPaymentToInstallment — ajuste da PRÓXIMA parcela (REGRESSÃO)', () => {
-  test('pagar a MAIS grava um carryOver negativo (crédito) na dívida', async () => {
-    prismaMock.debt.findFirst.mockResolvedValue(makeDebt());
-
-    await applyPaymentToInstallment(10n, makeExpense(), 260, 'pix');
-
-    const [{ data }] = prismaMock.debt.update.mock.calls[0];
-    expect(data.pendingCarryOver).toBe(-60);
-    expect(data.remainingBalance).toBe(1740); // 2000 - 260, não 2000 - 200
+describe('applyPaymentToInstallment — pagamento parcial coerente (top-up, sem carryOver)', () => {
+  beforeEach(() => {
+    // A função re-lê a parcela dentro da transação.
+    prismaMock.expense.findFirst.mockResolvedValue(makeExpense());
   });
 
-  test('pagar a MENOS (dívida flexível) grava um carryOver positivo', async () => {
+  test('pagamento parcial reduz o saldo devedor e deixa a parcela como parcial', async () => {
     prismaMock.debt.findFirst.mockResolvedValue(makeDebt());
+    prismaMock.expense.findFirst.mockResolvedValue(makeExpense({ paidAmount: 0 }));
 
     await applyPaymentToInstallment(10n, makeExpense(), 150, 'pix');
 
-    const [{ data }] = prismaMock.debt.update.mock.calls[0];
-    expect(data.pendingCarryOver).toBe(50);
+    const expenseUpdate = prismaMock.expense.update.mock.calls[0][0].data;
+    expect(expenseUpdate.paidAmount).toBe(150);
+    expect(expenseUpdate.status).toBe('partial');
+    const debtUpdate = prismaMock.debt.update.mock.calls[0][0].data;
+    expect(debtUpdate.remainingBalance).toBe(1850); // 2000 - 150
+    expect(debtUpdate.pendingCarryOver).toBe(0);     // carryOver não é mais usado
   });
 
-  test('pagar o valor exato não altera o carryOver', async () => {
-    prismaMock.debt.findFirst.mockResolvedValue(makeDebt({ pendingCarryOver: 0 }));
+  test('TOP-UP: uma parcela parcial ACEITA novo pagamento até completar', async () => {
+    // Parcela de 200 já com 120 pagos: pode receber mais 80 e virar paga.
+    prismaMock.debt.findFirst.mockResolvedValue(makeDebt({ remainingBalance: 1880 }));
+    prismaMock.expense.findFirst.mockResolvedValue(makeExpense({ status: 'partial', paidAmount: 120 }));
+
+    await applyPaymentToInstallment(10n, makeExpense({ status: 'partial', paidAmount: 120 }), 80, 'pix');
+
+    const expenseUpdate = prismaMock.expense.update.mock.calls[0][0].data;
+    expect(expenseUpdate.paidAmount).toBe(200); // 120 + 80
+    expect(expenseUpdate.status).toBe('paid');
+  });
+
+  test('pagar o valor exato quita a parcela', async () => {
+    prismaMock.debt.findFirst.mockResolvedValue(makeDebt());
+    prismaMock.expense.findFirst.mockResolvedValue(makeExpense({ paidAmount: 0 }));
 
     await applyPaymentToInstallment(10n, makeExpense(), 200, 'pix');
 
-    const [{ data }] = prismaMock.debt.update.mock.calls[0];
-    expect(data.pendingCarryOver).toBe(0);
+    const expenseUpdate = prismaMock.expense.update.mock.calls[0][0].data;
+    expect(expenseUpdate.status).toBe('paid');
   });
 
-  test('pagar a menos numa dívida SEM pagamento flexível é rejeitado (comportamento já existente, preservado)', async () => {
+  test('pagar a menos numa dívida SEM pagamento flexível é rejeitado', async () => {
     prismaMock.debt.findFirst.mockResolvedValue(makeDebt({ flexiblePayment: false }));
+    prismaMock.expense.findFirst.mockResolvedValue(makeExpense({ paidAmount: 0 }));
 
     await expect(applyPaymentToInstallment(10n, makeExpense(), 150, 'pix'))
       .rejects.toMatchObject({ code: 'EXACT_PAYMENT_REQUIRED' });
   });
 
-  test('pagamento que quita a dívida inteira zera o carryOver (não há próxima parcela para ajustar)', async () => {
-    prismaMock.debt.findFirst.mockResolvedValue(makeDebt({ remainingBalance: 200, pendingCarryOver: 30 }));
+  test('pagar MAIS do que falta nesta parcela é rejeitado (o resto fica nas próximas)', async () => {
+    prismaMock.debt.findFirst.mockResolvedValue(makeDebt());
+    prismaMock.expense.findFirst.mockResolvedValue(makeExpense({ paidAmount: 0 }));
+
+    await expect(applyPaymentToInstallment(10n, makeExpense(), 260, 'pix'))
+      .rejects.toMatchObject({ code: 'PAYMENT_ABOVE_INSTALLMENT' });
+  });
+
+  test('pagamento que quita a dívida inteira marca como settled', async () => {
+    prismaMock.debt.findFirst.mockResolvedValue(makeDebt({ remainingBalance: 200 }));
+    prismaMock.expense.findFirst.mockResolvedValue(makeExpense({ paidAmount: 0 }));
 
     await applyPaymentToInstallment(10n, makeExpense(), 200, 'pix');
 
-    const [{ data }] = prismaMock.debt.update.mock.calls[0];
-    expect(data.pendingCarryOver).toBe(0);
-    expect(data.status).toBe('settled');
+    const debtUpdate = prismaMock.debt.update.mock.calls[0][0].data;
+    expect(debtUpdate.status).toBe('settled');
   });
 
-  test('parcela já parcialmente paga não aceita novo pagamento (o ajuste já foi propagado à próxima)', async () => {
+  test('parcela TOTALMENTE paga não aceita novo pagamento', async () => {
     prismaMock.debt.findFirst.mockResolvedValue(makeDebt());
-    prismaMock.expense.findFirst.mockResolvedValue(makeExpense({ status: 'partial' }));
+    prismaMock.expense.findFirst.mockResolvedValue(makeExpense({ status: 'paid', paidAmount: 200 }));
 
-    await expect(applyPaymentToInstallment(10n, makeExpense({ status: 'partial' }), 50, 'pix'))
-      .rejects.toMatchObject({ code: 'INSTALLMENT_ALREADY_SETTLED' });
+    await expect(applyPaymentToInstallment(10n, makeExpense({ status: 'paid' }), 50, 'pix'))
+      .rejects.toMatchObject({ code: 'INSTALLMENT_ALREADY_PAID' });
   });
 });
 
@@ -122,9 +144,10 @@ describe('generateNextInstallment — rolagem do saldo não pago para a parcela 
 
     const created = await generateNextInstallment(debt, { id: 2n });
     expect(created.value).toBe(340); // 200 nominal + 140 atrasado
-    // A parcela anterior é fechada (marcada como paga) — não fica dobrando.
+    // A parcela anterior é fechada: marcada como paga e com value reduzido ao
+    // que foi pago (60), pois o restante já está embutido na parcela atual.
     expect(prismaMock.expense.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 5n }, data: { status: 'paid' } })
+      expect.objectContaining({ where: { id: 5n }, data: { status: 'paid', value: 60 } })
     );
   });
 
@@ -247,20 +270,33 @@ describe('debts.service — AuditLog', () => {
     );
   });
 
-  test('deleteDebt não apaga parcela parcial ou já paga', async () => {
+  test('deleteDebt apaga só as parcelas SEM pagamento (não devolve dinheiro pago)', async () => {
     prismaMock.debt.findFirst.mockResolvedValue({ id: 5n, userId: 10n, status: 'active' });
     prismaMock.debt.update.mockResolvedValue({ id: 5n, status: 'settled' });
+    prismaMock.expense.findMany.mockResolvedValue([]); // sem parciais
 
     await deleteDebt(10n, 5n);
 
+    // Só apaga parcelas com paidAmount 0 — apagar uma parcial devolveria o
+    // dinheiro já pago (o saldo conta o paidAmount).
     expect(prismaMock.expense.deleteMany).toHaveBeenCalledWith({
-      where: {
-        debtId: 5n,
-        status: { in: ['pending', 'late'] },
-        paidAmount: 0,
-        month: { status: 'open' },
-      },
+      where: { debtId: 5n, paidAmount: 0, status: { in: ['pending', 'late'] }, month: { status: 'open' } },
     });
+  });
+
+  test('deleteDebt FECHA parcelas parciais (preserva o pago, sem deixar órfão)', async () => {
+    prismaMock.debt.findFirst.mockResolvedValue({ id: 5n, userId: 10n, status: 'active' });
+    prismaMock.debt.update.mockResolvedValue({ id: 5n, status: 'settled' });
+    // Uma parcela de 500 com 200 pagos.
+    prismaMock.expense.findMany.mockResolvedValue([{ id: 8n, paidAmount: 200 }]);
+
+    await deleteDebt(10n, 5n);
+
+    // Reduz o valor ao que foi pago e marca como paga (não apaga -> não
+    // devolve dinheiro; e não sobra parte em aberto).
+    expect(prismaMock.expense.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 8n }, data: { value: 200, status: 'paid' } })
+    );
   });
 
   test('dívida de outro usuário (404) não grava audit log nenhum', async () => {

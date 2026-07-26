@@ -3,6 +3,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const authenticate = require('../../middlewares/authenticate');
 const monthsService = require('./months.service');
 const closingService = require('../closing/closing.service');
+const automationsService = require('../automations/automations.service');
 const { parseBigIntParam } = require('../../utils/parseParams');
 
 const router = Router();
@@ -44,6 +45,14 @@ router.post(
   '/:id/close',
   asyncHandler(async (req, res) => {
     const result = await closingService.closeMonth(req.userId, parseBigIntParam(req.params.id, 'id'));
+
+    // Automações rodam LOGO APÓS o fechamento commitar (fora da transação
+    // crítica). Só em fechamento real (não em reparo) e nunca derrubam a
+    // resposta — o resumo vai anexado. Se algo falhar, o mês já fechou.
+    if (!result.repaired && result.nextMonth?.id) {
+      result.automations = await automationsService.runOnClose(req.userId, result.nextMonth.id);
+    }
+
     res.json(result);
   })
 );

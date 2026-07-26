@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useMonthStore } from '../../store/monthStore';
-import { incomesApi, expensesApi, debtsApi, cardsApi, goalsApi, categoriesApi, paymentsApi } from '../../lib/services';
+import { incomesApi, expensesApi, debtsApi, cardsApi, goalsApi, categoriesApi, paymentsApi, automationsApi, savingsApi } from '../../lib/services';
 import { api, extractErrorMessage } from '../../lib/api';
 import { formatCurrency } from '../../lib/format';
 import { ledgerMonthDateInputValue, ledgerMonthDateRange } from '../../lib/date';
@@ -67,6 +67,11 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   const [batchLoading, setBatchLoading] = useState(false);
   // Modo "pagar várias" dentro do próprio modal Pagar Conta.
   const [payMulti, setPayMulti] = useState(false);
+  // Automações
+  const [auto, setAuto] = useState(null);          // config carregada
+  const [autoBuckets, setAutoBuckets] = useState([]);
+  const [autoLoading, setAutoLoading] = useState(false);
+  const [autoRunning, setAutoRunning] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [incForm, setIncForm] = useState(() => createIncomeForm(selectedMonth));
@@ -403,6 +408,22 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     try {
       const { data } = await api.post(`/months/${selectedMonthId}/close`);
       toast.success(data?.repaired ? 'Mês seguinte reparado e sincronizado!' : 'Mês encerrado com sucesso!');
+
+      // Resumo das automações que rodaram logo após o fechamento.
+      const a = data?.automations;
+      if (a && !a.error) {
+        const parts = [];
+        if (a.payments) {
+          const paidCount = (a.payments.paidDebts || 0) + (a.payments.paidBills || 0) + (a.payments.paidInvoices || 0);
+          if (paidCount > 0) parts.push(`pagou ${paidCount} item(ns) (${formatCurrency(a.payments.totalPaid || 0)})`);
+          if (a.payments.skipped?.length) parts.push(`pulou ${a.payments.skipped.join(', ')} por falta de saldo`);
+        }
+        if (a.savings && a.savings.saved > 0) parts.push(`guardou ${formatCurrency(a.savings.saved)} na reserva`);
+        if (parts.length) toast.success(`Automações: ${parts.join('; ')}.`);
+      } else if (a && a.error) {
+        toast.error('O mês fechou, mas as automações não puderam rodar agora.');
+      }
+
       setModal(null);
       await refreshMonths();
       if (data?.nextMonth?.id) selectMonth(data.nextMonth.id);
@@ -510,12 +531,62 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     }
   }
 
+  async function openAutomations() {
+    setAutoLoading(true);
+    setModal('automations');
+    try {
+      const [cfg, sav] = await Promise.all([automationsApi.get(), savingsApi.get()]);
+      setAuto(cfg.data.settings);
+      setAutoBuckets((sav.data.buckets ?? []).filter((b) => !b.isArchived));
+    } catch (error) {
+      toast.error(extractErrorMessage(error, 'Não foi possível carregar as automações.'));
+      setModal(null);
+    } finally {
+      setAutoLoading(false);
+    }
+  }
+
+  async function saveAutomations(partial) {
+    const next = { ...auto, ...partial };
+    setAuto(next);
+    try {
+      const { data } = await automationsApi.update(next);
+      setAuto(data.settings);
+    } catch (error) {
+      toast.error(extractErrorMessage(error, 'Não foi possível salvar.'));
+    }
+  }
+
+  async function runAutomationsNow() {
+    if (isClosedMonth) { toast.error('Selecione um mês aberto para rodar as automações.'); return; }
+    setAutoRunning(true);
+    try {
+      const { data } = await automationsApi.runNow(selectedMonthId);
+      const r = data.result || {};
+      const parts = [];
+      if (r.payments) {
+        const p = r.payments;
+        const paidCount = (p.paidDebts || 0) + (p.paidBills || 0) + (p.paidInvoices || 0);
+        if (paidCount > 0) parts.push(`pagou ${paidCount} item(ns) (${formatCurrency(p.totalPaid || 0)})`);
+        if (p.skipped?.length) parts.push(`pulou ${p.skipped.join(', ')} por falta de saldo`);
+      }
+      if (r.savings && r.savings.saved > 0) parts.push(`guardou ${formatCurrency(r.savings.saved)} na reserva`);
+      toast.success(parts.length ? `Automações: ${parts.join('; ')}.` : 'Nada a fazer agora — tudo em dia.');
+      onRefresh?.();
+    } catch (error) {
+      toast.error(extractErrorMessage(error, 'Falha ao rodar as automações.'));
+    } finally {
+      setAutoRunning(false);
+    }
+  }
+
   const ACTIONS = [
     { Icon: IconIncome, label: 'Receita', iconBg: 'bg-primary-muted dark:bg-primary/20', iconColor: 'text-primary-dark dark:text-primary-light', onClick: guardClosedMonth(openIncome), disabled: isClosedMonth },
     { Icon: IconExpense, label: 'Despesa', iconBg: 'bg-danger-muted dark:bg-danger/20', iconColor: 'text-danger-dark dark:text-danger-light', onClick: guardClosedMonth(openExpense), disabled: isClosedMonth },
     { Icon: IconCheck, label: 'Pagar conta', iconBg: 'bg-info-muted dark:bg-info/20', iconColor: 'text-info-dark dark:text-info-light', onClick: guardClosedMonth(() => { setPayTarget(null); setPayAmount(''); setPayMethod(ACCOUNT_BALANCE_METHOD); setPayMulti(false); setBatch({ bills: [], debts: [], invoices: [] }); setBatchSelected(new Set()); setModal('pay'); }), disabled: isClosedMonth },
     { Icon: IconCard, label: 'Fatura', iconBg: 'bg-warning-muted dark:bg-warning/20', iconColor: 'text-warning-dark dark:text-warning-light', onClick: guardClosedMonth(openFatura), disabled: isClosedMonth },
     { Icon: IconGoal, label: 'Meta', iconBg: 'bg-purple-100 dark:bg-accentpurple/20', iconColor: 'text-purple-700 dark:text-accentpurple-light', onClick: guardClosedMonth(() => { setGoalTarget(null); setContribForm({ value: '', date: ledgerMonthDateInputValue(selectedMonth) }); setModal('goal'); }), disabled: isClosedMonth },
+    { Icon: IconCheck, label: 'Automações', iconBg: 'bg-primary-subtle dark:bg-primary/15', iconColor: 'text-primary-dark dark:text-primary-hover', onClick: openAutomations, disabled: false },
     {
       Icon: IconAlert,
       label: monthStatus === 'open' ? 'Fechar mês' : 'Reparar mês',
@@ -816,6 +887,80 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
             <Button onClick={saveExpense} loading={saving}>{expenseSaveLabel}</Button>
           </div>
         </div>
+      </Modal>
+
+      {/* ── Automações ── */}
+      <Modal open={modal === 'automations'} onClose={() => setModal(null)} title="Automações" size="md">
+        {autoLoading || !auto ? (
+          <div className="py-6 text-center text-sm text-muted">Carregando…</div>
+        ) : (
+          <div className="space-y-5">
+            <p className="text-xs text-muted">
+              Configure ações que rodam sozinhas quando você <strong>fecha o mês</strong>, ou use o botão
+              <strong> Rodar agora</strong>. Nada é pago sem saldo, e você sempre vê o resumo.
+            </p>
+
+            {/* Pagar ao fechar o mês */}
+            <div className="rounded-2xl border border-border p-4 dark:border-white/[0.07]">
+              <ToggleSwitch
+                checked={auto.payDuesOnClose}
+                onChange={(v) => saveAutomations({ payDuesOnClose: v })}
+                label="Pagar o que vencer ao fechar o mês"
+                description="Dívidas, contas e faturas do novo mês — na ordem de prioridade, só se houver saldo."
+              />
+              {auto.payDuesOnClose && (
+                <div className="mt-3 pl-1">
+                  <FormGroup label="Pagar usando">
+                    <ChoiceCards compact columns={2} value={auto.payDuesMethod} onChange={(v) => saveAutomations({ payDuesMethod: v })} options={BALANCE_PAYMENT_OPTIONS} />
+                  </FormGroup>
+                </div>
+              )}
+            </div>
+
+            {/* Guardar sobra ao fechar o mês */}
+            <div className="rounded-2xl border border-border p-4 dark:border-white/[0.07]">
+              <ToggleSwitch
+                checked={auto.saveLeftoverOnClose}
+                onChange={(v) => saveAutomations({ saveLeftoverOnClose: v })}
+                label="Guardar a sobra na reserva ao fechar o mês"
+                description="Depois de pagar as contas, separa parte do que sobrou numa caixinha."
+              />
+              {auto.saveLeftoverOnClose && (
+                <div className="mt-3 space-y-3 pl-1">
+                  <FormGroup label="Quanto guardar">
+                    <ChoiceCards compact columns={2} value={auto.saveLeftoverType} onChange={(v) => saveAutomations({ saveLeftoverType: v })}
+                      options={[{ value: 'percent', label: '% da sobra' }, { value: 'fixed', label: 'Valor fixo' }]} />
+                  </FormGroup>
+                  <FormGroup label={auto.saveLeftoverType === 'percent' ? 'Porcentagem (%)' : 'Valor (R$)'}>
+                    <Input type="number" min="0" max={auto.saveLeftoverType === 'percent' ? '100' : undefined}
+                      value={auto.saveLeftoverValue}
+                      onChange={(e) => setAuto({ ...auto, saveLeftoverValue: e.target.value })}
+                      onBlur={(e) => saveAutomations({ saveLeftoverValue: parseFloat(e.target.value) || 0 })} />
+                  </FormGroup>
+                  <FormGroup label="Reserva de destino">
+                    <Select value={auto.saveLeftoverBucketId ?? ''} onChange={(e) => saveAutomations({ saveLeftoverBucketId: e.target.value || null })}>
+                      <option value="">Caixinha principal</option>
+                      {autoBuckets.map((b) => <option data-i18n-ignore="true" key={b.id} value={b.id}>{b.name}</option>)}
+                    </Select>
+                  </FormGroup>
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl bg-subtle p-4 dark:bg-white/[0.04]">
+              <p className="mb-2 text-xs text-muted">
+                Quer aplicar as automações ligadas <strong>agora</strong>, sem fechar o mês? {isClosedMonth && '(selecione um mês aberto)'}
+              </p>
+              <Button variant="secondary" onClick={runAutomationsNow} loading={autoRunning} disabled={isClosedMonth || (!auto.payDuesOnClose && !auto.saveLeftoverOnClose)}>
+                Rodar agora
+              </Button>
+            </div>
+
+            <div className="modal-actions">
+              <Button onClick={() => setModal(null)}>Concluído</Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* ── Pagar Conta (uma ou várias de uma vez) ── */}
