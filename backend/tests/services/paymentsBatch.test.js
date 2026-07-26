@@ -148,3 +148,24 @@ describe('payBillsBatch — parcela de dívida PARCIAL acumula (não sobrescreve
     expect(upd.status).toBe('paid');
   });
 });
+
+// ── AUDITORIA: faturas de meses FUTUROS não podem ser pagas em lote ──
+describe('getPayableItems — escopo das faturas', () => {
+  const { getPayableItems } = require('../../src/modules/payments/payments.service');
+
+  test('a consulta limita faturas à referência até o mês selecionado', async () => {
+    prismaMock.month.findFirst.mockResolvedValue({ month: 9, year: 2026 });
+    prismaMock.expense.findMany.mockResolvedValue([]);
+    prismaMock.cardInvoice.findMany.mockResolvedValue([]);
+    prismaMock.expense.groupBy.mockResolvedValue([]);
+
+    await getPayableItems(10n, 60n);
+
+    const where = prismaMock.cardInvoice.findMany.mock.calls[0][0].where;
+    // Não busca "todas as não pagas": há recorte por referência.
+    expect(where.OR).toEqual([
+      { referenceYear: { lt: 2026 } },
+      { referenceYear: 2026, referenceMonth: { lte: 9 } },
+    ]);
+  });
+});

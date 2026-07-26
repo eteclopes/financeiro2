@@ -9,7 +9,7 @@ const { round2 } = require('../../utils/math');
 
 const { clampDay, firstInvoiceReference, invoiceDates } = require('../../utils/cardCycle');
 
-async function getOrCreateInvoice(card, refMonth, refYear, client = prisma) {
+async function getOrCreateInvoice(card, refMonth, refYear, client = prisma, depth = 0) {
   const where = {
     cardId_referenceMonth_referenceYear: {
       cardId: card.id,
@@ -18,7 +18,19 @@ async function getOrCreateInvoice(card, refMonth, refYear, client = prisma) {
     },
   };
   const existing = await client.cardInvoice.findUnique({ where });
-  if (existing) return existing;
+  if (existing) {
+    // Uma fatura JÁ PAGA não pode receber novas cobranças. Antes, a compra
+    // era anexada a ela e ficava impagável: a fatura não reaparecia na lista
+    // de contas a pagar (por já estar 'paid') e `payInvoice` recusava com
+    // INVOICE_ALREADY_PAID — ou seja, uma cobrança real que ninguém
+    // conseguia quitar. Agora a cobrança rola para a fatura seguinte, que é
+    // exatamente o que o cartão faz na vida real.
+    if (existing.status === 'paid' && depth < 24) {
+      const next = addMonths(refMonth, refYear, 1);
+      return getOrCreateInvoice(card, next.month, next.year, client, depth + 1);
+    }
+    return existing;
+  }
 
   const month = await monthsService.getOrCreateMonth(card.userId, refMonth, refYear, client);
   const { closingDate, dueDate } = invoiceDates(

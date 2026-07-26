@@ -39,6 +39,47 @@ async function syncOverdueStatuses(userId, monthId) {
   });
 }
 
+/**
+ * Contas em aberto de meses ANTERIORES ao selecionado ("atrasadas de julho").
+ *
+ * Por que não movemos a despesa de mês:
+ *  - A data do lançamento é a COMPETÊNCIA. Uma conta de julho é de julho,
+ *    mesmo paga em agosto — mudar o mês falsearia o histórico.
+ *  - O mês fechado tem um retrato imutável. Mexer no conteúdo dele (ou criar
+ *    uma cópia no mês novo) faria a mesma dívida ser contada duas vezes.
+ * Então a conta continua onde nasceu e passa a ser EXIBIDA e PAGÁVEL a partir
+ * do mês atual — que é o que o usuário precisa: não perder a conta de vista.
+ *
+ * Só entram despesas comuns (variável/fixa):
+ *  - parcelas de DÍVIDA já rolam sozinhas (o não pago é somado à parcela
+ *    seguinte na virada), então arrastá-las aqui contaria em dobro;
+ *  - parcelas de CARTÃO são quitadas pagando a fatura.
+ */
+async function listOverdueFromPreviousMonths(userId, monthId) {
+  const target = await monthsService.getMonthOrThrow(userId, monthId);
+
+  return prisma.expense.findMany({
+    where: {
+      userId,
+      deletedAt: null,
+      type: { in: ['variable', 'fixed'] },
+      status: { in: ['pending', 'late', 'partial'] },
+      month: {
+        userId,
+        OR: [
+          { year: { lt: target.year } },
+          { year: target.year, month: { lt: target.month } },
+        ],
+      },
+    },
+    include: {
+      category: true,
+      month: { select: { id: true, month: true, year: true, status: true } },
+    },
+    orderBy: [{ dueDate: 'asc' }],
+  });
+}
+
 async function listExpenses(userId, monthId, type) {
   await monthsService.getMonthOrThrow(userId, monthId);
   await syncOverdueStatuses(userId, monthId);
@@ -461,6 +502,12 @@ async function deleteExpense(userId, expenseId) {
 
 async function payExpense(userId, expenseId, { amount, paymentMethod }) {
   const initial = await getOwnedExpenseOrThrow(userId, expenseId);
+  // NOTA (auditoria): pagar uma conta de um mês JÁ ENCERRADO é permitido de
+  // propósito. O fechamento não arrasta pendências para o mês seguinte —
+  // elas continuam no mês de competência. Bloquear o pagamento tornaria essa
+  // conta impagável para sempre. O histórico continua correto porque o
+  // retrato do mês fechado é imutável e `paidAt` registra a data real da
+  // saída de dinheiro (hoje), não a competência.
   if (initial.type === 'card') {
     throw new AppError('Parcelas de cartão são quitadas pagando a fatura inteira.', 409, 'PAY_VIA_INVOICE');
   }
@@ -505,6 +552,7 @@ async function payExpense(userId, expenseId, { amount, paymentMethod }) {
 
 module.exports = {
   listExpenses,
+  listOverdueFromPreviousMonths,
   createVariableExpense,
   createFixedExpense,
   deactivateFixedTemplate,

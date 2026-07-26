@@ -26,6 +26,9 @@ export default function ExpensesPage() {
   const selectedMonth = useMonthStore((s) => s.months.find((month) => String(month.id) === String(s.selectedMonthId)) ?? null);
   const [tab, setTab]       = useState('priority');
   const [expenses, setExpenses] = useState([]);
+  // Contas em aberto que ficaram de meses anteriores (ficam no mês de
+  // competência, mas aparecem aqui para não sumirem de vista).
+  const [overdue, setOverdue] = useState([]);
   const [debts, setDebts]   = useState([]);
   const [categories, setCategories] = useState([]);
   const [cards, setCards] = useState([]);
@@ -83,6 +86,7 @@ export default function ExpensesPage() {
         cardsApi.list(),
       ]);
       setExpenses(exp.data.expenses ?? []);
+      setOverdue(exp.data.overdueFromPrevious ?? []);
       setDebts(dbt.data.debts ?? []);
       setCategories(cats.data.categories ?? []);
       setCards((crds.data.cards ?? []).filter((c) => c.active));
@@ -92,6 +96,9 @@ export default function ExpensesPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const overdueTotal = overdue.reduce(
+    (sum, e) => sum + Math.max(Number(e.value) - Number(e.paidAmount ?? 0), 0), 0
+  );
   const expensePaymentOptions = getExpensePaymentOptions(cards);
 
   const tabs = [
@@ -315,6 +322,48 @@ export default function ExpensesPage() {
       </div>
 
       <div data-tutorial="expense-tabs"><TabGroup tabs={tabs} value={tab} onChange={setTab} /></div>
+
+      {/* ── Contas atrasadas que ficaram de meses anteriores ──
+          Elas continuam registradas no mês em que nasceram (a competência
+          não muda), mas aparecem aqui para você não perdê-las de vista e
+          poder quitar a partir do mês atual. */}
+      {overdue.length > 0 && (
+        <Card padding={false} className="border-danger/30">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3 dark:border-white/[0.07]">
+            <div>
+              <p className="text-sm font-bold text-danger-dark dark:text-danger-light">
+                Atrasadas de meses anteriores
+              </p>
+              <p className="text-xs text-muted">
+                {overdue.length} conta(s) em aberto — total {formatCurrency(overdueTotal)}
+              </p>
+            </div>
+          </div>
+          <div className="divide-y divide-border dark:divide-white/[0.07]">
+            {overdue.map((e) => {
+              const falta = Math.max(Number(e.value) - Number(e.paidAmount ?? 0), 0);
+              return (
+                <div key={e.id} className="flex items-center gap-3 px-5 py-3">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-slate-800 dark:text-zinc-100">
+                      <UserText>{e.description}</UserText>
+                    </span>
+                    <span className="block text-[11px] text-muted">
+                      de {String(e.month?.month ?? '').padStart(2, '0')}/{e.month?.year}
+                      {e.category?.name ? ` · ${e.category.name}` : ''}
+                      {Number(e.paidAmount ?? 0) > 0 ? ` · falta ${formatCurrency(falta)}` : ''}
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-mono text-sm font-semibold text-slate-900 dark:text-zinc-50">
+                    {formatCurrency(falta)}
+                  </span>
+                  <Button size="sm" onClick={() => openPay(e)}>Pagar</Button>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       <Card padding={false}>
         {loading ? (

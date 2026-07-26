@@ -1010,7 +1010,15 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                             <input type="checkbox" className="h-4 w-4 accent-[--color-primary]" checked={batchSelected.has(key)} onChange={() => toggleBatchItem(key)} />
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-sm font-medium text-slate-800 dark:text-zinc-100"><UserText>{bill.description}</UserText></span>
-                              {bill.category?.name && <span className="block truncate text-[11px] text-muted">{bill.category.name}</span>}
+                              <span className="block truncate text-[11px] text-muted">
+                                {bill.fromPreviousMonth && (
+                                  <span className="font-semibold text-danger-dark dark:text-danger-light">
+                                    Atrasada de {String(bill.originMonth?.month ?? '').padStart(2, '0')}/{bill.originMonth?.year}
+                                    {bill.category?.name ? ' · ' : ''}
+                                  </span>
+                                )}
+                                {bill.category?.name}
+                              </span>
                             </span>
                             <span className="shrink-0 font-mono text-sm font-semibold text-slate-900 dark:text-zinc-50">{formatCurrency(bill.amount)}</span>
                           </label>

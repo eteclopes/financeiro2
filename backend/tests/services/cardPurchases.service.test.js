@@ -143,3 +143,52 @@ describe('createCardPurchase — startingInstallment (compra já em andamento) (
     }))).resolves.toBeDefined();
   });
 });
+
+// ── AUDITORIA: cobrança não pode cair numa fatura JÁ PAGA ──────────────
+// Antes, se a fatura do mês de referência já estivesse paga, a nova compra
+// era anexada a ela e ficava IMPAGÁVEL: a lista de contas a pagar ignora
+// faturas 'paid' e payInvoice recusa com INVOICE_ALREADY_PAID.
+describe('getOrCreateInvoice — fatura paga não recebe cobrança nova', () => {
+  const { getOrCreateInvoice } = require('../../src/modules/cards/cardPurchases.service');
+
+  test('rola a cobrança para a fatura do mês seguinte', async () => {
+    prismaMock.cardInvoice.findUnique.mockImplementation(({ where }) => {
+      const ref = where.cardId_referenceMonth_referenceYear;
+      // Fatura de setembro/2026 já está paga; a de outubro ainda não existe.
+      if (ref.referenceMonth === 9 && ref.referenceYear === 2026) {
+        return Promise.resolve({ id: 900n, status: 'paid', referenceMonth: 9, referenceYear: 2026 });
+      }
+      return Promise.resolve(null);
+    });
+    prismaMock.cardInvoice.create.mockImplementation(({ data }) => Promise.resolve({ id: 901n, ...data }));
+
+    const invoice = await getOrCreateInvoice(CARD, 9, 2026, prismaMock);
+
+    // Não devolveu a fatura paga; criou/usou a de outubro.
+    expect(invoice.id).not.toBe(900n);
+    expect(invoice.referenceMonth).toBe(10);
+    expect(invoice.referenceYear).toBe(2026);
+  });
+
+  test('vira o ano corretamente quando dezembro já está pago', async () => {
+    prismaMock.cardInvoice.findUnique.mockImplementation(({ where }) => {
+      const ref = where.cardId_referenceMonth_referenceYear;
+      if (ref.referenceMonth === 12 && ref.referenceYear === 2026) {
+        return Promise.resolve({ id: 950n, status: 'paid', referenceMonth: 12, referenceYear: 2026 });
+      }
+      return Promise.resolve(null);
+    });
+    prismaMock.cardInvoice.create.mockImplementation(({ data }) => Promise.resolve({ id: 951n, ...data }));
+
+    const invoice = await getOrCreateInvoice(CARD, 12, 2026, prismaMock);
+    expect(invoice.referenceMonth).toBe(1);
+    expect(invoice.referenceYear).toBe(2027);
+  });
+
+  test('fatura em aberto (não paga) continua recebendo a cobrança normalmente', async () => {
+    prismaMock.cardInvoice.findUnique.mockResolvedValue({ id: 800n, status: 'open', referenceMonth: 9, referenceYear: 2026 });
+    const invoice = await getOrCreateInvoice(CARD, 9, 2026, prismaMock);
+    expect(invoice.id).toBe(800n);
+    expect(prismaMock.cardInvoice.create).not.toHaveBeenCalled();
+  });
+});

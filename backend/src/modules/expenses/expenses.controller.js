@@ -5,8 +5,13 @@ const service = require('./expenses.service');
 const list = asyncHandler(async (req, res) => {
   const monthId = parseMonthId(req.query);
   const { type } = req.query;
-  const expenses = await service.listExpenses(req.userId, monthId, type);
-  res.json({ expenses });
+  const [expenses, overdueFromPrevious] = await Promise.all([
+    service.listExpenses(req.userId, monthId, type),
+    // Contas em aberto que ficaram para trás. Vão num campo separado para
+    // não se misturarem aos totais do mês (a competência delas é outra).
+    service.listOverdueFromPreviousMonths(req.userId, monthId),
+  ]);
+  res.json({ expenses, overdueFromPrevious });
 });
 
 const createVariable = asyncHandler(async (req, res) => {

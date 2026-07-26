@@ -15,10 +15,47 @@ const SETTLE_TOLERANCE = 0.009;
  * a fatura inteira.
  */
 async function getPayableItems(userId, monthId) {
+  // Faturas de meses FUTUROS não entram na lista. Uma fatura futura pode
+  // existir só porque uma compra caiu depois do fechamento do cartão — ela
+  // ainda está acumulando lançamentos, e pagá-la adiantado (sobretudo pela
+  // automação, sem escolha do usuário) tira dinheiro de uma conta que ainda
+  // não fechou. Só entram faturas com referência até o mês selecionado.
+  const targetMonth = await prisma.month.findFirst({
+    where: { id: monthId, userId },
+    select: { month: true, year: true },
+  });
+  const invoiceScope = targetMonth
+    ? {
+        OR: [
+          { referenceYear: { lt: targetMonth.year } },
+          { referenceYear: targetMonth.year, referenceMonth: { lte: targetMonth.month } },
+        ],
+      }
+    : {};
+
   const [bills, debtInstallments, invoices] = await Promise.all([
+    // Contas do mês + contas em aberto que ficaram de meses anteriores, para
+    // que uma conta atrasada possa ser quitada junto com as do mês corrente.
     prisma.expense.findMany({
-      where: { userId, monthId, deletedAt: null, status: { in: ['pending', 'late'] }, type: { in: ['variable', 'fixed'] } },
-      include: { category: true },
+      where: {
+        userId,
+        deletedAt: null,
+        status: { in: ['pending', 'late', 'partial'] },
+        type: { in: ['variable', 'fixed'] },
+        OR: [
+          { monthId },
+          {
+            month: {
+              userId,
+              OR: [
+                { year: { lt: targetMonth?.year ?? 0 } },
+                { year: targetMonth?.year ?? 0, month: { lt: targetMonth?.month ?? 0 } },
+              ],
+            },
+          },
+        ],
+      },
+      include: { category: true, month: { select: { month: true, year: true } } },
       orderBy: { dueDate: 'asc' },
     }),
     prisma.expense.findMany({
@@ -26,7 +63,7 @@ async function getPayableItems(userId, monthId) {
       orderBy: { dueDate: 'asc' },
     }),
     prisma.cardInvoice.findMany({
-      where: { card: { userId }, status: { not: 'paid' } },
+      where: { card: { userId }, status: { not: 'paid' }, ...invoiceScope },
       include: { card: { select: { id: true, name: true } } },
       orderBy: { dueDate: 'asc' },
     }),
@@ -44,15 +81,26 @@ async function getPayableItems(userId, monthId) {
     pendingByInvoice.map((row) => [String(row.cardInvoiceId), round2(Number(row._sum.value ?? 0) - Number(row._sum.paidAmount ?? 0))])
   );
 
-  const mapExpense = (e, kind) => ({
-    id: String(e.id),
-    kind,
-    description: e.description,
-    category: e.category ? { name: e.category.name } : null,
-    dueDate: e.dueDate,
-    amount: round2(Number(e.value) - Number(e.paidAmount ?? 0)),
-    status: e.status,
-  });
+  const mapExpense = (e, kind) => {
+    // Marca contas que vieram de um mês anterior, para a tela poder mostrar
+    // "atrasada de 07/2026" em vez de parecer uma conta do mês corrente.
+    const fromPrevious = Boolean(
+      e.month && targetMonth
+      && (e.month.year < targetMonth.year
+        || (e.month.year === targetMonth.year && e.month.month < targetMonth.month))
+    );
+    return {
+      id: String(e.id),
+      kind,
+      description: e.description,
+      category: e.category ? { name: e.category.name } : null,
+      dueDate: e.dueDate,
+      amount: round2(Number(e.value) - Number(e.paidAmount ?? 0)),
+      status: e.status,
+      fromPreviousMonth: fromPrevious,
+      originMonth: fromPrevious ? { month: e.month.month, year: e.month.year } : null,
+    };
+  };
 
   const payableBills = bills.map((e) => mapExpense(e, 'expense'));
   const payableDebts = debtInstallments.map((e) => mapExpense(e, 'debt'));
