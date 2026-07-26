@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { cardsApi, categoriesApi } from '../lib/services';
+import { cardsApi, categoriesApi, expensesApi } from '../lib/services';
 import { extractErrorMessage } from '../lib/api';
 import { formatCurrency, formatShortDate } from '../lib/format';
 import { ledgerMonthDateInputValue, ledgerMonthDateRange } from '../lib/date';
@@ -8,6 +8,7 @@ import { useMonthStore } from '../store/monthStore';
 import { Card, CardHeader, Badge, Button, EmptyState, ProgressBar } from '../components/ui/index';
 import { Modal, ConfirmDialog, FormGroup, Input, Select } from '../components/ui/Modal';
 import { CategorySelect } from '../components/ui/CategorySelect';
+import { ToggleSwitch } from '../components/ui/Motion';
 import { useUIStore } from '../store/uiStore';
 import { useAuthStore } from '../store/authStore';
 import { ChoiceCards, AnimatedNumber } from '../components/ui/Motion';
@@ -19,6 +20,7 @@ const STATUS_V = { open:'info', closed:'warning', paid:'success' };
 const STATUS_L = { open:'Aberta', closed:'Fechada', paid:'Paga' };
 export default function CardsPage() {
   const selectedMonth = useMonthStore((s) => s.months.find((month) => String(month.id) === String(s.selectedMonthId)) ?? null);
+  const selectedMonthId = useMonthStore((s) => s.selectedMonthId);
   const [cards, setCards]     = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,7 +45,7 @@ export default function CardsPage() {
 
   const [cardForm, setCardForm] = useState({ name:'', color: COLORS[0], limitValue:'', closingDay:'20', dueDay:'27' });
   const [editCardForm, setEditCardForm] = useState({ name:'', color: COLORS[0], limitValue:'', closingDay:'', dueDay:'' });
-  const [purchaseForm, setPurchaseForm] = useState(() => ({ description:'', categoryId:'', totalValue:'', installmentsCount:'1', purchaseDate: ledgerMonthDateInputValue(selectedMonth) }));
+  const [purchaseForm, setPurchaseForm] = useState(() => ({ description:'', categoryId:'', totalValue:'', installmentsCount:'1', purchaseDate: ledgerMonthDateInputValue(selectedMonth), subscription:false }));
 
   const selectedMonthDateRange = ledgerMonthDateRange(selectedMonth);
   const toast = useUIStore((s) => s);
@@ -187,13 +189,42 @@ export default function CardsPage() {
     finally { setDeletingCard(false); }
   }
 
+  // Em qual fatura a compra cai, dado o fechamento do cartão.
+  function previewInvoice(purchaseDateStr, card) {
+    if (!purchaseDateStr || !card) return null;
+    const d = new Date(`${purchaseDateStr}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) return null;
+    let m = d.getUTCMonth() + 1, y = d.getUTCFullYear();
+    const beforeClosing = d.getUTCDate() <= Number(card.closingDay);
+    if (!beforeClosing) { m += 1; if (m > 12) { m = 1; y += 1; } }
+    const meses = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+    return { label: `${meses[m - 1]}/${y}`, beforeClosing };
+  }
+
   async function savePurchase() {
     if (!selected || !purchaseForm.description || !purchaseForm.totalValue) { toast.error('Preencha os campos obrigatórios.'); return; }
     setSaving(true);
     try {
       const cat = purchaseForm.categoryId || (categories[0]?.id ?? '');
-      await cardsApi.createPurchase(selected.id, { ...purchaseForm, totalValue: parseFloat(purchaseForm.totalValue), installmentsCount: parseInt(purchaseForm.installmentsCount), startingInstallment: parseInt(purchaseForm.startingInstallment) || 1, categoryId: String(cat) });
-      toast.success('Compra registrada!'); setPurchaseModal(false); loadCards(); loadInvoices();
+      if (purchaseForm.subscription) {
+        // Assinatura = despesa fixa no cartão: cobrança mensal recorrente,
+        // sem data de término (some só quando você desativar).
+        const dueDay = new Date(`${purchaseForm.purchaseDate}T00:00:00Z`).getUTCDate() || 1;
+        await expensesApi.createFixed({
+          description: purchaseForm.description,
+          categoryId: String(cat),
+          value: parseFloat(purchaseForm.totalValue),
+          dueDay,
+          paymentMethod: 'credit',
+          cardId: selected.id,
+          monthId: selectedMonthId,
+        });
+        toast.success('Assinatura criada! Vai ser cobrada todo mês no cartão.');
+      } else {
+        await cardsApi.createPurchase(selected.id, { ...purchaseForm, totalValue: parseFloat(purchaseForm.totalValue), installmentsCount: parseInt(purchaseForm.installmentsCount), startingInstallment: parseInt(purchaseForm.startingInstallment) || 1, categoryId: String(cat) });
+        toast.success('Compra registrada!');
+      }
+      setPurchaseModal(false); loadCards(); loadInvoices();
     } catch (e) { toast.error(extractErrorMessage(e, 'Erro.')); }
     finally { setSaving(false); }
   }
@@ -321,7 +352,7 @@ export default function CardsPage() {
                   {selected.active === false ? (
                     <span className="text-xs text-muted italic">Não aceita novas compras</span>
                   ) : (
-                    <Button size="sm" onClick={() => { setPurchaseForm({ description:'', categoryId:'', totalValue:'', installmentsCount:'1', startingInstallment:'1', purchaseDate: ledgerMonthDateInputValue(selectedMonth) }); setPurchaseModal(true); }}>
+                    <Button size="sm" onClick={() => { setPurchaseForm({ description:'', categoryId:'', totalValue:'', installmentsCount:'1', startingInstallment:'1', purchaseDate: ledgerMonthDateInputValue(selectedMonth), subscription:false }); setPurchaseModal(true); }}>
                       + Compra
                     </Button>
                   )}
@@ -466,11 +497,30 @@ export default function CardsPage() {
               onCategoryCreated={(cat) => setCategories((prev) => [...prev, cat])}
             />
           </FormGroup>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <FormGroup label="Valor total" required><Input type="number" min="0" step="0.01" value={purchaseForm.totalValue} onChange={(e) => setPurchaseForm({...purchaseForm,totalValue:e.target.value})} /></FormGroup>
-            <FormGroup label="Parcelas"><Input type="number" min="1" max="48" value={purchaseForm.installmentsCount} onChange={(e) => setPurchaseForm({...purchaseForm,installmentsCount:e.target.value})} /></FormGroup>
-            <FormGroup label="Data"><Input type="date" min={selectedMonthDateRange.min} max={selectedMonthDateRange.max} value={purchaseForm.purchaseDate} onChange={(e) => setPurchaseForm({...purchaseForm,purchaseDate:e.target.value})} /></FormGroup>
+          <ToggleSwitch
+            checked={purchaseForm.subscription}
+            onChange={(v) => setPurchaseForm({ ...purchaseForm, subscription: v })}
+            label="É uma assinatura (sem data de término)"
+            description="Cobrança mensal recorrente no cartão (ex.: streaming). Some só quando você desativar."
+          />
+          <div className={`grid grid-cols-1 gap-3 ${purchaseForm.subscription ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+            <FormGroup label={purchaseForm.subscription ? 'Valor mensal' : 'Valor total'} required><Input type="number" min="0" step="0.01" value={purchaseForm.totalValue} onChange={(e) => setPurchaseForm({...purchaseForm,totalValue:e.target.value})} /></FormGroup>
+            {!purchaseForm.subscription && (
+              <FormGroup label="Parcelas"><Input type="number" min="1" max="48" value={purchaseForm.installmentsCount} onChange={(e) => setPurchaseForm({...purchaseForm,installmentsCount:e.target.value})} /></FormGroup>
+            )}
+            <FormGroup label={purchaseForm.subscription ? 'Primeira cobrança' : 'Data da compra'}>
+              <Input type="date" value={purchaseForm.purchaseDate} onChange={(e) => setPurchaseForm({...purchaseForm,purchaseDate:e.target.value})} />
+            </FormGroup>
           </div>
+          {selected && (() => {
+            const preview = previewInvoice(purchaseForm.purchaseDate, selected);
+            return preview ? (
+              <div className="rounded-xl border border-primary/20 bg-primary-subtle p-3 text-xs text-primary-dark dark:bg-primary/10 dark:text-primary-hover">
+                Fecha dia {selected.closingDay}. {purchaseForm.subscription ? 'A 1ª cobrança' : 'Esta compra'} {preview.beforeClosing ? 'entra na fatura' : 'cai na próxima fatura'} de <strong>{preview.label}</strong>.
+                {purchaseForm.subscription && ' As próximas vêm todo mês.'}
+              </div>
+            ) : null;
+          })()}
           {selected && (
             <div className="rounded-xl border border-info/20 bg-info-subtle p-3 text-xs leading-relaxed text-info-dark dark:bg-info/10 dark:text-info-light">
               {Number(selected.dueDay) > Number(selected.closingDay)
@@ -478,13 +528,13 @@ export default function CardsPage() {
                 : `Este cartão fecha no dia ${selected.closingDay}. Compras feitas depois desse dia entram na fatura seguinte, com vencimento no dia ${selected.dueDay} após o próximo fechamento.`}
             </div>
           )}
-          {purchaseForm.totalValue && parseInt(purchaseForm.installmentsCount) > 0 && (
+          {!purchaseForm.subscription && purchaseForm.totalValue && parseInt(purchaseForm.installmentsCount) > 0 && (
             <div className="bg-primary-subtle border border-primary/20 rounded-xl p-3 text-sm">
               <span className="text-primary-dark font-medium">{purchaseForm.installmentsCount}x de </span>
               <span className="font-mono font-bold text-primary-dark">{formatCurrency(parseFloat(purchaseForm.totalValue||0)/parseInt(purchaseForm.installmentsCount||1))}</span>
             </div>
           )}
-          {parseInt(purchaseForm.installmentsCount) > 1 && (
+          {!purchaseForm.subscription && parseInt(purchaseForm.installmentsCount) > 1 && (
             <FormGroup label="Essa compra já está em andamento? (ex.: já estou na parcela 4)">
               <Input type="number" min="1" max={purchaseForm.installmentsCount} value={purchaseForm.startingInstallment ?? '1'}
                 onChange={(e) => setPurchaseForm({...purchaseForm,startingInstallment:e.target.value})} />
@@ -493,7 +543,7 @@ export default function CardsPage() {
           )}
           <div className="modal-actions">
             <Button variant="outline" onClick={() => setPurchaseModal(false)}>Cancelar</Button>
-            <Button onClick={savePurchase} loading={saving}>Registrar Compra</Button>
+            <Button onClick={savePurchase} loading={saving}>{purchaseForm.subscription ? 'Criar Assinatura' : 'Registrar Compra'}</Button>
           </div>
         </div>
       </Modal>

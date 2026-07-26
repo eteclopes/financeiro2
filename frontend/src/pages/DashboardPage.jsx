@@ -15,7 +15,7 @@ import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { QuickActions } from '../components/dashboard/QuickActions';
 import { Modal } from '../components/ui/Modal';
-import { IconWallet, IconPiggy, IconAlert, IconGoal } from '../components/icons';
+import { IconWallet, IconPiggy, IconAlert, IconGoal, IconEye, IconEyeOff } from '../components/icons';
 import { UserText } from '../i18n/UserText';
 
 const COMMITMENT_COLOR = { saudavel: 'text-success-dark dark:text-success-light', atencao: 'text-warning-dark dark:text-warning-light', risco: 'text-warning-dark dark:text-warning-light', critico: 'text-danger-dark dark:text-danger-light' };
@@ -53,6 +53,18 @@ export default function DashboardPage() {
   const selectedMonthId = useMonthStore((s) => s.selectedMonthId);
   const getSelected     = useMonthStore((s) => s.getSelectedMonth);
   const [data, setData]       = useState(null);
+  // Oculta os valores em dinheiro (privacidade — ex.: alguém do lado).
+  // Preferência guardada no navegador; não é dado sensível.
+  const [hideValues, setHideValues] = useState(() => {
+    try { return localStorage.getItem('fh_hide_values') === '1'; } catch { return false; }
+  });
+  const toggleHideValues = () => setHideValues((v) => {
+    const next = !v;
+    try { localStorage.setItem('fh_hide_values', next ? '1' : '0'); } catch { /* ok */ }
+    return next;
+  });
+  // Formata dinheiro respeitando o modo oculto.
+  const money = (value) => (hideValues ? 'R$ ••••••' : formatCurrency(value));
   const [proj, setProj]       = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
@@ -229,8 +241,21 @@ export default function DashboardPage() {
             <span className="hero-orbit-ring"><i className="hero-orbit-dot" /></span>
           </div>
           <div className="relative">
-            <p className="text-white/80 text-sm font-medium mb-1">{isHistoricalClosed ? 'Saldo no encerramento' : 'Saldo disponível acumulado'}</p>
-            <p className="responsive-money font-bold font-mono tracking-tight"><AnimatedNumber value={data.currentBalance} formatter={formatCurrency} /></p>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <p className="text-white/80 text-sm font-medium">{isHistoricalClosed ? 'Saldo no encerramento' : 'Saldo disponível acumulado'}</p>
+              <button
+                type="button"
+                onClick={toggleHideValues}
+                aria-label={hideValues ? 'Mostrar valores' : 'Ocultar valores'}
+                title={hideValues ? 'Mostrar valores' : 'Ocultar valores'}
+                className="shrink-0 grid place-items-center h-8 w-8 rounded-full bg-white/15 hover:bg-white/25 transition-colors text-white"
+              >
+                {hideValues ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+              </button>
+            </div>
+            <p className="responsive-money font-bold font-mono tracking-tight">
+              {hideValues ? 'R$ ••••••' : <AnimatedNumber value={data.currentBalance} formatter={formatCurrency} />}
+            </p>
             <p className="text-white/65 text-xs mt-1">{isHistoricalClosed ? 'Este valor foi congelado quando o mês foi encerrado e não muda com lançamentos posteriores.' : 'O valor restante dos meses anteriores continua no seu caixa.'}</p>
             <div className="hero-mini-bars mt-4" aria-hidden="true">
               {[35, 68, 48, 82, 62, 96, 75].map((height, index) => <span key={index} style={{ height: `${height}%` }} />)}
@@ -238,17 +263,17 @@ export default function DashboardPage() {
             <div className="flex items-center gap-4 mt-4 flex-wrap">
               <div>
                 <p className="text-white/65 text-[11px] font-medium uppercase tracking-wide">Saldo trazido</p>
-                <p className="text-base font-semibold font-mono mt-0.5">{formatCurrency(data.openingBalance)}</p>
+                <p className="text-base font-semibold font-mono mt-0.5">{money(data.openingBalance)}</p>
               </div>
               <div className="w-px h-9 bg-white/20" />
               <div>
                 <p className="text-white/65 text-[11px] font-medium uppercase tracking-wide">Receitas do mês</p>
-                <p className="text-base font-semibold font-mono mt-0.5">{formatCurrency(data.incomeTotal)}</p>
+                <p className="text-base font-semibold font-mono mt-0.5">{money(data.incomeTotal)}</p>
               </div>
               <div className="w-px h-9 bg-white/20" />
               <div>
                 <p className="text-white/65 text-[11px] font-medium uppercase tracking-wide">Após pendências</p>
-                <p className="text-base font-semibold font-mono mt-0.5">{formatCurrency(data.projectedBalance)}</p>
+                <p className="text-base font-semibold font-mono mt-0.5">{money(data.projectedBalance)}</p>
               </div>
             </div>
           </div>
@@ -260,20 +285,20 @@ export default function DashboardPage() {
             <p className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <IconPiggy size={13} /> Reserva
             </p>
-            <p className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-zinc-50">{formatCurrency(data.savingsBalance)}</p>
+            <p className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-zinc-50">{money(data.savingsBalance)}</p>
           </Spotlight>
           <Spotlight className="premium-card premium-card-hover p-4">
             <p className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <IconWallet size={13} /> Físico
             </p>
-            <p className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-zinc-50">{formatCurrency(data.physicalCash)}</p>
+            <p className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-zinc-50">{money(data.physicalCash)}</p>
           </Spotlight>
           <Spotlight className="premium-card premium-card-hover p-4">
             <p className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <IconGoal size={13} /> Em metas
             </p>
             <p className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-zinc-50">
-              {formatCurrency(data.wealth?.goalsBalance ?? 0)}
+              {money(data.wealth?.goalsBalance ?? 0)}
             </p>
           </Spotlight>
           <Spotlight className="premium-card premium-card-hover p-4">
@@ -281,7 +306,7 @@ export default function DashboardPage() {
               <IconWallet size={13} /> Patrimônio financeiro
             </p>
             <p className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-zinc-50">
-              {formatCurrency(data.wealth?.financialWealth ?? 0)}
+              {money(data.wealth?.financialWealth ?? 0)}
             </p>
             <p className="mt-1 text-[10px] leading-snug text-muted">
               Saldo livre + reservas + metas. Guardar dinheiro move o valor entre eles, sem alterar este total.
@@ -293,11 +318,11 @@ export default function DashboardPage() {
                 <IconAlert size={13} /> Dívida ativa
               </p>
               <p className={`text-lg font-bold font-mono tabular-nums ${(data.debtIndicators?.totalRemainingBalance ?? 0) > 0 ? 'text-danger-dark dark:text-danger-light' : 'text-slate-900 dark:text-zinc-50'}`}>
-                {formatCurrency(data.debtIndicators?.totalRemainingBalance ?? data.totalActiveDebt)}
+                {money(data.debtIndicators?.totalRemainingBalance ?? data.totalActiveDebt)}
               </p>
               {(data.debtIndicators?.nextInstallment) && (
                 <p className="mt-1 text-[10px] text-muted">
-                  Próxima parcela: {formatCurrency(data.debtIndicators.nextInstallment.value)} em {formatShortDate(data.debtIndicators.nextInstallment.dueDate)}
+                  Próxima parcela: {money(data.debtIndicators.nextInstallment.value)} em {formatShortDate(data.debtIndicators.nextInstallment.dueDate)}
                 </p>
               )}
             </div>

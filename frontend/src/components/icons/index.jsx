@@ -49,5 +49,7 @@ export const IconScale     = (p) => base(<><path d="M12 3v18" /><path d="M5 8l-2
 export const IconPiggy     = (p) => base(<><path d="M4 13a6 6 0 0 1 6-6h6.5L20 9.5v3L17.5 14H16v3h-2.5v-2.5H10A6 6 0 0 1 4 13z" /><circle cx="14.5" cy="11" r=".6" fill="currentColor" /><path d="M8.5 16v2.2M5.7 14.5l-1.6 1.4" /></>, p);
 export const IconAlert     = (p) => base(<><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.3 4.4 2.7 18a1.6 1.6 0 0 0 1.4 2.4h15.8a1.6 1.6 0 0 0 1.4-2.4L13.7 4.4a1.6 1.6 0 0 0-2.8 0z" /></>, p);
 export const IconCheck     = (p) => base(<path d="M4 12l5 5L20 6" />, p);
+export const IconEye       = (p) => base(<><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></>, p);
+export const IconEyeOff    = (p) => base(<><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a13.2 13.2 0 0 1-2.16 2.94" /><path d="M6.1 6.1A13.2 13.2 0 0 0 2 11s3.5 7 10 7a9.1 9.1 0 0 0 4-.9" /><path d="M9.5 9.5a3 3 0 0 0 4.2 4.2" /><path d="M3 3l18 18" /></>, p);
 export const IconTrend     = (p) => base(<><path d="M3 17l6-6 4 4 8-9" /><path d="M15 6h6v6" /></>, p);
 export const IconBudget    = (p) => base(<><circle cx="12" cy="12" r="9" /><path d="M12 12 12 5.5" /><path d="M12 12l5 3" /></>, p);
