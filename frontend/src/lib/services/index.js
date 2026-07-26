@@ -120,6 +120,11 @@ export const paymentsApi = {
 };
 
 // ---- Automações (pagar ao fechar o mês, guardar sobra, rodar agora) ----
+// ---- Plano do mês (sugestões em reais) ----
+export const plannerApi = {
+  get: (monthId) => api.get('/planner', { params: { monthId } }),
+};
+
 export const automationsApi = {
   get: () => api.get('/automations'),
   preview: (monthId, scope = 'current') => api.get('/automations/preview', { params: { monthId, scope } }),

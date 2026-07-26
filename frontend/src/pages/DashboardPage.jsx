@@ -5,7 +5,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 import { useMonthStore } from '../store/monthStore';
-import { dashboardApi, dashboardPreferencesApi, projectionsApi } from '../lib/services';
+import { dashboardApi, dashboardPreferencesApi, projectionsApi, plannerApi } from '../lib/services';
 import { extractErrorMessage } from '../lib/api';
 import { formatCurrency, formatShortDate } from '../lib/format';
 import { Card, CardHeader, Badge, Button, ProgressBar, Skeleton, EmptyState } from '../components/ui/index';
@@ -66,6 +66,8 @@ export default function DashboardPage() {
   // Formata dinheiro respeitando o modo oculto.
   const money = (value) => (hideValues ? 'R$ ••••••' : formatCurrency(value));
   const [proj, setProj]       = useState([]);
+  // Plano do mês: quanto guardar/adiantar/gastar, em reais.
+  const [plan, setPlan]       = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
   const errorToast = useUIStore((s) => s.error);
@@ -349,6 +351,59 @@ export default function DashboardPage() {
           monthStatus={month?.status}
         />
       </Card>
+
+      {/* ── Plano do mês: sugestões em REAIS ──
+          Sugerir "guarde 30%" sem descontar o que ainda tem de sair do mês
+          faz a pessoa guardar dinheiro que já tem dono. Aqui tudo parte do
+          saldo real menos os compromissos em aberto. */}
+      {plan && (
+        <Card>
+          <CardHeader
+            title="Plano do mês"
+            subtitle={`Sobra livre de ${money(plan.reallyFree)} depois de honrar ${money(plan.commitments.total)} em compromissos`}
+          />
+
+          {plan.warnings?.length > 0 && (
+            <div className="mb-4 space-y-2">
+              {plan.warnings.map((w) => (
+                <div key={w.code} className={`rounded-xl px-3 py-2.5 text-xs ${
+                  w.level === 'error'
+                    ? 'bg-danger-subtle text-danger-dark dark:bg-danger/10 dark:text-danger-light'
+                    : 'bg-warning-subtle text-warning-dark dark:bg-warning/10 dark:text-warning-light'
+                }`}>
+                  <strong className="block">{w.title}</strong>
+                  <span className="opacity-90">{w.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {plan.suggestions.map((sug) => (
+              <div key={sug.key} className={`rounded-2xl border p-3.5 ${
+                sug.key === 'free'
+                  ? 'border-success/25 bg-success-subtle/40 dark:bg-success/5'
+                  : 'border-border dark:border-white/[0.07]'
+              }`}>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-sm font-semibold text-slate-800 dark:text-zinc-100">{sug.label}</span>
+                  <span className="shrink-0 font-mono text-lg font-bold text-slate-900 dark:text-zinc-50">
+                    {money(sug.amount)}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted">{sug.reason}</p>
+              </div>
+            ))}
+          </div>
+
+          {plan.reserve.coverageMonths !== null && (
+            <p className="mt-3 text-[11px] text-muted">
+              Reserva atual: {money(plan.reserve.current)} — cobre {plan.reserve.coverageMonths.toFixed(1)} mês(es)
+              de um gasto médio de {money(plan.reserve.monthlyEssentials)}. Alvo: {plan.reserve.targetMonths} meses.
+            </p>
+          )}
+        </Card>
+      )}
 
       {/* Linha: Saúde + Alertas + Recomendações */}
       <div className="auto-grid-comfortable">
