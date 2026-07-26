@@ -55,6 +55,14 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   const closedMonthNotice = 'Este mês está encerrado. Selecione um mês aberto para registrar movimentações.';
   const selectedMonthId = useMonthStore((s) => s.selectedMonthId);
   const selectedMonth = useMonthStore((s) => s.months.find((month) => String(month.id) === String(s.selectedMonthId)) ?? null);
+  const allMonths = useMonthStore((s) => s.months);
+  // Mês mais antigo ainda aberto (ordem cronológica). É o único que pode ser
+  // encerrado — fechar fora de ordem é bloqueado pelo servidor.
+  const earliestOpenMonth = [...(allMonths ?? [])]
+    .filter((m) => m.status === 'open')
+    .sort((a, b) => (a.year - b.year) || (a.month - b.month))[0] ?? null;
+  const blockedByEarlier = monthStatus === 'open' && earliestOpenMonth
+    && String(earliestOpenMonth.id) !== String(selectedMonthId);
   const refreshMonths   = useMonthStore((s) => s.refreshMonths);
   const selectMonth     = useMonthStore((s) => s.selectMonth);
   const toast           = useUIStore((s) => s);
@@ -1236,9 +1244,15 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                 : 'O mês seguinte já está sincronizado. A verificação pode ser executada novamente sem duplicar lançamentos.')
               : 'Pendências não pagas permanecem no histórico — nada é perdido ou duplicado.'}
           </p>
+          {blockedByEarlier && (
+            <div className="rounded-xl border border-warning/30 bg-warning-subtle p-3 text-xs text-warning-dark dark:bg-warning/10 dark:text-warning-light">
+              Existe um mês anterior ainda aberto ({String(earliestOpenMonth.month).padStart(2, '0')}/{earliestOpenMonth.year}).
+              Encerre-o primeiro — os meses são fechados em ordem para o saldo trazido ficar sempre correto.
+            </div>
+          )}
           <div className="modal-actions">
             <Button variant="outline" onClick={() => setModal(null)}>Cancelar</Button>
-            <Button variant={preview?.repairMode ? 'primary' : 'danger'} onClick={closeMonth} loading={closing} disabled={!preview}>
+            <Button variant={preview?.repairMode ? 'primary' : 'danger'} onClick={closeMonth} loading={closing} disabled={!preview || blockedByEarlier}>
               {preview?.repairMode ? 'Verificar e reparar' : 'Encerrar Mês'}
             </Button>
           </div>

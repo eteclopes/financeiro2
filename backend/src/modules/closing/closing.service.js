@@ -247,6 +247,31 @@ async function closeMonth(userId, monthId) {
         snapshotVersion: raw.snapshot_version,
       };
       const repaired = current.status === 'closed';
+
+      // INTEGRIDADE SEQUENCIAL: não deixa encerrar um mês se ainda houver um
+      // mês ANTERIOR em aberto. Sem isso, dava para fechar setembro com
+      // agosto aberto — e como o fechamento congela um retrato do saldo,
+      // editar agosto depois deixaria o retrato de setembro inconsistente.
+      // (Não se aplica ao reparo de um mês já fechado.)
+      if (!repaired) {
+        const earlierOpen = await tx.$queryRaw`
+          SELECT month, year FROM months
+          WHERE user_id = ${userId} AND status = 'open'
+            AND (year < ${current.year} OR (year = ${current.year} AND month < ${current.month}))
+          ORDER BY year ASC, month ASC
+          LIMIT 1
+        `;
+        if (earlierOpen.length > 0) {
+          const e = earlierOpen[0];
+          const mm = String(Number(e.month)).padStart(2, '0');
+          throw new AppError(
+            `Encerre primeiro o mês ${mm}/${e.year}, que ainda está aberto, antes de fechar este.`,
+            409,
+            'EARLIER_MONTH_OPEN',
+            { earliestOpen: { month: Number(e.month), year: Number(e.year) } }
+          );
+        }
+      }
       const hasSnapshot = current.financialSnapshot && Number(current.snapshotVersion) === SNAPSHOT_VERSION;
       const snapshot = hasSnapshot
         ? current.financialSnapshot

@@ -10,7 +10,15 @@ const { closeMonth } = require('../../src/modules/closing/closing.service');
 
 beforeEach(() => {
   installDefaults(prismaMock);
-  prismaMock.$queryRaw.mockResolvedValue([{ id: 3n, status: 'open', month: 6, year: 2026, closed_at: null, created_at: new Date('2026-06-01'), financial_snapshot: null, snapshot_version: null }]);
+  // A trava (SELECT ... financial_snapshot ... FOR UPDATE) retorna o mês; a
+  // consulta do guard sequencial (meses anteriores abertos) retorna vazio.
+  prismaMock.$queryRaw.mockImplementation((strings) => {
+    const q = Array.isArray(strings) ? strings.join(' ') : String(strings);
+    if (q.includes('financial_snapshot')) {
+      return Promise.resolve([{ id: 3n, status: 'open', month: 6, year: 2026, closed_at: null, created_at: new Date('2026-06-01'), financial_snapshot: null, snapshot_version: null }]);
+    }
+    return Promise.resolve([]);
+  });
   monthsService.getOrCreateMonth.mockResolvedValue({ id: 4n, month: 7, year: 2026 });
 });
 
@@ -28,7 +36,13 @@ describe('closeMonth — AuditLog', () => {
   });
 
   test('mês já fechado entra em modo de reparo idempotente e não altera closedAt', async () => {
-    prismaMock.$queryRaw.mockResolvedValue([{ id: 3n, status: 'closed', month: 6, year: 2026, closed_at: new Date('2026-06-30T20:00:00Z'), created_at: new Date('2026-06-01'), financial_snapshot: null, snapshot_version: null }]);
+    prismaMock.$queryRaw.mockImplementation((strings) => {
+      const q = Array.isArray(strings) ? strings.join(' ') : String(strings);
+      if (q.includes('financial_snapshot')) {
+        return Promise.resolve([{ id: 3n, status: 'closed', month: 6, year: 2026, closed_at: new Date('2026-06-30T20:00:00Z'), created_at: new Date('2026-06-01'), financial_snapshot: null, snapshot_version: null }]);
+      }
+      return Promise.resolve([]);
+    });
 
     const result = await closeMonth(10n, 3n);
 
@@ -113,5 +127,43 @@ describe('closeMonth — data real da receita recorrente', () => {
     expect(prismaMock.income.createMany).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.arrayContaining([expect.objectContaining({ incomeDate: expectedDate })]) })
     );
+  });
+});
+
+describe('closeMonth — integridade sequencial (não fechar fora de ordem)', () => {
+  test('bloqueia fechar um mês se houver um mês ANTERIOR aberto', async () => {
+    // Trava retorna o mês atual (julho/2026); o guard encontra junho aberto.
+    prismaMock.$queryRaw.mockImplementation((strings) => {
+      const q = Array.isArray(strings) ? strings.join(' ') : String(strings);
+      if (q.includes('financial_snapshot')) {
+        return Promise.resolve([{ id: 5n, status: 'open', month: 7, year: 2026, closed_at: null, created_at: new Date('2026-07-01'), financial_snapshot: null, snapshot_version: null }]);
+      }
+      // guard: existe junho/2026 aberto
+      return Promise.resolve([{ month: 6, year: 2026 }]);
+    });
+
+    await expect(closeMonth(10n, 5n)).rejects.toMatchObject({ code: 'EARLIER_MONTH_OPEN' });
+    // nada foi fechado
+    expect(prismaMock.month.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'closed' }) })
+    );
+  });
+
+  test('permite fechar normalmente quando não há mês anterior aberto', async () => {
+    // (beforeEach já configura: trava retorna o mês, guard retorna vazio)
+    const result = await closeMonth(10n, 3n);
+    expect(result.closedMonth).toMatchObject({ id: 3n });
+  });
+
+  test('reparo de mês já fechado NÃO é bloqueado pelo guard', async () => {
+    prismaMock.$queryRaw.mockImplementation((strings) => {
+      const q = Array.isArray(strings) ? strings.join(' ') : String(strings);
+      if (q.includes('financial_snapshot')) {
+        return Promise.resolve([{ id: 5n, status: 'closed', month: 7, year: 2026, closed_at: new Date('2026-07-31T20:00:00Z'), created_at: new Date('2026-07-01'), financial_snapshot: null, snapshot_version: null }]);
+      }
+      return Promise.resolve([{ month: 6, year: 2026 }]); // haveria junho aberto, mas é reparo
+    });
+    const result = await closeMonth(10n, 5n);
+    expect(result.repaired).toBe(true); // não lançou
   });
 });
