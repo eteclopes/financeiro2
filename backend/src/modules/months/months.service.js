@@ -1,6 +1,7 @@
 const prisma = require('../../config/prisma');
 const AppError = require('../../utils/AppError');
 const { getDateParts } = require('../../utils/dateTime');
+const { addMonths } = require('../../utils/monthMath');
 
 async function getOrCreateMonth(userId, month, year, client = prisma) {
   const where = { userId_month_year: { userId, month, year } };
@@ -24,12 +25,36 @@ async function getCurrentMonth(userId, client = prisma) {
   return getOrCreateMonth(userId, month, year, client);
 }
 
+// true se a for cronologicamente DEPOIS de b.
+function isAfterYm(a, b) {
+  return a.year > b.year || (a.year === b.year && a.month > b.month);
+}
+
 async function listMonths(userId) {
-  return prisma.month.findMany({
+  const months = await prisma.month.findMany({
     where: { userId },
     select: { id: true, userId: true, month: true, year: true, status: true, closedAt: true, createdAt: true },
     orderBy: [{ year: 'desc' }, { month: 'desc' }],
   });
+
+  // FRONTEIRA de exibição: o mais recente entre (mês do calendário de hoje) e
+  // (mês seguinte ao último mês FECHADO). Meses estritamente ALÉM da fronteira
+  // são ocultados da navegação — eles existem apenas porque uma fatura de
+  // cartão foi lançada lá (ex.: uma assinatura cuja cobrança cai na fatura do
+  // mês seguinte). A obrigação continua registrada (a fatura não some); apenas
+  // não polui a lista de meses até você realmente chegar lá.
+  const today = getDateParts();
+  let frontier = { month: today.month, year: today.year };
+
+  const closed = months.filter((m) => m.status === 'closed');
+  if (closed.length > 0) {
+    // months já vem ordenado desc; o primeiro fechado é o mais recente.
+    const latestClosed = closed[0];
+    const nextAfterClosed = addMonths(Number(latestClosed.month), Number(latestClosed.year), 1);
+    if (isAfterYm(nextAfterClosed, frontier)) frontier = nextAfterClosed;
+  }
+
+  return months.filter((m) => !isAfterYm({ month: Number(m.month), year: Number(m.year) }, frontier));
 }
 
 async function getMonthOrThrow(userId, monthId, client = prisma) {
