@@ -446,10 +446,10 @@ async function updateExpense(userId, expenseId, payload) {
   assertDateMatchesMonth(initialEffectiveDate, initial.month);
   if (payload.categoryId) await assertCategoryIsValid(userId, payload.categoryId);
 
-  const isAlreadyPaid = ['paid', 'settled'].includes(initial.status);
-  if (initial.status === 'partial' && (payload.value !== undefined || payload.dueDate)) {
+  const isAlreadyPaid = ['paid', 'settled', 'flex_paid'].includes(initial.status);
+  if (['partial', 'flex_paid'].includes(initial.status) && (payload.value !== undefined || payload.dueDate)) {
     throw new AppError(
-      'Não é possível alterar valor ou data de uma despesa parcialmente paga.',
+      'Não é possível alterar valor ou data de uma parcela que já recebeu pagamento — isso quebraria a conta do saldo residual.',
       409,
       'PARTIALLY_PAID_EXPENSE_IMMUTABLE'
     );
@@ -550,7 +550,10 @@ async function payExpense(userId, expenseId, { amount, paymentMethod }) {
   return prisma.$transaction(async (tx) => {
     await lockUserBalance(tx, userId);
     const expense = await getOwnedExpenseOrThrow(userId, expenseId, tx);
-    if (['paid', 'settled'].includes(expense.status)) {
+    // 'flex_paid' também encerra a obrigação do mês. Se ainda houver saldo
+    // residual, ele é quitado pela ação própria da parcela (que sabe reduzir
+    // o acréscimo da parcela seguinte), nunca por este caminho genérico.
+    if (['paid', 'settled', 'flex_paid'].includes(expense.status)) {
       throw new AppError('Esta despesa já está paga.', 409, 'EXPENSE_ALREADY_PAID');
     }
     await assertSufficientBalance(userId, amount, tx);

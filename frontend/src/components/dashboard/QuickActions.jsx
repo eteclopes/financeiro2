@@ -515,6 +515,24 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     .reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const batchSelectedCount = batchSelected.size;
 
+  // Paga UMA fatura escolhida no modo individual. Reusa o pagamento em lote
+  // com um item só: mesma transação, mesma trava de saldo, mesma
+  // idempotência — sem duplicar regra de negócio.
+  async function payChosenInvoice() {
+    if (!payTarget?.id) { toast.error('Selecione a fatura.'); return; }
+    setSaving(true);
+    try {
+      const { data } = await paymentsApi.payBatch({
+        expenseIds: [], invoiceIds: [payTarget.id], paymentMethod: payMethod,
+      });
+      toast.success(`Fatura paga — ${formatCurrency(data.total)}.`);
+      setModal(null);
+      onRefresh?.();
+    } catch (error) {
+      toast.error(extractErrorMessage(error, 'Não foi possível pagar a fatura.'));
+    } finally { setSaving(false); }
+  }
+
   async function payBatch() {
     const expenseIds = [
       ...batch.bills.filter((b) => batchSelected.has(`expense:${b.id}`)).map((b) => b.id),
@@ -609,7 +627,18 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   const ACTIONS = [
     { Icon: IconIncome, label: 'Receita', iconBg: 'bg-primary-muted dark:bg-primary/20', iconColor: 'text-primary-dark dark:text-primary-light', onClick: guardClosedMonth(openIncome), disabled: isClosedMonth },
     { Icon: IconExpense, label: 'Despesa', iconBg: 'bg-danger-muted dark:bg-danger/20', iconColor: 'text-danger-dark dark:text-danger-light', onClick: guardClosedMonth(openExpense), disabled: isClosedMonth },
-    { Icon: IconCheck, label: 'Pagar conta', iconBg: 'bg-info-muted dark:bg-info/20', iconColor: 'text-info-dark dark:text-info-light', onClick: guardClosedMonth(() => { setPayTarget(null); setPayAmount(''); setPayMethod(ACCOUNT_BALANCE_METHOD); setPayMulti(false); setBatch({ bills: [], debts: [], invoices: [] }); setBatchSelected(new Set()); setModal('pay'); }), disabled: isClosedMonth },
+    { Icon: IconCheck, label: 'Pagar conta', iconBg: 'bg-info-muted dark:bg-info/20', iconColor: 'text-info-dark dark:text-info-light', onClick: guardClosedMonth(async () => {
+      setPayTarget(null); setPayAmount(''); setPayMethod(ACCOUNT_BALANCE_METHOD);
+      setPayMulti(false); setBatch({ bills: [], debts: [], invoices: [] }); setBatchSelected(new Set());
+      setModal('pay');
+      // Carrega as faturas para o modo INDIVIDUAL também: antes elas só
+      // apareciam ao ligar "pagar várias", então quem queria quitar uma
+      // fatura sozinha não a encontrava aqui.
+      try {
+        const { data } = await paymentsApi.payable(selectedMonthId);
+        setBatch({ bills: data.bills ?? [], debts: data.debts ?? [], invoices: data.invoices ?? [] });
+      } catch { /* a lista de contas do mês já cobre o caso comum */ }
+    }), disabled: isClosedMonth },
     { Icon: IconCard, label: 'Fatura', iconBg: 'bg-warning-muted dark:bg-warning/20', iconColor: 'text-warning-dark dark:text-warning-light', onClick: guardClosedMonth(openFatura), disabled: isClosedMonth },
     { Icon: IconGoal, label: 'Meta', iconBg: 'bg-purple-100 dark:bg-accentpurple/20', iconColor: 'text-purple-700 dark:text-accentpurple-light', onClick: guardClosedMonth(() => { setGoalTarget(null); setContribForm({ value: '', date: ledgerMonthDateInputValue(selectedMonth) }); setModal('goal'); }), disabled: isClosedMonth },
     { Icon: IconCheck, label: 'Automações', iconBg: 'bg-primary-subtle dark:bg-primary/15', iconColor: 'text-primary-dark dark:text-primary-hover', onClick: openAutomations, disabled: false },
@@ -955,6 +984,14 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                       ))}
                     </div>
                   </FormGroup>
+                  {auto.payInvoices !== false && (
+                    <ToggleSwitch
+                      checked={!!auto.payOpenInvoices}
+                      onChange={(v) => saveAutomations({ payOpenInvoices: v })}
+                      label="Adiantar faturas ainda abertas"
+                      description="Por padrão a automação só paga fatura já fechada. Uma fatura aberta ainda pode receber compras."
+                    />
+                  )}
                   <FormGroup label="Nunca deixar o saldo abaixo de (R$)">
                     <Input type="number" min="0" step="0.01" value={auto.minimumBalance ?? 0}
                       onChange={(e) => setAuto({ ...auto, minimumBalance: e.target.value })}
@@ -1227,7 +1264,15 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
               <>
                 <FormGroup label="Conta a pagar">
                   <Select value={payTarget?.id ?? ''} onChange={(event) => {
-                    const expense = pendingExpenses.find((item) => String(item.id) === event.target.value);
+                    const value = event.target.value;
+                    if (value.startsWith('invoice:')) {
+                      const id = value.slice('invoice:'.length);
+                      const invoice = (batch.invoices ?? []).find((i) => String(i.id) === id);
+                      setPayTarget(invoice ? { ...invoice, isInvoice: true } : null);
+                      setPayAmount(String(invoice?.amount ?? ''));
+                      return;
+                    }
+                    const expense = pendingExpenses.find((item) => String(item.id) === value);
                     setPayTarget(expense ?? null);
                     setPayAmount(String(expense?.value ?? ''));
                   }}>
@@ -1235,6 +1280,15 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                     {pendingExpenses.map((expense) => (
                       <option data-i18n-ignore="true" key={expense.id} value={expense.id}>{expense.description} — {formatCurrency(expense.value)}</option>
                     ))}
+                    {(batch.invoices ?? []).length > 0 && (
+                      <optgroup label="Faturas de cartão">
+                        {batch.invoices.map((invoice) => (
+                          <option data-i18n-ignore="true" key={`invoice:${invoice.id}`} value={`invoice:${invoice.id}`}>
+                            {invoice.description} — {formatCurrency(invoice.amount)}{invoice.stillOpen ? ' (ainda aberta)' : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </Select>
                 </FormGroup>
                 {payTarget && (
@@ -1243,8 +1297,15 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                     <p className="mt-1 text-xs text-muted">Valor previsto: {formatCurrency(payTarget.value)}</p>
                   </div>
                 )}
-                <FormGroup label="Valor pago" required>
-                  <Input type="number" min="0" step="0.01" value={payAmount} onChange={(event) => setPayAmount(event.target.value)} />
+                <FormGroup label={payTarget?.isInvoice ? 'Valor da fatura' : 'Valor pago'} required>
+                  <Input type="number" min="0" step="0.01" value={payAmount}
+                    disabled={!!payTarget?.isInvoice}
+                    onChange={(event) => setPayAmount(event.target.value)} />
+                  {payTarget?.isInvoice && (
+                    <p className="mt-1 text-xs text-muted">
+                      Fatura é paga pelo valor total — ela quita todos os lançamentos de uma vez.
+                    </p>
+                  )}
                 </FormGroup>
                 <FormGroup label="Forma de pagamento">
                   <ChoiceCards compact columns={2} value={payMethod} onChange={setPayMethod} options={BALANCE_PAYMENT_OPTIONS} />
@@ -1256,7 +1317,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                 )}
                 <div className="modal-actions">
                   <Button variant="outline" onClick={() => setModal(null)}>Cancelar</Button>
-                  <Button onClick={payExpense} loading={saving}>Confirmar Pagamento</Button>
+                  <Button onClick={payTarget?.isInvoice ? payChosenInvoice : payExpense} loading={saving}>Confirmar Pagamento</Button>
                 </div>
               </>
             )

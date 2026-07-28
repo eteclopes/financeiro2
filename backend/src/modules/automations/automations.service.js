@@ -14,6 +14,7 @@ const DEFAULTS = {
   payDebts: true,
   payBills: true,
   payInvoices: true,
+  payOpenInvoices: false,
   minimumBalance: 0,
   saveLeftoverOnClose: false,
   saveLeftoverType: 'percent',
@@ -29,6 +30,7 @@ function serialize(row) {
     payDebts: row.payDebts ?? true,
     payBills: row.payBills ?? true,
     payInvoices: row.payInvoices ?? true,
+    payOpenInvoices: row.payOpenInvoices ?? false,
     minimumBalance: Number(row.minimumBalance ?? 0),
     saveLeftoverOnClose: row.saveLeftoverOnClose,
     saveLeftoverType: row.saveLeftoverType,
@@ -59,6 +61,7 @@ async function updateSettings(userId, data) {
     payDebts: data.payDebts === undefined ? true : !!data.payDebts,
     payBills: data.payBills === undefined ? true : !!data.payBills,
     payInvoices: data.payInvoices === undefined ? true : !!data.payInvoices,
+    payOpenInvoices: !!data.payOpenInvoices,
     minimumBalance: round2(Math.max(Number(data.minimumBalance ?? 0), 0)),
     saveLeftoverOnClose: !!data.saveLeftoverOnClose,
     saveLeftoverType: data.saveLeftoverType === 'fixed' ? 'fixed' : 'percent',
@@ -87,9 +90,12 @@ async function runAutoPayments(userId, monthId, config) {
   const method = config.payDuesMethod ?? 'debit';
   const floor = Number(config.minimumBalance ?? 0);
 
-  // dueOnly: a automação só quita o que já venceu ou fechou. Adiantar uma
-  // fatura ainda aberta seria mover dinheiro por uma conta não fechada.
-  const items = await paymentsService.getPayableItems(userId, monthId, { dueOnly: true });
+  // Por padrão a automação só quita o que já venceu ou fechou — adiantar uma
+  // fatura aberta paga uma conta que ainda vai receber compras. O usuário
+  // pode liberar isso conscientemente em `payOpenInvoices`.
+  const items = await paymentsService.getPayableItems(userId, monthId, {
+    dueOnly: !config.payOpenInvoices,
+  });
   const summary = {
     paidDebts: 0, paidBills: 0, paidInvoices: 0,
     totalPaid: 0, skipped: [], blockedByFloor: [],
@@ -239,12 +245,27 @@ async function previewAutomations(userId, monthId, scope = 'current') {
       message: 'Números do mês seguinte são estimativas baseadas nos seus lançamentos recorrentes. Compras novas ou contas avulsas podem mudar o total.',
     });
   } else {
-    // dueOnly: a automação só quita o que já venceu ou fechou. Adiantar uma
-  // fatura ainda aberta seria mover dinheiro por uma conta não fechada.
-  const items = await paymentsService.getPayableItems(userId, monthId, { dueOnly: true });
+    // A prévia olha TUDO (dueOnly: false) para poder EXPLICAR o que ficará de
+    // fora. Antes ela usava o mesmo recorte da execução e simplesmente
+    // aparecia vazia, sem o usuário entender o motivo.
+    const items = await paymentsService.getPayableItems(userId, monthId, { dueOnly: false });
     const month = await monthsService.getMonthOrThrow(userId, monthId);
     monthLabel = { month: month.month, year: month.year };
     const sum = (list) => round2((list || []).reduce((acc, i) => acc + Number(i.amount || 0), 0));
+
+    const allInvoices = items.invoices || [];
+    const openOnes = allInvoices.filter((i) => i.stillOpen);
+    const payableInvoices = config.payOpenInvoices ? allInvoices : allInvoices.filter((i) => !i.stillOpen);
+
+    if (!config.payOpenInvoices && openOnes.length > 0) {
+      const totalAberto = round2(openOnes.reduce((acc, i) => acc + Number(i.amount || 0), 0));
+      warnings.push({
+        level: 'info',
+        code: 'FATURA_AINDA_ABERTA',
+        message: `${openOnes.length} fatura(s) ainda não fecharam (${totalAberto.toFixed(2)}) e ficam de fora. `
+          + 'Ligue "adiantar faturas ainda abertas" se quiser incluí-las.',
+      });
+    }
 
     groups = [
       { key: 'debts', name: 'Parcelas de dívida', enabled: config.payDebts !== false,
@@ -252,8 +273,19 @@ async function previewAutomations(userId, monthId, scope = 'current') {
       { key: 'bills', name: 'Contas', enabled: config.payBills !== false,
         total: sum(items.bills), count: (items.bills || []).length, estimated: false },
       { key: 'invoices', name: 'Faturas de cartão', enabled: config.payInvoices !== false,
-        total: sum(items.invoices), count: (items.invoices || []).length, estimated: false },
+        total: sum(payableInvoices), count: payableInvoices.length, estimated: false,
+        excludedOpenCount: config.payOpenInvoices ? 0 : openOnes.length },
     ];
+
+    // O caso que mais confunde: a pessoa tem despesa fixa no cartão e estranha
+    // não vê-la em "contas". Ela não é conta comum — está dentro da fatura.
+    if (sum(items.bills) === 0 && allInvoices.length > 0) {
+      warnings.push({
+        level: 'info',
+        code: 'FIXAS_NO_CARTAO',
+        message: 'Despesas fixas no cartão não aparecem como "contas": elas entram na fatura e são pagas junto com ela.',
+      });
+    }
   }
 
   // Simula o caixa na MESMA ordem em que a automação executa: dívidas,

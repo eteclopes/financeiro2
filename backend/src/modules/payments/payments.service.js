@@ -205,7 +205,10 @@ async function payBillsBatch(userId, { expenseIds = [], invoiceIds = [], payment
     const billsToPay = [];         // variáveis/fixas (valor exato)
     const debtInstallments = [];   // parcelas de dívida (prioridade)
     for (const expense of expenses) {
-      if (['paid', 'settled'].includes(expense.status)) continue; // idempotente
+      // 'flex_paid' entra aqui: a obrigação daquele mês já foi cumprida.
+      // O saldo residual, se houver, é quitado pela ação própria na tela da
+      // dívida — não é uma conta do mês a ser paga de novo em lote.
+      if (['paid', 'settled', 'flex_paid'].includes(expense.status)) continue;
       if (expense.type === 'card') {
         throw new AppError('Parcelas de cartão são quitadas pagando a fatura.', 409, 'PAY_VIA_INVOICE', { expenseId: String(expense.id) });
       }

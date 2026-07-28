@@ -671,6 +671,10 @@ model AutomationSetting {
   payDebts    Boolean @default(true) @map("pay_debts")
   payBills    Boolean @default(true) @map("pay_bills")
   payInvoices Boolean @default(true) @map("pay_invoices")
+  /// Adiantar faturas que ainda NÃO fecharam. Desligado por padrão: uma
+  /// fatura aberta segue recebendo compras, então pagá-la antes do
+  /// fechamento quita uma conta que ainda vai crescer.
+  payOpenInvoices Boolean @default(false) @map("pay_open_invoices")
 
   /// Piso de segurança: a automação nunca deixa o saldo abaixo deste valor.
   /// Vale tanto para os pagamentos quanto para o quanto vai para a reserva.

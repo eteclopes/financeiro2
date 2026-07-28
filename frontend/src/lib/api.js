@@ -51,11 +51,34 @@ export function refreshAccessToken() {
   return refreshPromise;
 }
 
+/**
+ * Espera curta usada na retentativa de falha de rede.
+ */
+const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const original = error.config;
     const isAuthRoute = original?.url?.includes('/auth/');
+
+    // ── FALHA DE REDE (ERR_CONNECTION_CLOSED, timeout, servidor dormindo) ──
+    //
+    // `error.response` ausente significa que a resposta nunca chegou. No plano
+    // gratuito do Render o serviço hiberna, e a primeira chamada depois de um
+    // tempo ocioso costuma morrer enquanto a instância acorda. Uma retentativa
+    // curta resolve isso sem o usuário ver erro.
+    //
+    // A retentativa é SÓ para GET. Repetir um POST cuja resposta se perdeu
+    // poderia pagar a mesma conta duas vezes — o pedido pode ter chegado ao
+    // servidor e sido processado antes da conexão cair.
+    const isNetworkError = !error.response && error.code !== 'ERR_CANCELED';
+    const isIdempotent = (original?.method ?? 'get').toLowerCase() === 'get';
+    if (isNetworkError && isIdempotent && !original._netRetry) {
+      original._netRetry = true;
+      await wait(700);
+      return api(original);
+    }
 
     // Só tenta refresh uma vez por requisição (evita loop infinito) e nunca
     // nas próprias rotas de auth (login errado não deve disparar refresh).

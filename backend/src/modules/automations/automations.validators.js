@@ -8,6 +8,7 @@ const updateSettingsSchema = z.object({
   payDebts: z.boolean().optional(),
   payBills: z.boolean().optional(),
   payInvoices: z.boolean().optional(),
+  payOpenInvoices: z.boolean().optional(),
   minimumBalance: z.coerce.number().min(0).max(100000000).optional(),
   saveLeftoverOnClose: z.boolean().optional(),
   saveLeftoverType: z.enum(['percent', 'fixed']).optional(),

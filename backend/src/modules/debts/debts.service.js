@@ -433,7 +433,8 @@ async function settleResidualWithin(tx, { userId, currentExpense, debt, amount, 
     const next = await tx.expense.findFirst({
       where: { id: currentExpense.carriedToExpenseId, userId, deletedAt: null },
     });
-    if (next && !['paid', 'settled'].includes(next.status)) {
+    // Nunca altera uma parcela já encerrada — inclusive uma flexível.
+    if (next && !['paid', 'settled', 'flex_paid'].includes(next.status)) {
       const reduced = round2(Math.max(Number(next.value) - amount, 0));
       await tx.expense.update({ where: { id: next.id }, data: { value: reduced } });
     }
