@@ -42,6 +42,7 @@ export function Topbar({ title }) {
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const user = useAuthStore((s) => s.user);
   const authStatus = useAuthStore((s) => s.status);
+  const bootstrapping = useAuthStore((s) => s.bootstrapping);
   const timeZone = useLocaleStore((s) => s.timeZone);
   const isPro = Boolean(user?.isPro);
   const navigate = useNavigate();
@@ -53,17 +54,21 @@ export function Topbar({ title }) {
   const notifRef = useRef(null);
 
   const loadAlerts = useCallback(async () => {
-    // Só busca alertas com sessão confirmada e mês válido selecionado. Isso
-    // evita a rajada de 401 quando o app ainda está revalidando a sessão no
-    // arranque (o polling disparava antes do token estar pronto).
-    if (!selectedId || authStatus !== 'authenticated') return;
+    // Só busca alertas quando existe token de verdade.
+    //
+    // A sessão otimista marca `authenticated` já na primeira renderização
+    // (para o app não piscar ao voltar para a aba), mas nesse instante o
+    // refresh ainda está em andamento e NÃO há access token — era daí que
+    // vinha o 401 teimoso em /api/alerts. Esperar `bootstrapping` terminar
+    // resolve na raiz.
+    if (!selectedId || authStatus !== 'authenticated' || bootstrapping) return;
     try {
       const { data } = await alertsApi.list(selectedId);
       setAlerts(data.alerts ?? []);
     } catch {
       // A central de alertas já apresenta falhas de carregamento ao usuário.
     }
-  }, [selectedId, authStatus]);
+  }, [selectedId, authStatus, bootstrapping]);
 
   useEffect(() => {
     loadAlerts();

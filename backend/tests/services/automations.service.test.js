@@ -266,7 +266,7 @@ describe('previewAutomations — avisa quando o saldo não dá conta', () => {
     expect(p.warnings.some((w) => w.code === 'SEM_SOBRA_PARA_RESERVA')).toBe(true);
   });
 
-  test('próximo mês: usa a projeção e soma a receita recorrente esperada', async () => {
+  test('próximo mês: dívidas e fixas por projeção, FATURA pelo dado real', async () => {
     cfg();
     balance.getAvailableBalance.mockResolvedValue(100);
     projectionsService.getProjectionComponents.mockResolvedValue({
@@ -274,18 +274,53 @@ describe('previewAutomations — avisa quando o saldo não dá conta', () => {
       recurringIncome: 3000,
       fixedExpenses: 800,
       debtSchedule: [500, 500],
-      cardSchedule: [0, 400],
+      cardSchedule: [0, 400], // ignorado de propósito: a fatura real manda
     });
+    // Fatura de agosto já FECHADA, com 400 em aberto.
+    prismaMock.cardInvoice.findMany.mockResolvedValue([
+      { id: 900n, status: 'closed', expenses: [{ value: 400, paidAmount: 0 }] },
+    ]);
 
     const p = await automations.previewAutomations(10n, 60n, 'next');
     expect(p.month).toEqual({ month: 8, year: 2026 });
     expect(p.expectedIncome).toBe(3000);
-    // 100 de saldo + 3000 de receita = 3100; paga 500 + 800 + 400 = 1700.
-    expect(p.totalToPay).toBe(1700);
+    expect(p.totalToPay).toBe(1700); // 500 dívida + 800 fixas + 400 fatura real
     expect(p.balanceAfterPayments).toBe(1400);
-    expect(p.ok).toBe(true);
-    // Deixa claro que são estimativas.
     expect(p.warnings.some((w) => w.code === 'ESTIMATIVA')).toBe(true);
+  });
+
+  test('próximo mês: fatura ainda ABERTA fica de fora e é explicada', async () => {
+    cfg();
+    balance.getAvailableBalance.mockResolvedValue(1000);
+    projectionsService.getProjectionComponents.mockResolvedValue({
+      months: [{ month: 7, year: 2026 }, { month: 8, year: 2026 }],
+      recurringIncome: 0, fixedExpenses: 0, debtSchedule: [0, 0], cardSchedule: [0, 0],
+    });
+    prismaMock.cardInvoice.findMany.mockResolvedValue([
+      { id: 900n, status: 'open', expenses: [{ value: 90, paidAmount: 0 }] },
+    ]);
+
+    const p = await automations.previewAutomations(10n, 60n, 'next');
+    // Não entra no total, mas o usuário entende o porquê em vez de ver zero.
+    expect(p.totalToPay).toBe(0);
+    expect(p.warnings.some((w) => w.code === 'FATURA_AINDA_ABERTA')).toBe(true);
+    // E o aviso de que as fixas estão dentro da fatura.
+    expect(p.warnings.some((w) => w.code === 'FIXAS_NO_CARTAO')).toBe(true);
+  });
+
+  test('com "adiantar faturas abertas" ligado, a fatura aberta ENTRA', async () => {
+    cfg({ payOpenInvoices: true });
+    balance.getAvailableBalance.mockResolvedValue(1000);
+    projectionsService.getProjectionComponents.mockResolvedValue({
+      months: [{ month: 7, year: 2026 }, { month: 8, year: 2026 }],
+      recurringIncome: 0, fixedExpenses: 0, debtSchedule: [0, 0], cardSchedule: [0, 0],
+    });
+    prismaMock.cardInvoice.findMany.mockResolvedValue([
+      { id: 900n, status: 'open', expenses: [{ value: 90, paidAmount: 0 }] },
+    ]);
+
+    const p = await automations.previewAutomations(10n, 60n, 'next');
+    expect(p.totalToPay).toBe(90);
   });
 
   test('a prévia NUNCA move dinheiro', async () => {

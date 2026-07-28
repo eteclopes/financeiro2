@@ -14,6 +14,8 @@ export function normalizeApiBaseURL(rawURL) {
   return /\/api$/i.test(normalized) ? normalized : `${normalized}/api`;
 }
 
+let refreshPromise = null;
+
 const baseURL = normalizeApiBaseURL(import.meta.env.VITE_API_URL);
 
 export const api = axios.create({
@@ -21,7 +23,22 @@ export const api = axios.create({
   withCredentials: true, // necessário para o cookie httpOnly do refresh token
 });
 
-api.interceptors.request.use((config) => {
+api.interceptors.request.use(async (config) => {
+  const isAuthRoute = config.url?.includes('/auth/');
+
+  // Se há uma renovação de sessão em andamento, espera por ela ANTES de ler
+  // o token. No arranque (e ao voltar para a aba) o app dispara várias cargas
+  // em paralelo enquanto o refresh ainda está no ar: sem esta espera todas
+  // saíam sem token, tomavam 401 e só então eram repetidas — funcionava, mas
+  // enchia o console de erro e batia no servidor duas vezes.
+  //
+  // A espera fica AQUI, no mesmo interceptador que anexa o cabeçalho, de
+  // propósito: separar em dois passaria a depender da ordem de execução dos
+  // interceptadores do axios, que é o inverso da ordem de registro.
+  if (!isAuthRoute && refreshPromise) {
+    try { await refreshPromise; } catch { /* o interceptador de resposta trata */ }
+  }
+
   const token = getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -32,8 +49,6 @@ api.interceptors.request.use((config) => {
   config.headers['X-Currency'] = preferences.currency;
   return config;
 });
-
-let refreshPromise = null;
 
 // Único ponto de renovação da sessão dentro da página. Bootstrap e
 // interceptador compartilham a mesma Promise, impedindo rajadas de refresh.

@@ -143,7 +143,10 @@ async function getPayableItems(userId, monthId, { dueOnly = false } = {}) {
     .map((invoice) => ({
       id: String(invoice.id),
       kind: 'invoice',
-      description: `Fatura ${invoice.card?.name ?? 'cartão'}`,
+      // O mês de referência entra no nome: sem ele, duas faturas distintas do
+      // mesmo cartão (ex.: agosto e setembro) apareciam com texto idêntico na
+      // lista e pareciam um item duplicado.
+      description: `Fatura ${invoice.card?.name ?? 'cartão'} ${String(invoice.referenceMonth).padStart(2, '0')}/${invoice.referenceYear}`,
       cardName: invoice.card?.name ?? null,
       referenceMonth: invoice.referenceMonth,
       referenceYear: invoice.referenceYear,

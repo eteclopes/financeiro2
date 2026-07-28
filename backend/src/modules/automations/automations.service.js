@@ -231,13 +231,60 @@ async function previewAutomations(userId, monthId, scope = 'current') {
     monthLabel = { month: nextRef.month, year: nextRef.year };
     expectedIncome = round2(Number(components.recurringIncome || 0));
 
+    // FATURAS: usa o dado REAL, não projeção. A fatura do mês que vem já
+    // existe hoje (ela nasce quando a compra cai nela), então estimá-la pelas
+    // parcelas do mês dava zero e a simulação aparecia vazia mesmo com fatura
+    // em aberto. Aqui somamos o saldo devedor real das faturas que vencem no
+    // mês seguinte — e as ainda abertas só entram se o usuário liberou.
+    const nextStart = new Date(Date.UTC(nextRef.year, nextRef.month - 1, 1));
+    const nextEnd = new Date(Date.UTC(nextRef.year, nextRef.month, 0, 23, 59, 59, 999));
+    const nextInvoices = await prisma.cardInvoice.findMany({
+      where: {
+        card: { userId },
+        status: { not: 'paid' },
+        dueDate: { gte: nextStart, lte: nextEnd },
+      },
+      include: {
+        expenses: { where: { deletedAt: null, status: { not: 'paid' } }, select: { value: true, paidAmount: true } },
+      },
+    });
+    const invoiceRows = nextInvoices
+      .map((invoice) => ({
+        stillOpen: invoice.status === 'open',
+        amount: round2(invoice.expenses.reduce((acc, e) => acc + (Number(e.value) - Number(e.paidAmount ?? 0)), 0)),
+      }))
+      .filter((invoice) => invoice.amount > 0);
+
+    const openOnes = invoiceRows.filter((i) => i.stillOpen);
+    const payableInvoices = config.payOpenInvoices ? invoiceRows : invoiceRows.filter((i) => !i.stillOpen);
+    const invoicesTotal = round2(payableInvoices.reduce((acc, i) => acc + i.amount, 0));
+
+    if (!config.payOpenInvoices && openOnes.length > 0) {
+      const totalAberto = round2(openOnes.reduce((acc, i) => acc + i.amount, 0));
+      warnings.push({
+        level: 'info',
+        code: 'FATURA_AINDA_ABERTA',
+        message: `${openOnes.length} fatura(s) ainda não fecharam (${totalAberto.toFixed(2)}) e ficam de fora. `
+          + 'Ligue "adiantar faturas ainda abertas" se quiser incluí-las.',
+      });
+    }
+
+    const fixedNonCredit = round2(Number(components.fixedExpenses || 0));
+    if (fixedNonCredit === 0 && invoiceRows.length > 0) {
+      warnings.push({
+        level: 'info',
+        code: 'FIXAS_NO_CARTAO',
+        message: 'Suas despesas fixas estão no cartão: elas não contam como "contas fixas" aqui, e sim dentro da fatura.',
+      });
+    }
+
     groups = [
       { key: 'debts', name: 'Parcelas de dívida', enabled: config.payDebts !== false,
         total: round2(Number(components.debtSchedule?.[1] || 0)), estimated: true },
       { key: 'bills', name: 'Contas fixas', enabled: config.payBills !== false,
-        total: round2(Number(components.fixedExpenses || 0)), estimated: true },
+        total: fixedNonCredit, estimated: true },
       { key: 'invoices', name: 'Faturas de cartão', enabled: config.payInvoices !== false,
-        total: round2(Number(components.cardSchedule?.[1] || 0)), estimated: true },
+        total: invoicesTotal, estimated: false, excludedOpenCount: config.payOpenInvoices ? 0 : openOnes.length },
     ];
     warnings.push({
       level: 'info',
