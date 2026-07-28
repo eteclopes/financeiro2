@@ -143,3 +143,46 @@ describe('Saldo residual — pagamento posterior', () => {
     );
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// O saldo residual precisa ser PAGÁVEL de todos os lugares onde o
+// usuário procura por ele. Era exatamente isto que faltava: a parcela
+// virava flex_paid e sumia da lista de "o que posso pagar".
+// ═══════════════════════════════════════════════════════════════════
+describe('Saldo residual aparece na lista do que pode ser pago', () => {
+  const { getPayableItems } = require('../../src/modules/payments/payments.service');
+
+  beforeEach(() => {
+    prismaMock.month.findFirst.mockResolvedValue({ month: 8, year: 2026 });
+    prismaMock.cardInvoice.findMany.mockResolvedValue([]);
+    prismaMock.expense.groupBy.mockResolvedValue([]);
+  });
+
+  test('a consulta inclui parcelas encerradas COM resíduo', async () => {
+    prismaMock.expense.findMany.mockResolvedValue([]);
+    await getPayableItems(10n, 60n);
+
+    // A 2ª chamada é a das parcelas de dívida.
+    const where = prismaMock.expense.findMany.mock.calls[1][0].where;
+    expect(where.OR).toEqual([
+      { status: { in: ['pending', 'late', 'partial'] } },
+      { status: 'flex_paid', residualAmount: { gt: 0 } },
+    ]);
+  });
+
+  test('o valor devido do resíduo é o RESÍDUO, não a parcela inteira', async () => {
+    prismaMock.expense.findMany
+      .mockResolvedValueOnce([]) // contas
+      .mockResolvedValueOnce([{
+        id: 7n, description: 'Notebook (4/12)', value: 100, paidAmount: 50,
+        status: 'flex_paid', residualAmount: 50, dueDate: new Date('2026-08-10'),
+        month: { month: 8, year: 2026 },
+      }]);
+
+    const items = await getPayableItems(10n, 60n);
+    const residual = items.debts[0];
+    expect(residual.amount).toBe(50);          // não 100
+    expect(residual.isResidual).toBe(true);
+    expect(residual.description).toContain('saldo residual');
+  });
+});

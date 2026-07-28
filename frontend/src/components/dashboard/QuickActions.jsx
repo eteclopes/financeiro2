@@ -345,12 +345,32 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     }
   }
 
+  /**
+   * Paga o item escolhido, roteando pelo tipo:
+   *  - despesa e parcela de dívida -> endpoint de despesa (aceita valor
+   *    parcial em dívida flexível);
+   *  - fatura -> pagamento em lote com um item só, para reusar exatamente a
+   *    mesma transação, trava de saldo e idempotência do lote.
+   */
   async function payExpense() {
-    if (!payTarget || !payAmount) {
-      toast.error('Selecione a conta e informe o valor.');
+    if (!payTarget) { toast.error('Selecione o que deseja pagar.'); return; }
+
+    if (payTarget.kind === 'invoice') {
+      setSaving(true);
+      try {
+        const { data } = await paymentsApi.payBatch({
+          expenseIds: [], invoiceIds: [payTarget.id], paymentMethod: payMethod,
+        });
+        toast.success(`Fatura paga — ${formatCurrency(data.total)}.`);
+        setModal(null);
+        onRefresh?.();
+      } catch (error) {
+        toast.error(extractErrorMessage(error, 'Não foi possível pagar a fatura.'));
+      } finally { setSaving(false); }
       return;
     }
-    if (Number(payAmount) <= 0) {
+
+    if (!payAmount || Number(payAmount) <= 0) {
       toast.error('Informe um valor maior que zero.');
       return;
     }
@@ -505,6 +525,15 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     });
   }
 
+  // Lista única do que pode ser pago — usada pelos DOIS modos (individual e
+  // em lote). `kind` diz como pagar cada item: despesa/parcela vão pelo
+  // endpoint de despesa; fatura vai pelo pagamento em lote com um item só.
+  const payableAll = [
+    ...(batch.bills ?? []).map((i) => ({ ...i, kind: 'expense' })),
+    ...(batch.debts ?? []).map((i) => ({ ...i, kind: 'debt' })),
+    ...(batch.invoices ?? []).map((i) => ({ ...i, kind: 'invoice' })),
+  ];
+
   const batchAllItems = [
     ...batch.bills.map((b) => ({ ...b, key: `expense:${b.id}` })),
     ...(batch.debts ?? []).map((d) => ({ ...d, key: `expense:${d.id}` })),
@@ -514,24 +543,6 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     .filter((item) => batchSelected.has(item.key))
     .reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const batchSelectedCount = batchSelected.size;
-
-  // Paga UMA fatura escolhida no modo individual. Reusa o pagamento em lote
-  // com um item só: mesma transação, mesma trava de saldo, mesma
-  // idempotência — sem duplicar regra de negócio.
-  async function payChosenInvoice() {
-    if (!payTarget?.id) { toast.error('Selecione a fatura.'); return; }
-    setSaving(true);
-    try {
-      const { data } = await paymentsApi.payBatch({
-        expenseIds: [], invoiceIds: [payTarget.id], paymentMethod: payMethod,
-      });
-      toast.success(`Fatura paga — ${formatCurrency(data.total)}.`);
-      setModal(null);
-      onRefresh?.();
-    } catch (error) {
-      toast.error(extractErrorMessage(error, 'Não foi possível pagar a fatura.'));
-    } finally { setSaving(false); }
-  }
 
   async function payBatch() {
     const expenseIds = [
@@ -631,16 +642,16 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
       setPayTarget(null); setPayAmount(''); setPayMethod(ACCOUNT_BALANCE_METHOD);
       setPayMulti(false); setBatch({ bills: [], debts: [], invoices: [] }); setBatchSelected(new Set());
       setModal('pay');
-      // Carrega as faturas para o modo INDIVIDUAL também: antes elas só
-      // apareciam ao ligar "pagar várias", então quem queria quitar uma
-      // fatura sozinha não a encontrava aqui.
+      // Carrega a lista ÚNICA de pagáveis (contas, parcelas e faturas,
+      // incluindo atrasadas de meses anteriores). É a mesma que o modo em
+      // lote usa — é isso que garante que os dois modos mostrem o mesmo.
       setBatchLoading(true);
       try {
         const { data } = await paymentsApi.payable(selectedMonthId);
         setBatch({ bills: data.bills ?? [], debts: data.debts ?? [], invoices: data.invoices ?? [] });
       } catch {
-        // A lista de contas do mês já cobre o caso comum; sem faturas o modal
-        // continua utilizável.
+        // Falha aqui deixa a lista vazia e o modal avisa; nada é pago às
+        // cegas.
       } finally {
         setBatchLoading(false);
       }
@@ -1264,66 +1275,80 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
             )
           ) : (
             /* ---------- MODO UMA CONTA ---------- */
-            // A mensagem de "nada pendente" precisa considerar as FATURAS
-            // também. Olhando só as contas comuns, quem tinha apenas uma
-            // fatura em aberto via "nenhuma conta pendente" e a fatura nunca
-            // chegava a ser renderizada — ela só aparecia no modo em lote.
-            (pendingExpenses.length === 0 && (batch.invoices ?? []).length === 0) ? (
+            // FONTE ÚNICA DE VERDADE.
+            //
+            // Antes este modo lia `pendingExpenses` (vindo do dashboard) e o
+            // modo em lote lia `getPayableItems`. Duas listas diferentes para
+            // a mesma pergunta — "o que eu posso pagar?" — e elas divergiam:
+            // o dashboard só olha o mês selecionado, corta em 5 itens e não
+            // traz faturas. Resultado: parcela atrasada de mês anterior e
+            // fatura só apareciam no lote. Agora os dois modos usam a MESMA
+            // lista, então o que dá para pagar em lote dá para pagar sozinho.
+            (payableAll.length === 0) ? (
               <p className="text-sm text-muted text-center py-4">
-                {batchLoading ? 'Carregando…' : 'Nenhuma conta ou fatura pendente neste mês.'}
+                {batchLoading ? 'Carregando…' : 'Nenhuma conta, parcela ou fatura pendente.'}
               </p>
             ) : (
               <>
-                <FormGroup label={pendingExpenses.length > 0 ? 'Conta ou fatura a pagar' : 'Fatura a pagar'}>
+                <FormGroup label="O que pagar">
                   <Select
-                    // As opções de fatura usam a chave "invoice:<id>"; sem
-                    // refletir isso aqui, a fatura escolhida não ficava
-                    // marcada no seletor.
-                    value={payTarget?.isInvoice ? `invoice:${payTarget.id}` : (payTarget?.id ?? '')}
+                    value={payTarget ? `${payTarget.kind}:${payTarget.id}` : ''}
                     onChange={(event) => {
-                    const value = event.target.value;
-                    if (value.startsWith('invoice:')) {
-                      const id = value.slice('invoice:'.length);
-                      const invoice = (batch.invoices ?? []).find((i) => String(i.id) === id);
-                      setPayTarget(invoice ? { ...invoice, isInvoice: true } : null);
-                      setPayAmount(String(invoice?.amount ?? ''));
-                      return;
-                    }
-                    const expense = pendingExpenses.find((item) => String(item.id) === value);
-                    setPayTarget(expense ?? null);
-                    setPayAmount(String(expense?.value ?? ''));
-                  }}>
+                      const chosen = payableAll.find((item) => `${item.kind}:${item.id}` === event.target.value);
+                      setPayTarget(chosen ?? null);
+                      setPayAmount(String(chosen?.amount ?? ''));
+                    }}>
                     <option value="">Selecione...</option>
-                    {pendingExpenses.map((expense) => (
-                      <option data-i18n-ignore="true" key={expense.id} value={expense.id}>{expense.description} — {formatCurrency(expense.value)}</option>
-                    ))}
-                    {(batch.invoices ?? []).length > 0 && (
+                    {batch.bills?.length > 0 && (
+                      <optgroup label="Contas">
+                        {batch.bills.map((item) => (
+                          <option data-i18n-ignore="true" key={`expense:${item.id}`} value={`expense:${item.id}`}>
+                            {item.description} — {formatCurrency(item.amount)}
+                            {item.fromPreviousMonth ? ` (atrasada de ${String(item.originMonth?.month).padStart(2,'0')}/${item.originMonth?.year})` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {batch.debts?.length > 0 && (
+                      <optgroup label="Parcelas de dívida">
+                        {batch.debts.map((item) => (
+                          <option data-i18n-ignore="true" key={`debt:${item.id}`} value={`debt:${item.id}`}>
+                            {item.description} — {formatCurrency(item.amount)}
+                            {item.isResidual ? ' (opcional)' : ''}
+                            {!item.isResidual && item.fromPreviousMonth ? ` (atrasada de ${String(item.originMonth?.month).padStart(2,'0')}/${item.originMonth?.year})` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {batch.invoices?.length > 0 && (
                       <optgroup label="Faturas de cartão">
-                        {batch.invoices.map((invoice) => (
-                          <option data-i18n-ignore="true" key={`invoice:${invoice.id}`} value={`invoice:${invoice.id}`}>
-                            {invoice.description} — {formatCurrency(invoice.amount)}{invoice.stillOpen ? ' (ainda aberta)' : ''}
+                        {batch.invoices.map((item) => (
+                          <option data-i18n-ignore="true" key={`invoice:${item.id}`} value={`invoice:${item.id}`}>
+                            {item.description} — {formatCurrency(item.amount)}{item.stillOpen ? ' (ainda aberta)' : ''}
                           </option>
                         ))}
                       </optgroup>
                     )}
                   </Select>
                 </FormGroup>
+
                 {payTarget && (
                   <div className="bg-subtle dark:bg-white/[0.04] rounded-xl p-3 text-sm">
                     <p className="font-semibold text-slate-900 dark:text-zinc-50"><UserText>{payTarget.description}</UserText></p>
-                    <p className="mt-1 text-xs text-muted">Valor previsto: {formatCurrency(payTarget.value)}</p>
+                    <p className="mt-1 text-xs text-muted">
+                      Em aberto: {formatCurrency(payTarget.amount)}
+                      {payTarget.fromPreviousMonth && ` · atrasada de ${String(payTarget.originMonth?.month).padStart(2,'0')}/${payTarget.originMonth?.year}`}
+                      {payTarget.kind === 'invoice' && ' · a fatura é quitada pelo valor total'}
+                    </p>
                   </div>
                 )}
-                <FormGroup label={payTarget?.isInvoice ? 'Valor da fatura' : 'Valor pago'} required>
+
+                <FormGroup label={payTarget?.kind === 'invoice' ? 'Valor da fatura' : 'Valor pago'} required>
                   <Input type="number" min="0" step="0.01" value={payAmount}
-                    disabled={!!payTarget?.isInvoice}
+                    disabled={payTarget?.kind === 'invoice'}
                     onChange={(event) => setPayAmount(event.target.value)} />
-                  {payTarget?.isInvoice && (
-                    <p className="mt-1 text-xs text-muted">
-                      Fatura é paga pelo valor total — ela quita todos os lançamentos de uma vez.
-                    </p>
-                  )}
                 </FormGroup>
+
                 <FormGroup label="Forma de pagamento">
                   <ChoiceCards compact columns={2} value={payMethod} onChange={setPayMethod} options={BALANCE_PAYMENT_OPTIONS} />
                 </FormGroup>
@@ -1334,7 +1359,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                 )}
                 <div className="modal-actions">
                   <Button variant="outline" onClick={() => setModal(null)}>Cancelar</Button>
-                  <Button onClick={payTarget?.isInvoice ? payChosenInvoice : payExpense} loading={saving}>Confirmar Pagamento</Button>
+                  <Button onClick={payExpense} loading={saving} disabled={!payTarget}>Confirmar Pagamento</Button>
                 </div>
               </>
             )

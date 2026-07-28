@@ -102,7 +102,11 @@ async function runAutoPayments(userId, monthId, config) {
   };
 
   const groups = [
-    { name: 'dívidas', enabled: config.payDebts !== false, key: 'expenseIds', items: items.debts, countField: 'paidDebts' },
+    // Saldo residual fica FORA da automação: a obrigação daquele mês já foi
+    // cumprida, então quitá-lo é decisão voluntária do usuário — não é algo
+    // que o sistema deva gastar sozinho.
+    { name: 'dívidas', enabled: config.payDebts !== false, key: 'expenseIds',
+      items: (items.debts || []).filter((i) => !i.isResidual), countField: 'paidDebts' },
     { name: 'contas',  enabled: config.payBills !== false, key: 'expenseIds', items: items.bills, countField: 'paidBills' },
     { name: 'faturas', enabled: config.payInvoices !== false, key: 'invoiceIds', items: items.invoices, countField: 'paidInvoices' },
   ];

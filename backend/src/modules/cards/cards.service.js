@@ -12,7 +12,7 @@ const OPEN_EXPENSE_STATUSES = ['pending', 'partial', 'late'];
 // uma transação — ver cardPurchases.service.js (lock antes de checar limite).
 async function computeUsedLimit(cardId, client = prisma) {
   const result = await client.expense.aggregate({
-    where: { type: 'card', status: { in: OPEN_EXPENSE_STATUSES }, cardInvoice: { cardId } },
+    where: { type: 'card', deletedAt: null, status: { in: OPEN_EXPENSE_STATUSES }, cardInvoice: { cardId } },
     _sum: { value: true },
   });
   return Number(result._sum.value ?? 0);
@@ -28,7 +28,7 @@ async function computeUsedLimitsByCard(cardIds, client = prisma) {
   if (cardIds.length === 0) return new Map();
 
   const openExpenses = await client.expense.findMany({
-    where: { type: 'card', status: { in: OPEN_EXPENSE_STATUSES }, cardInvoice: { cardId: { in: cardIds } } },
+    where: { type: 'card', deletedAt: null, status: { in: OPEN_EXPENSE_STATUSES }, cardInvoice: { cardId: { in: cardIds } } },
     select: { value: true, cardInvoice: { select: { cardId: true } } },
   });
 

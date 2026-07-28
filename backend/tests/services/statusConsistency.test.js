@@ -14,11 +14,23 @@ describe('Consistência do status flex_paid', () => {
     'modules/debts/debts.service.js',
   ];
 
-  test.each(arquivos)('%s não decide "já pago" sem considerar flex_paid', (rel) => {
+  test.each(arquivos)('%s trata flex_paid onde decide "já pago"', (rel) => {
     const source = read(rel);
-    // Qualquer lista de status "encerrados" precisa incluir flex_paid.
-    const listasIncompletas = source.match(/\['paid',\s*'settled'\](?!\s*,\s*'flex_paid')/g) || [];
-    expect(listasIncompletas).toEqual([]);
+    const linhas = source.split('\n');
+
+    // Toda decisão de "isto já está pago?" precisa lidar com flex_paid — seja
+    // incluindo-o na lista, seja tratando-o explicitamente por perto (o caso
+    // do saldo residual, que é pagável e por isso NÃO pode entrar na lista).
+    const naoTratadas = linhas
+      .map((linha, i) => ({ linha, i }))
+      .filter(({ linha }) => /\['paid',\s*'settled'\]/.test(linha) && !/flex_paid/.test(linha))
+      .filter(({ i }) => {
+        const vizinhanca = linhas.slice(Math.max(i - 4, 0), i + 4).join('\n');
+        return !vizinhanca.includes('flex_paid');
+      })
+      .map(({ linha, i }) => `${rel}:${i + 1} → ${linha.trim()}`);
+
+    expect(naoTratadas).toEqual([]);
   });
 
   test('as consultas de pendência excluem flex_paid naturalmente', () => {

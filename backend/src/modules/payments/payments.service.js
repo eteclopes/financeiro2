@@ -72,26 +72,42 @@ async function getPayableItems(userId, monthId, { dueOnly = false } = {}) {
       include: { category: true, month: { select: { month: true, year: true } } },
       orderBy: { dueDate: 'asc' },
     }),
-    // Parcelas de dívida do mês + as que ficaram em aberto em meses
-    // anteriores (plano esgotado, levadas adiante como atrasadas).
+    // PARCELAS DE DÍVIDA — três situações, todas pagáveis:
+    //   1. parcela do mês em aberto;
+    //   2. parcela atrasada de mês anterior (plano esgotado, levada adiante);
+    //   3. parcela já ENCERRADA por pagamento flexível, mas com SALDO
+    //      RESIDUAL em aberto.
+    //
+    // O caso 3 faltava. Quando alguém pagava menos que o estimado, a parcela
+    // virava 'flex_paid' e sumia daqui — não dava para selecionar nem quitar
+    // o resto pelo "Pagar conta". O saldo existia, aparecia na aba Despesas,
+    // mas não havia caminho para pagá-lo a partir do Dashboard.
     prisma.expense.findMany({
       where: {
         userId,
         deletedAt: null,
-        status: { in: ['pending', 'late', 'partial'] },
-        type: 'priority',
         OR: [
-          { monthId },
-          {
-            month: {
-              userId,
-              OR: [
-                { year: { lt: targetMonth?.year ?? 0 } },
-                { year: targetMonth?.year ?? 0, month: { lt: targetMonth?.month ?? 0 } },
-              ],
-            },
-          },
+          { status: { in: ['pending', 'late', 'partial'] } },
+          { status: 'flex_paid', residualAmount: { gt: 0 } },
         ],
+        type: 'priority',
+        // Do mês selecionado OU de meses anteriores (dois critérios
+        // independentes, por isso o AND explícito: sem ele o segundo OR
+        // sobrescreveria o primeiro).
+        AND: [{
+          OR: [
+            { monthId },
+            {
+              month: {
+                userId,
+                OR: [
+                  { year: { lt: targetMonth?.year ?? 0 } },
+                  { year: targetMonth?.year ?? 0, month: { lt: targetMonth?.month ?? 0 } },
+                ],
+              },
+            },
+          ],
+        }],
       },
       include: { month: { select: { month: true, year: true } } },
       orderBy: { dueDate: 'asc' },
@@ -123,13 +139,21 @@ async function getPayableItems(userId, monthId, { dueOnly = false } = {}) {
       && (e.month.year < targetMonth.year
         || (e.month.year === targetMonth.year && e.month.month < targetMonth.month))
     );
+    // Numa parcela encerrada com resíduo, o que se deve é o RESÍDUO — não o
+    // valor cheio da parcela, que já foi honrado no mês.
+    const isResidual = e.status === 'flex_paid' && Number(e.residualAmount ?? 0) > 0;
+    const owed = isResidual
+      ? round2(Number(e.residualAmount))
+      : round2(Number(e.value) - Number(e.paidAmount ?? 0));
+
     return {
       id: String(e.id),
       kind,
-      description: e.description,
+      isResidual,
+      description: isResidual ? `${e.description} — saldo residual` : e.description,
       category: e.category ? { name: e.category.name } : null,
       dueDate: e.dueDate,
-      amount: round2(Number(e.value) - Number(e.paidAmount ?? 0)),
+      amount: owed,
       status: e.status,
       fromPreviousMonth: fromPrevious,
       originMonth: fromPrevious ? { month: e.month.month, year: e.month.year } : null,
@@ -211,7 +235,12 @@ async function payBillsBatch(userId, { expenseIds = [], invoiceIds = [], payment
       // 'flex_paid' entra aqui: a obrigação daquele mês já foi cumprida.
       // O saldo residual, se houver, é quitado pela ação própria na tela da
       // dívida — não é uma conta do mês a ser paga de novo em lote.
-      if (['paid', 'settled', 'flex_paid'].includes(expense.status)) continue;
+      // Parcela encerrada por pagamento flexível ainda pode ter SALDO
+      // RESIDUAL — nesse caso ela é pagável (quita-se o resíduo). Sem resíduo,
+      // é pulada por idempotência, como as demais já quitadas.
+      const hasResidual = expense.status === 'flex_paid' && Number(expense.residualAmount ?? 0) > 0;
+      if (['paid', 'settled'].includes(expense.status)) continue;
+      if (expense.status === 'flex_paid' && !hasResidual) continue;
       if (expense.type === 'card') {
         throw new AppError('Parcelas de cartão são quitadas pagando a fatura.', 409, 'PAY_VIA_INVOICE', { expenseId: String(expense.id) });
       }
@@ -235,12 +264,20 @@ async function payBillsBatch(userId, { expenseIds = [], invoiceIds = [], payment
     for (const inst of orderedDebtInstallments) {
       const debt = debtsById.get(String(inst.debtId));
       if (!debt) throw new AppError('Dívida da parcela não encontrada.', 404, 'DEBT_NOT_FOUND', { expenseId: String(inst.id) });
-      const due = round2(Number(inst.value) - Number(inst.paidAmount ?? 0));
+      // O que se deve numa parcela encerrada é o RESÍDUO; nas demais, o que
+      // falta para o valor da parcela.
+      const isResidual = inst.status === 'flex_paid' && Number(inst.residualAmount ?? 0) > 0;
+      const due = isResidual
+        ? round2(Number(inst.residualAmount))
+        : round2(Number(inst.value) - Number(inst.paidAmount ?? 0));
       const amount = round2(Math.min(due, debt.running));
       if (amount <= 0) continue;
       debt.running = round2(debt.running - amount);
       debtPayments.push({
         expenseId: inst.id,
+        isResidual,
+        residualBefore: Number(inst.residualAmount ?? 0),
+        carriedToExpenseId: inst.carriedToExpenseId ?? null,
         amount,
         fullValue: Number(inst.value),
         priorPaid: Number(inst.paidAmount ?? 0),
@@ -269,7 +306,14 @@ async function payBillsBatch(userId, { expenseIds = [], invoiceIds = [], payment
     }
 
     // ---------- Total e checagem única de saldo ----------
-    const billsTotal = round2(billsToPay.reduce((sum, bill) => sum + Number(bill.value), 0));
+    // O que sai do bolso é o que FALTA na conta, não o valor cheio. Hoje uma
+    // conta comum nunca chega aqui parcialmente paga (o status vira 'paid'),
+    // mas assumir isso em silêncio deixaria um erro à espera: bastaria alguém
+    // permitir 'partial' em conta comum para a checagem de saldo passar a
+    // recusar pagamentos que caberiam.
+    const billsTotal = round2(billsToPay.reduce(
+      (sum, bill) => sum + (Number(bill.value) - Number(bill.paidAmount ?? 0)), 0
+    ));
     const debtsTotal = round2(debtPayments.reduce((sum, dp) => sum + dp.amount, 0));
     const invoicesTotal = round2(invoicesToPay.reduce((sum, invoice) => sum + invoice.amount, 0));
     const total = round2(billsTotal + debtsTotal + invoicesTotal);
@@ -281,15 +325,45 @@ async function payBillsBatch(userId, { expenseIds = [], invoiceIds = [], payment
     for (const bill of billsToPay) {
       await tx.expense.update({
         where: { id: bill.id },
-        data: { paidAmount: bill.value, paidAt, status: 'paid', paymentMethod: method },
+        data: { paidAmount: bill.value, paidAt, status: 'paid', paymentMethod: method },  // quita a conta pelo valor registrado
       });
     }
 
     // ---------- Aplica: parcelas de dívida ----------
     for (const dp of debtPayments) {
-      // ACUMULA sobre o que já havia sido pago na parcela — nunca sobrescreve
-      // (senão um pagamento parcial anterior seria perdido).
+      // ACUMULA sobre o que já havia sido pago — nunca sobrescreve, senão um
+      // pagamento parcial anterior seria perdido.
       const newPaid = round2(dp.priorPaid + dp.amount);
+
+      if (dp.isResidual) {
+        // Quitação (total ou parcial) do saldo residual. A parcela NÃO reabre:
+        // segue 'flex_paid'. O que muda é o resíduo — e o acréscimo que ele
+        // gerou na parcela seguinte, senão o valor ficaria cobrado nos dois.
+        const newResidual = round2(Math.max(dp.residualBefore - dp.amount, 0));
+        await tx.expense.update({
+          where: { id: dp.expenseId },
+          data: {
+            paidAmount: newPaid,
+            paidAt,
+            paymentMethod: method,
+            residualAmount: newResidual,
+            residualSettledAt: newResidual <= SETTLE_TOLERANCE ? paidAt : null,
+          },
+        });
+        if (dp.carriedToExpenseId) {
+          const next = await tx.expense.findFirst({
+            where: { id: dp.carriedToExpenseId, userId, deletedAt: null },
+          });
+          if (next && !['paid', 'settled', 'flex_paid'].includes(next.status)) {
+            await tx.expense.update({
+              where: { id: next.id },
+              data: { value: round2(Math.max(Number(next.value) - dp.amount, 0)) },
+            });
+          }
+        }
+        continue;
+      }
+
       const isFull = newPaid >= dp.fullValue - SETTLE_TOLERANCE;
       await tx.expense.update({
         where: { id: dp.expenseId },
