@@ -102,7 +102,7 @@ export default function ExpensesPage() {
   const expensePaymentOptions = getExpensePaymentOptions(cards);
 
   const tabs = [
-    { value:'priority', label:'Prioridade', count: expenses.filter(e=>e.type==='priority').length },
+    { value:'priority', label:'Prioridade', count: expenses.filter(e=>e.type==='priority').length + overdue.filter(e=>e.type==='priority').length },
     { value:'fixed',    label:'Fixas',      count: expenses.filter(e=>e.fixedTemplateId).length },
     { value:'variable', label:'Variáveis',  count: expenses.filter(e=>e.type==='variable').length },
   ];
@@ -110,7 +110,14 @@ export default function ExpensesPage() {
   const filtered = expenses.filter((e) => tab === 'fixed' ? !!e.fixedTemplateId : e.type === tab);
 
   // ── Handlers ────────────────────────────────────────────
-  function openPay(e) { const falta = Math.max(Number(e.value) - Number(e.paidAmount ?? 0), 0); setPayModal(e); setPayAmount(String(falta || e.value)); setPayMethod(ACCOUNT_BALANCE_METHOD); }
+  function openPay(e) {
+    const residual = Number(e.residualAmount ?? 0);
+    // Parcela encerrada com residual: o que se paga é o residual, não a parcela.
+    const alvo = e.status === 'flex_paid' && residual > 0
+      ? residual
+      : Math.max(Number(e.value) - Number(e.paidAmount ?? 0), 0);
+    setPayModal(e); setPayAmount(String(alvo || e.value)); setPayMethod(ACCOUNT_BALANCE_METHOD);
+  }
 
   async function handlePay() {
     if (!payAmount || parseFloat(payAmount) <= 0) { toast.error('Informe um valor válido.'); return; }
@@ -395,6 +402,11 @@ export default function ExpensesPage() {
             {filtered.map((e) => {
               const debt = debts.find((d) => String(d.id) === String(e.debtId));
               const alreadyPaid = ['paid','settled'].includes(e.status);
+              // Parcela flexível encerrada: a obrigação do mês foi cumprida,
+              // mas pode ter sobrado um saldo residual que o usuário quita
+              // quando quiser — sem reabrir a parcela.
+              const isFlexPaid = e.status === 'flex_paid';
+              const residual = Number(e.residualAmount ?? 0);
               const isPartial = e.status === 'partial';
               const installmentRemaining = Math.max(Number(e.value) - Number(e.paidAmount ?? 0), 0);
               const match = String(e.description ?? '').match(/\((\d+)\/(\d+)\)$/);
@@ -456,6 +468,12 @@ export default function ExpensesPage() {
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-success-subtle px-3 py-1.5 text-xs font-bold text-success-dark dark:bg-success/10 dark:text-success-light">
                           ✓ Pagamento concluído
                         </span>
+                      ) : isFlexPaid ? (
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${residual > 0
+                          ? 'bg-info-subtle text-info-dark dark:bg-info/10 dark:text-info-light'
+                          : 'bg-success-subtle text-success-dark dark:bg-success/10 dark:text-success-light'}`}>
+                          ✓ Mês pago{residual > 0 ? ` · saldo residual ${formatCurrency(residual)}` : ' · residual quitado'}
+                        </span>
                       ) : isPartial ? (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-warning-subtle px-3 py-1.5 text-xs font-bold text-warning-dark dark:bg-warning/10 dark:text-warning-light">
                           Parcialmente pago · falta {formatCurrency(installmentRemaining)}
@@ -464,7 +482,12 @@ export default function ExpensesPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 border-t border-slate-200/70 pt-4 dark:border-white/[0.07]">
-                      {!alreadyPaid && <Button size="sm" onClick={() => openPay(e)}>{isPartial ? 'Pagar restante' : 'Pagar parcela'}</Button>}
+                      {!alreadyPaid && !isFlexPaid && <Button size="sm" onClick={() => openPay(e)}>{isPartial ? 'Pagar restante' : 'Pagar parcela'}</Button>}
+                      {isFlexPaid && residual > 0 && (
+                        <Button size="sm" variant="outline" onClick={() => openPay(e)}>
+                          Quitar saldo residual
+                        </Button>
+                      )}
                       {debt && (
                         <>
                           <Button size="sm" variant="outline" onClick={() => {
@@ -699,13 +722,19 @@ export default function ExpensesPage() {
           <FormGroup label="Descrição" required>
             <Input value={fixForm.description} onChange={(e) => setFixForm({...fixForm,description:e.target.value})} placeholder="Ex: Netflix, Academia, Internet..." />
           </FormGroup>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className={`grid grid-cols-1 gap-3 ${fixForm.paymentMethod === 'credit' ? '' : 'sm:grid-cols-2'}`}>
             <FormGroup label="Valor mensal" required>
               <Input type="number" min="0" step="0.01" value={fixForm.value} onChange={(e) => setFixForm({...fixForm,value:e.target.value})} />
             </FormGroup>
-            <FormGroup label="Dia de vencimento" required>
-              <Input type="number" min="1" max="31" value={fixForm.dueDay} onChange={(e) => setFixForm({...fixForm,dueDay:e.target.value})} />
-            </FormGroup>
+            {/* No crédito, quem define o vencimento é o CARTÃO: a cobrança
+                entra numa fatura, que tem fechamento e vencimento próprios.
+                Deixar o campo aberto permitia empurrar a despesa para a
+                fatura errada sem querer. */}
+            {fixForm.paymentMethod !== 'credit' && (
+              <FormGroup label="Dia de vencimento" required>
+                <Input type="number" min="1" max="31" value={fixForm.dueDay} onChange={(e) => setFixForm({...fixForm,dueDay:e.target.value})} />
+              </FormGroup>
+            )}
           </div>
           <FormGroup label="Categoria">
             <CategorySelect
@@ -739,8 +768,8 @@ export default function ExpensesPage() {
                 // fechamento e o dia de vencimento escolhido. O backend já
                 // roteava certo; faltava o usuário enxergar isso na hora.
                 const card = cards.find((c) => String(c.id) === String(fixForm.cardId));
-                if (!card || !fixForm.dueDay) return null;
-                const dia = parseInt(fixForm.dueDay);
+                if (!card) return null;
+                const dia = Number(card.dueDay); // vem do cartão, não do formulário
                 const fecha = Number(card.closingDay);
                 const base = selectedMonth ? { m: Number(selectedMonth.month), y: Number(selectedMonth.year) } : null;
                 if (!base) return null;
@@ -750,8 +779,9 @@ export default function ExpensesPage() {
                 const meses = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
                 return (
                   <div className="mt-2 rounded-xl border border-primary/20 bg-primary-subtle p-3 text-xs text-primary-dark dark:bg-primary/10 dark:text-primary-hover">
-                    Este cartão fecha dia {fecha}. Vencendo dia {dia}, a cobrança
-                    {antesDoFechamento ? ' entra na fatura' : ' já passa do fechamento e cai na fatura'} de <strong>{meses[m-1]}/{y}</strong>.
+                    Este cartão fecha dia {fecha} e vence dia {dia} — o vencimento é definido pelo
+                    cartão, não escolhido aqui. A cobrança
+                    {antesDoFechamento ? ' entra na fatura' : ' passa do fechamento e cai na fatura'} de <strong>{meses[m-1]}/{y}</strong>.
                   </div>
                 );
               })()}

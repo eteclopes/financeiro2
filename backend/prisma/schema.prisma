@@ -58,6 +58,11 @@ enum ExpenseStatus {
   paid
   late
   settled
+  /// Parcela de dívida flexível: a obrigação DAQUELE mês foi cumprida mesmo
+  /// tendo sido paga abaixo do valor estimado. O que faltou vira saldo
+  /// residual (`residualAmount`) e é somado à parcela seguinte. Sai das
+  /// pendências do mês; não é atraso.
+  flex_paid
 }
 
 enum CardInvoiceStatus {
@@ -421,6 +426,15 @@ model Expense {
   competenceYear  Int?          @map("competence_year") @db.SmallInt
   value           Decimal       @db.Decimal(12, 2)
   paidAmount      Decimal       @default(0) @map("paid_amount") @db.Decimal(12, 2)
+
+  /// Saldo residual de uma parcela flexível: o quanto faltou para o valor
+  /// estimado. Fica registrado AQUI e é somado à próxima parcela — nunca
+  /// reabre esta. O usuário pode quitá-lo depois, voluntariamente.
+  residualAmount    Decimal   @default(0) @map("residual_amount") @db.Decimal(12, 2)
+  /// Quando o saldo residual foi totalmente quitado.
+  residualSettledAt DateTime? @map("residual_settled_at")
+  /// Parcela que recebeu este saldo residual (o acréscimo dela).
+  carriedToExpenseId BigInt?  @map("carried_to_expense_id")
   paidAt          DateTime?     @map("paid_at") @db.Date
   status          ExpenseStatus @default(pending)
   paymentMethod   PaymentMethod? @map("payment_method")

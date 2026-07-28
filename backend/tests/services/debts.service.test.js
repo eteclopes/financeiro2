@@ -42,7 +42,7 @@ describe('applyPaymentToInstallment — pagamento parcial coerente (top-up, sem 
     prismaMock.expense.findFirst.mockResolvedValue(makeExpense());
   });
 
-  test('pagamento parcial reduz o saldo devedor e deixa a parcela como parcial', async () => {
+  test('pagamento flexível ENCERRA a parcela do mês e cria saldo residual', async () => {
     prismaMock.debt.findFirst.mockResolvedValue(makeDebt());
     prismaMock.expense.findFirst.mockResolvedValue(makeExpense({ paidAmount: 0 }));
 
@@ -50,7 +50,9 @@ describe('applyPaymentToInstallment — pagamento parcial coerente (top-up, sem 
 
     const expenseUpdate = prismaMock.expense.update.mock.calls[0][0].data;
     expect(expenseUpdate.paidAmount).toBe(150);
-    expect(expenseUpdate.status).toBe('partial');
+    // O valor era ESTIMADO, não mínimo: a obrigação do mês foi cumprida.
+    expect(expenseUpdate.status).toBe('flex_paid');
+    expect(expenseUpdate.residualAmount).toBe(50); // 200 estimado - 150 pago
     const debtUpdate = prismaMock.debt.update.mock.calls[0][0].data;
     expect(debtUpdate.remainingBalance).toBe(1850); // 2000 - 150
     expect(debtUpdate.pendingCarryOver).toBe(0);     // carryOver não é mais usado

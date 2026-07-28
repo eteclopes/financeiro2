@@ -287,23 +287,37 @@ async function applyPaymentToInstallment(userId, expense, amount, paymentMethod)
       where: { id: expense.id, userId, deletedAt: null },
     });
     if (!currentExpense) throw new AppError('Despesa não encontrada.', 404, 'EXPENSE_NOT_FOUND');
-    // A parcela pode ser paga enquanto ainda houver saldo nela — inclusive
-    // completando aos poucos uma parcela já parcialmente paga (top-up). Só
-    // uma parcela TOTALMENTE quitada é recusada.
-    if (['paid', 'settled'].includes(currentExpense.status)) {
-      throw new AppError('Esta parcela já está totalmente paga.', 409, 'INSTALLMENT_ALREADY_PAID');
-    }
 
     const debt = await getDebtOrThrow(userId, currentExpense.debtId, tx);
     const remainingBalance = Number(debt.remainingBalance);
-    const installmentValue = Number(currentExpense.value);
+    const estimated = Number(currentExpense.value);
     const alreadyPaid = Number(currentExpense.paidAmount ?? 0);
-    const installmentOutstanding = round2(installmentValue - alreadyPaid);
+    const residual = Number(currentExpense.residualAmount ?? 0);
 
-    // Quanto ainda falta nesta parcela, sem passar do saldo devedor total.
-    const maxPayable = round2(Math.min(installmentOutstanding, remainingBalance));
+    // ── CAMINHO 1: quitar o SALDO RESIDUAL de uma parcela já encerrada ──
+    // Uma parcela flexível encerrada com resíduo NÃO responde "já paga": o
+    // usuário pode voltar e quitar o que ficou, quando quiser.
+    if (currentExpense.status === 'flex_paid' && residual > SETTLE_TOLERANCE) {
+      return settleResidualWithin(tx, { userId, currentExpense, debt, amount, paymentMethod });
+    }
 
-    const isShortfall = amount < maxPayable - 0.009;
+    if (['paid', 'settled', 'flex_paid'].includes(currentExpense.status)) {
+      throw new AppError('Esta parcela já está quitada.', 409, 'INSTALLMENT_ALREADY_PAID');
+    }
+
+    const outstanding = round2(estimated - alreadyPaid);
+    const maxPayable = round2(Math.min(outstanding, remainingBalance));
+
+    if (amount > maxPayable + SETTLE_TOLERANCE) {
+      throw new AppError(
+        `O valor é maior do que falta nesta parcela (R$ ${maxPayable.toFixed(2)}).`,
+        422,
+        'PAYMENT_ABOVE_INSTALLMENT',
+        { installmentOutstanding: maxPayable, requestedAmount: round2(amount) }
+      );
+    }
+
+    const isShortfall = amount < maxPayable - SETTLE_TOLERANCE;
     if (isShortfall && !debt.flexiblePayment) {
       throw new AppError(
         'Esta dívida exige pagamento exato da parcela (pagamento flexível desativado).',
@@ -312,56 +326,132 @@ async function applyPaymentToInstallment(userId, expense, amount, paymentMethod)
       );
     }
 
-    // Pagar acima do que falta nesta parcela apagaria dinheiro ou abateria
-    // parcelas futuras sem controle. O excedente deve ir para a próxima
-    // parcela — aqui limitamos ao que falta nesta.
-    if (amount > maxPayable + SETTLE_TOLERANCE) {
-      throw new AppError(
-        `O valor é maior do que falta nesta parcela (R$ ${maxPayable.toFixed(2)}). Pague no máximo esse valor; o restante da dívida fica nas próximas parcelas.`,
-        422,
-        'PAYMENT_ABOVE_INSTALLMENT',
-        { installmentOutstanding: maxPayable, requestedAmount: round2(amount), remainingBalance: round2(remainingBalance) }
-      );
-    }
-
     await assertSufficientBalance(userId, amount, tx);
 
     const newPaidAmount = round2(alreadyPaid + amount);
     const newRemainingBalance = round2(Math.max(remainingBalance - amount, 0));
     const isSettled = newRemainingBalance <= SETTLE_TOLERANCE;
-    const fullyPaidInstallment = newPaidAmount >= installmentValue - 0.009;
+    const coversEstimate = newPaidAmount >= estimated - SETTLE_TOLERANCE;
 
-    // Status da parcela: paga se completou (ou quitou a dívida); senão,
-    // atrasada se venceu, ou parcial.
-    let installmentStatus;
-    if (isSettled || fullyPaidInstallment) installmentStatus = 'paid';
-    else if (currentExpense.dueDate && new Date(currentExpense.dueDate) < todayUtcDate()) installmentStatus = 'late';
-    else installmentStatus = 'partial';
+    // ── CAMINHO 2: pagamento normal ou FLEXÍVEL ──
+    // Pagar menos que o estimado numa dívida flexível ENCERRA a obrigação do
+    // mês. O valor era estimado, não mínimo: continuar cobrando aquela parcela
+    // como vencida seria punir quem pagou o combinado.
+    let newStatus;
+    let newResidual = 0;
+    if (isSettled || coversEstimate) {
+      newStatus = 'paid';
+    } else {
+      newStatus = 'flex_paid';
+      newResidual = round2(estimated - newPaidAmount);
+    }
 
     const updatedExpense = await tx.expense.update({
       where: { id: currentExpense.id },
       data: {
         paidAmount: newPaidAmount,
         paidAt: todayUtcDate(),
-        status: installmentStatus,
+        status: newStatus,
         paymentMethod,
+        residualAmount: newResidual,
+        ...(newResidual <= 0 ? { residualSettledAt: null } : {}),
       },
       include: { category: true },
     });
+
+    // Se esta parcela carregava resíduos de meses anteriores e foi quitada,
+    // esses resíduos foram pagos JUNTO — zerar evita que continuem cobráveis
+    // e sendo somados de novo na próxima virada.
+    if (newStatus === 'paid') {
+      await tx.expense.updateMany({
+        where: { carriedToExpenseId: currentExpense.id, residualAmount: { gt: 0 } },
+        data: { residualAmount: 0, residualSettledAt: todayUtcDate() },
+      });
+    }
 
     const updatedDebt = await tx.debt.update({
       where: { id: debt.id },
       data: {
         remainingBalance: newRemainingBalance,
-        // carryOver não é mais usado para calcular parcelas (a rolagem do
-        // saldo é feita na geração, a partir das parcelas em aberto).
         pendingCarryOver: 0,
         status: isSettled ? 'settled' : 'active',
       },
     });
 
-    return { expense: updatedExpense, debt: updatedDebt };
+    return {
+      expense: updatedExpense,
+      debt: updatedDebt,
+      flexible: newStatus === 'flex_paid',
+      residualAmount: newResidual,
+    };
   });
+}
+
+/**
+ * Quitação (total ou parcial) do saldo residual de uma parcela já encerrada.
+ *
+ * Regras que este trecho garante:
+ *  - a parcela anterior NUNCA é reaberta;
+ *  - não se paga acima do residual;
+ *  - o acréscimo já lançado na parcela seguinte é reduzido junto, para o mesmo
+ *    valor não ficar cobrado nos dois lugares.
+ */
+async function settleResidualWithin(tx, { userId, currentExpense, debt, amount, paymentMethod }) {
+  const residual = Number(currentExpense.residualAmount ?? 0);
+  const remainingBalance = Number(debt.remainingBalance);
+  const maxPayable = round2(Math.min(residual, remainingBalance));
+
+  if (amount > maxPayable + SETTLE_TOLERANCE) {
+    throw new AppError(
+      `O saldo residual desta parcela é de R$ ${maxPayable.toFixed(2)}.`,
+      422,
+      'PAYMENT_ABOVE_RESIDUAL',
+      { residualAmount: maxPayable, requestedAmount: round2(amount) }
+    );
+  }
+
+  await assertSufficientBalance(userId, amount, tx);
+
+  const newResidual = round2(Math.max(residual - amount, 0));
+  const fullySettled = newResidual <= SETTLE_TOLERANCE;
+
+  const updatedExpense = await tx.expense.update({
+    where: { id: currentExpense.id },
+    data: {
+      // paidAmount cresce: o dinheiro saiu por conta DESTA parcela.
+      paidAmount: round2(Number(currentExpense.paidAmount ?? 0) + amount),
+      residualAmount: fullySettled ? 0 : newResidual,
+      residualSettledAt: fullySettled ? todayUtcDate() : null,
+      // status permanece flex_paid: a parcela segue encerrada, não reabre.
+    },
+    include: { category: true },
+  });
+
+  // Se o resíduo já tinha sido somado à parcela seguinte, reduz lá também —
+  // senão o mesmo valor ficaria cobrado duas vezes.
+  if (currentExpense.carriedToExpenseId) {
+    const next = await tx.expense.findFirst({
+      where: { id: currentExpense.carriedToExpenseId, userId, deletedAt: null },
+    });
+    if (next && !['paid', 'settled'].includes(next.status)) {
+      const reduced = round2(Math.max(Number(next.value) - amount, 0));
+      await tx.expense.update({ where: { id: next.id }, data: { value: reduced } });
+    }
+  }
+
+  const newRemainingBalance = round2(Math.max(remainingBalance - amount, 0));
+  const isSettled = newRemainingBalance <= SETTLE_TOLERANCE;
+  const updatedDebt = await tx.debt.update({
+    where: { id: debt.id },
+    data: { remainingBalance: newRemainingBalance, status: isSettled ? 'settled' : 'active' },
+  });
+
+  return {
+    expense: updatedExpense,
+    debt: updatedDebt,
+    residualPayment: true,
+    residualAmount: fullySettled ? 0 : newResidual,
+  };
 }
 
 /**
@@ -409,23 +499,34 @@ async function generateNextInstallment(debt, month, client = prisma, options = {
   // Ex.: dívida 2000 em 4x de 500. Paga 100 na 1ª -> 2ª vem 500+400=900.
   // Paga 200 -> 3ª vem 500+700=1200. Paga 200 -> 4ª (última) = 1500 e, se
   // não paga, fica atrasada mostrando o saldo total.
+  // O que vem de trás e precisa ser somado nesta parcela:
+  //   a) parcelas NÃO pagas (pending/partial/late) — o valor inteiro que falta;
+  //   b) SALDO RESIDUAL de parcelas flexíveis já encerradas — o usuário
+  //      cumpriu a obrigação daquele mês, mas ficou um resto acordado.
+  // O caso (b) não é atraso e não reabre a parcela: só acompanha a dívida.
   const previousOpen = await client.expense.findMany({
     where: {
       debtId: debt.id,
       deletedAt: null,
-      status: { in: ['pending', 'partial', 'late'] },
       monthId: { not: month.id },
+      OR: [
+        { status: { in: ['pending', 'partial', 'late'] } },
+        { status: 'flex_paid', residualAmount: { gt: 0 } },
+      ],
     },
-    select: { id: true, value: true, paidAmount: true },
+    select: { id: true, value: true, paidAmount: true, status: true, residualAmount: true },
   });
-  const arrears = round2(
-    previousOpen.reduce((sum, e) => sum + (Number(e.value) - Number(e.paidAmount ?? 0)), 0)
-  );
+
+  const arrears = round2(previousOpen.reduce((sum, e) => (
+    e.status === 'flex_paid'
+      ? sum + Number(e.residualAmount ?? 0)
+      : sum + (Number(e.value) - Number(e.paidAmount ?? 0))
+  ), 0));
   for (const prev of previousOpen) {
-    // Fecha a parcela anterior: o que faltava dela já está embutido na
-    // parcela ATUAL. O value é reduzido ao que foi efetivamente pago, para
-    // que a parcela antiga mostre exatamente o que você pagou naquele mês e
-    // o saldo não seja contado duas vezes.
+    if (prev.status === 'flex_paid') continue; // já encerrada; o resíduo só migra
+    // Parcela não paga: o que faltava dela passa a estar embutido na parcela
+    // ATUAL, então ela é fechada com o valor efetivamente pago. Sem isso, a
+    // mesma dívida apareceria nos dois meses.
     await client.expense.update({
       where: { id: prev.id },
       data: { status: 'paid', value: round2(Number(prev.paidAmount ?? 0)) },
@@ -455,7 +556,7 @@ async function generateNextInstallment(debt, month, client = prisma, options = {
   });
 
   const dueDate = expensesService.dueDateFromDay(month, debt.dueDay);
-  return client.expense.create({
+  const created = await client.expense.create({
     data: {
       userId: debt.userId,
       monthId: month.id,
@@ -468,6 +569,18 @@ async function generateNextInstallment(debt, month, client = prisma, options = {
       debtId: debt.id,
     },
   });
+
+  // Registra para onde cada saldo residual foi. É o que permite, ao quitar o
+  // resíduo depois, reduzir o acréscimo desta parcela — sem cobrar duas vezes.
+  const carriedIds = previousOpen.filter((e) => e.status === 'flex_paid').map((e) => e.id);
+  if (carriedIds.length > 0) {
+    await client.expense.updateMany({
+      where: { id: { in: carriedIds } },
+      data: { carriedToExpenseId: created.id },
+    });
+  }
+
+  return created;
 }
 
 /**

@@ -87,7 +87,9 @@ async function runAutoPayments(userId, monthId, config) {
   const method = config.payDuesMethod ?? 'debit';
   const floor = Number(config.minimumBalance ?? 0);
 
-  const items = await paymentsService.getPayableItems(userId, monthId);
+  // dueOnly: a automação só quita o que já venceu ou fechou. Adiantar uma
+  // fatura ainda aberta seria mover dinheiro por uma conta não fechada.
+  const items = await paymentsService.getPayableItems(userId, monthId, { dueOnly: true });
   const summary = {
     paidDebts: 0, paidBills: 0, paidInvoices: 0,
     totalPaid: 0, skipped: [], blockedByFloor: [],
@@ -237,7 +239,9 @@ async function previewAutomations(userId, monthId, scope = 'current') {
       message: 'Números do mês seguinte são estimativas baseadas nos seus lançamentos recorrentes. Compras novas ou contas avulsas podem mudar o total.',
     });
   } else {
-    const items = await paymentsService.getPayableItems(userId, monthId);
+    // dueOnly: a automação só quita o que já venceu ou fechou. Adiantar uma
+  // fatura ainda aberta seria mover dinheiro por uma conta não fechada.
+  const items = await paymentsService.getPayableItems(userId, monthId, { dueOnly: true });
     const month = await monthsService.getMonthOrThrow(userId, monthId);
     monthLabel = { month: month.month, year: month.year };
     const sum = (list) => round2((list || []).reduce((acc, i) => acc + Number(i.amount || 0), 0));

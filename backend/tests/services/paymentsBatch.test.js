@@ -150,22 +150,42 @@ describe('payBillsBatch — parcela de dívida PARCIAL acumula (não sobrescreve
 });
 
 // ── AUDITORIA: faturas de meses FUTUROS não podem ser pagas em lote ──
-describe('getPayableItems — escopo das faturas', () => {
+describe('Escopo das faturas: lote manual x automação', () => {
   const { getPayableItems } = require('../../src/modules/payments/payments.service');
 
-  test('a consulta limita faturas à referência até o mês selecionado', async () => {
-    prismaMock.month.findFirst.mockResolvedValue({ month: 9, year: 2026 });
+  beforeEach(() => {
+    prismaMock.month.findFirst.mockResolvedValue({ month: 7, year: 2026 });
     prismaMock.expense.findMany.mockResolvedValue([]);
     prismaMock.cardInvoice.findMany.mockResolvedValue([]);
     prismaMock.expense.groupBy.mockResolvedValue([]);
+  });
 
+  test('lote MANUAL lista todas as faturas em aberto (usuário escolhe)', async () => {
     await getPayableItems(10n, 60n);
-
     const where = prismaMock.cardInvoice.findMany.mock.calls[0][0].where;
-    // O recorte é por VENCIMENTO (ou fatura já fechada), não por mês de
-    // referência: uma compra de julho cai na fatura de agosto e precisa
-    // continuar pagável.
+    // Sem recorte por vencimento: uma compra de julho cai na fatura de
+    // agosto e precisa ficar visível para quem quer adiantar.
+    expect(where.OR).toBeUndefined();
+    expect(where.status).toEqual({ not: 'paid' });
+  });
+
+  test('AUTOMAÇÃO só enxerga o que já fechou ou vence no mês', async () => {
+    await getPayableItems(10n, 60n, { dueOnly: true });
+    const where = prismaMock.cardInvoice.findMany.mock.calls[0][0].where;
     expect(where.OR[0]).toEqual({ status: 'closed' });
     expect(where.OR[1].dueDate.lte instanceof Date).toBe(true);
+  });
+
+  test('fatura ainda aberta vem marcada para a tela avisar', async () => {
+    prismaMock.cardInvoice.findMany.mockResolvedValue([
+      { id: 900n, status: 'open', referenceMonth: 8, referenceYear: 2026, dueDate: new Date('2026-08-25'), closingDate: new Date('2026-08-18'), card: { id: 1n, name: 'Nubank' } },
+    ]);
+    prismaMock.expense.groupBy.mockResolvedValue([
+      { cardInvoiceId: 900n, _sum: { value: 300, paidAmount: 0 } },
+    ]);
+
+    const items = await getPayableItems(10n, 60n);
+    expect(items.invoices[0].stillOpen).toBe(true);
+    expect(items.invoices[0].amount).toBe(300);
   });
 });

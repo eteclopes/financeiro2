@@ -15,7 +15,7 @@ const SETTLE_TOLERANCE = 0.009;
  * Parcelas avulsas de cartão (type 'card') NÃO entram: são quitadas pagando
  * a fatura inteira.
  */
-async function getPayableItems(userId, monthId) {
+async function getPayableItems(userId, monthId, { dueOnly = false } = {}) {
   const targetMonth = await prisma.month.findFirst({
     where: { id: monthId, userId },
     select: { month: true, year: true },
@@ -24,21 +24,20 @@ async function getPayableItems(userId, monthId) {
   // Mantém os status em dia (fatura cujo fechamento já passou vira 'closed').
   await cardInvoicesService.syncInvoiceStatuses(userId);
 
-  // QUAIS FATURAS PODEM SER PAGAS AQUI
+  // QUAIS FATURAS ENTRAM NA LISTA
   //
-  // O critério é a data de VENCIMENTO, não o mês de referência. Uma compra
-  // feita em julho depois do fechamento cai na fatura de agosto — usar o mês
-  // de referência escondia essa fatura de quem estava trabalhando em julho.
+  // Por padrão, TODAS as faturas com saldo em aberto. Uma compra feita em
+  // julho depois do fechamento cai na fatura de agosto; escondê-la de quem
+  // está em julho tirava do usuário a possibilidade de adiantar o pagamento.
+  // Aqui a escolha é dele: ele vê a fatura, marca e paga.
   //
-  // Entram:
-  //   - faturas já FECHADAS (o fechamento passou, o valor é final e ela é
-  //     exatamente a conta que se paga agora); e
-  //   - faturas que vencem até o fim do mês selecionado.
-  // Ficam de fora as faturas ainda ABERTAS que só vencem em meses à frente:
-  // elas continuam recebendo lançamentos, e pagá-las adiantado — sobretudo
-  // pela automação, sem escolha do usuário — cobraria uma conta não fechada.
+  // `dueOnly` existe para a AUTOMAÇÃO, que é outra história: lá o dinheiro
+  // sai sozinho, sem ninguém conferindo na hora. Nesse caso só entram faturas
+  // já fechadas (valor final) ou que vencem até o fim do mês — pagar
+  // adiantado uma fatura ainda aberta cobraria uma conta que segue recebendo
+  // lançamentos.
   let invoiceScope = {};
-  if (targetMonth) {
+  if (dueOnly && targetMonth) {
     const endOfTargetMonth = new Date(Date.UTC(targetMonth.year, targetMonth.month, 0, 23, 59, 59, 999));
     invoiceScope = {
       OR: [
@@ -149,8 +148,12 @@ async function getPayableItems(userId, monthId) {
       referenceMonth: invoice.referenceMonth,
       referenceYear: invoice.referenceYear,
       dueDate: invoice.dueDate,
+      closingDate: invoice.closingDate,
       amount: outstandingByInvoice.get(String(invoice.id)) ?? 0,
       status: invoice.status,
+      // Fatura ainda aberta: pode receber novos lançamentos até fechar.
+      // A tela avisa para o usuário saber que está adiantando.
+      stillOpen: invoice.status === 'open',
     }))
     .filter((invoice) => invoice.amount > 0);
 

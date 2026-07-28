@@ -197,7 +197,6 @@ async function createFixedExpense(userId, payload) {
   monthsService.assertMonthIsOpen(month);
   await assertCategoryIsValid(userId, payload.categoryId);
 
-  const dueDate = dueDateFromDay(month, payload.dueDay);
   const isCard = payload.paymentMethod === 'credit';
   let card = null;
 
@@ -209,6 +208,16 @@ async function createFixedExpense(userId, payload) {
     }
   }
 
+  // NO CRÉDITO, QUEM MANDA É O CARTÃO.
+  //
+  // Uma cobrança no cartão não vence no dia que a pessoa escolher: ela entra
+  // numa fatura, e essa fatura tem fechamento e vencimento próprios. Enquanto
+  // o dia digitado era aceito, ele decidia em qual fatura a despesa caía — o
+  // usuário podia, sem querer, empurrar a cobrança para o mês errado.
+  // Agora o dia vem do cartão e o campo manual é ignorado no crédito.
+  const effectiveDueDay = isCard ? Number(card.dueDay) : payload.dueDay;
+  const dueDate = dueDateFromDay(month, effectiveDueDay);
+
   return prisma.$transaction(async (tx) => {
     const template = await tx.fixedExpenseTemplate.create({
       data: {
@@ -216,7 +225,7 @@ async function createFixedExpense(userId, payload) {
         description: payload.description,
         categoryId: payload.categoryId,
         value: payload.value,
-        dueDay: payload.dueDay,
+        dueDay: effectiveDueDay,
         paymentMethod: payload.paymentMethod,
         cardId: isCard ? payload.cardId : null,
         active: true,
@@ -315,7 +324,11 @@ async function updateFixedTemplate(userId, templateId, payload) {
         ...(payload.description && { description: payload.description }),
         ...(payload.value !== undefined && { value: payload.value }),
         ...(payload.categoryId && { categoryId: payload.categoryId }),
-        ...(payload.dueDay !== undefined && { dueDay: payload.dueDay }),
+        // No crédito o dia vem do CARTÃO (fatura tem vencimento próprio);
+        // fora dele, vale o que o usuário escolheu.
+        ...(effectiveMethod === 'credit' && card
+          ? { dueDay: Number(card.dueDay) }
+          : (payload.dueDay !== undefined && { dueDay: payload.dueDay })),
         ...(payload.paymentMethod && { paymentMethod: payload.paymentMethod }),
         cardId: effectiveMethod === 'credit' ? effectiveCardId : null,
       },

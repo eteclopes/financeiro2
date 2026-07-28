@@ -1183,7 +1183,14 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                             <input type="checkbox" className="h-4 w-4 accent-[--color-primary]" checked={batchSelected.has(key)} onChange={() => toggleBatchItem(key)} />
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-sm font-medium text-slate-800 dark:text-zinc-100">{invoice.description}</span>
-                              <span className="block truncate text-[11px] text-muted">Venc. {String(invoice.referenceMonth).padStart(2, '0')}/{invoice.referenceYear}</span>
+                              <span className="block truncate text-[11px] text-muted">
+                                Fatura {String(invoice.referenceMonth).padStart(2, '0')}/{invoice.referenceYear}
+                                {invoice.stillOpen && (
+                                  <span className="font-semibold text-warning-dark dark:text-warning-light">
+                                    {' · ainda aberta (pode receber novas compras)'}
+                                  </span>
+                                )}
+                              </span>
                             </span>
                             <span className="shrink-0 font-mono text-sm font-semibold text-slate-900 dark:text-zinc-50">{formatCurrency(invoice.amount)}</span>
                           </label>
