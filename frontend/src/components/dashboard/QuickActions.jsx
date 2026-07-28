@@ -634,10 +634,16 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
       // Carrega as faturas para o modo INDIVIDUAL também: antes elas só
       // apareciam ao ligar "pagar várias", então quem queria quitar uma
       // fatura sozinha não a encontrava aqui.
+      setBatchLoading(true);
       try {
         const { data } = await paymentsApi.payable(selectedMonthId);
         setBatch({ bills: data.bills ?? [], debts: data.debts ?? [], invoices: data.invoices ?? [] });
-      } catch { /* a lista de contas do mês já cobre o caso comum */ }
+      } catch {
+        // A lista de contas do mês já cobre o caso comum; sem faturas o modal
+        // continua utilizável.
+      } finally {
+        setBatchLoading(false);
+      }
     }), disabled: isClosedMonth },
     { Icon: IconCard, label: 'Fatura', iconBg: 'bg-warning-muted dark:bg-warning/20', iconColor: 'text-warning-dark dark:text-warning-light', onClick: guardClosedMonth(openFatura), disabled: isClosedMonth },
     { Icon: IconGoal, label: 'Meta', iconBg: 'bg-purple-100 dark:bg-accentpurple/20', iconColor: 'text-purple-700 dark:text-accentpurple-light', onClick: guardClosedMonth(() => { setGoalTarget(null); setContribForm({ value: '', date: ledgerMonthDateInputValue(selectedMonth) }); setModal('goal'); }), disabled: isClosedMonth },
@@ -1257,13 +1263,24 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
               </>
             )
           ) : (
-            /* ---------- MODO UMA CONTA (comportamento original) ---------- */
-            pendingExpenses.length === 0 ? (
-              <p className="text-sm text-muted text-center py-4">Nenhuma conta pendente neste mês.</p>
+            /* ---------- MODO UMA CONTA ---------- */
+            // A mensagem de "nada pendente" precisa considerar as FATURAS
+            // também. Olhando só as contas comuns, quem tinha apenas uma
+            // fatura em aberto via "nenhuma conta pendente" e a fatura nunca
+            // chegava a ser renderizada — ela só aparecia no modo em lote.
+            (pendingExpenses.length === 0 && (batch.invoices ?? []).length === 0) ? (
+              <p className="text-sm text-muted text-center py-4">
+                {batchLoading ? 'Carregando…' : 'Nenhuma conta ou fatura pendente neste mês.'}
+              </p>
             ) : (
               <>
-                <FormGroup label="Conta a pagar">
-                  <Select value={payTarget?.id ?? ''} onChange={(event) => {
+                <FormGroup label={pendingExpenses.length > 0 ? 'Conta ou fatura a pagar' : 'Fatura a pagar'}>
+                  <Select
+                    // As opções de fatura usam a chave "invoice:<id>"; sem
+                    // refletir isso aqui, a fatura escolhida não ficava
+                    // marcada no seletor.
+                    value={payTarget?.isInvoice ? `invoice:${payTarget.id}` : (payTarget?.id ?? '')}
+                    onChange={(event) => {
                     const value = event.target.value;
                     if (value.startsWith('invoice:')) {
                       const id = value.slice('invoice:'.length);
