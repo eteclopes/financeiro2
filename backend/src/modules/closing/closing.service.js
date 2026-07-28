@@ -68,11 +68,14 @@ async function getClosingPreview(userId, monthId) {
   });
 
   const [pendingExpenses, pendingExpensesSum, openInvoices, activeGoalsCount] = await Promise.all([
+    // Parcelas de CARTÃO não contam como pendência do mês: elas pertencem à
+    // fatura, contabilizada logo abaixo em `openInvoices`. Sem esse recorte,
+    // a prévia somava a mesma dívida duas vezes e assustava quem ia fechar.
     prisma.expense.count({
-      where: { userId, monthId, deletedAt: null, status: { in: ['pending', 'partial', 'late'] } },
+      where: { userId, monthId, deletedAt: null, type: { not: 'card' }, status: { in: ['pending', 'partial', 'late'] } },
     }),
     prisma.expense.aggregate({
-      where: { userId, monthId, deletedAt: null, status: { in: ['pending', 'partial', 'late'] } },
+      where: { userId, monthId, deletedAt: null, type: { not: 'card' }, status: { in: ['pending', 'partial', 'late'] } },
       _sum: { value: true },
     }),
     prisma.cardInvoice.count({ where: { monthId, card: { userId }, status: { not: 'paid' } } }),

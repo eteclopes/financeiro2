@@ -85,6 +85,7 @@ async function getDashboard(userId, monthId) {
     outstandingAgg,
     pendingExpenses,
     pendingCount,
+    openInvoiceRows,
     debtsAgg,
     savingsBalance,
     goalMovements,
@@ -102,18 +103,40 @@ async function getDashboard(userId, monthId) {
       where: { userId, deletedAt: null, paidAt: { gte: start, lte: end } },
       _sum: { paidAmount: true },
     }),
+    // PENDÊNCIAS DO MÊS — parcelas de CARTÃO ficam de fora.
+    //
+    // Uma compra no crédito não é uma conta a pagar do mês: ela pertence à
+    // fatura e só vira saída de dinheiro quando a fatura é quitada. Enquanto
+    // entravam aqui, três coisas quebravam ao mesmo tempo:
+    //   1. a soma de pendências inflava, dando a impressão de que a compra
+    //      já tinha comido o saldo;
+    //   2. a parcela aparecia na lista do "Pagar conta"; e
+    //   3. ao escolhê-la, o pagamento era recusado com 409 PAY_VIA_INVOICE,
+    //      porque parcela de cartão só se quita pagando a fatura.
+    // A fatura em aberto é exposta à parte, em `openInvoices`.
     prisma.expense.aggregate({
-      where: { userId, monthId, deletedAt: null, status: { in: ['pending', 'partial', 'late'] } },
+      where: { userId, monthId, deletedAt: null, type: { not: 'card' }, status: { in: ['pending', 'partial', 'late'] } },
       _sum: { value: true, paidAmount: true },
     }),
     prisma.expense.findMany({
-      where: { userId, monthId, deletedAt: null, status: { in: ['pending', 'partial', 'late'] } },
+      where: { userId, monthId, deletedAt: null, type: { not: 'card' }, status: { in: ['pending', 'partial', 'late'] } },
       include: { category: true, cardInvoice: { include: { card: true } } },
       orderBy: { dueDate: 'asc' },
       take: 5,
     }),
     prisma.expense.count({
-      where: { userId, monthId, deletedAt: null, status: { in: ['pending', 'partial', 'late'] } },
+      where: { userId, monthId, deletedAt: null, type: { not: 'card' }, status: { in: ['pending', 'partial', 'late'] } },
+    }),
+    // Faturas em aberto: a contrapartida das parcelas de cartão que saíram
+    // das pendências. Ficam visíveis como UM item por fatura, que é como a
+    // dívida realmente se apresenta e como ela é paga.
+    prisma.cardInvoice.findMany({
+      where: { card: { userId }, status: { not: 'paid' } },
+      include: {
+        card: { select: { id: true, name: true } },
+        expenses: { where: { deletedAt: null, status: { not: 'paid' } }, select: { value: true, paidAmount: true } },
+      },
+      orderBy: { dueDate: 'asc' },
     }),
     prisma.debt.aggregate({ where: { userId, status: 'active' }, _sum: { remainingBalance: true } }),
     savingsService.getCurrentBalance(userId),
@@ -225,6 +248,18 @@ async function getDashboard(userId, monthId) {
     totalActiveDebt: Number(summary.totalActiveDebt),
     pendingExpensesCount: Number(summary.pendingExpensesCount),
     upcomingDueDates: pendingExpenses,
+    // Faturas em aberto, cada uma como um item só, com o saldo devedor real.
+    openInvoices: (openInvoiceRows ?? []).map((invoice) => ({
+      id: String(invoice.id),
+      cardName: invoice.card?.name ?? null,
+      referenceMonth: invoice.referenceMonth,
+      referenceYear: invoice.referenceYear,
+      dueDate: invoice.dueDate,
+      status: invoice.status,
+      amount: round2(invoice.expenses.reduce(
+        (sum, e) => sum + (Number(e.value) - Number(e.paidAmount ?? 0)), 0
+      )),
+    })).filter((invoice) => invoice.amount > 0),
     cards,
     goals: goals.filter((goal) => goal.status === 'active'),
     financialHealthScore,
