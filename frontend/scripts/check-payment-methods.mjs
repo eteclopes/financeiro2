@@ -16,9 +16,12 @@ const assert = (condition, message) => { if (!condition) failures.push(message);
 
 assert(RECEIPT_OPTIONS.map((item) => item.value).join(',') === 'debit,cash', 'Receitas devem oferecer apenas saldo da conta e dinheiro físico.');
 assert(BALANCE_PAYMENT_OPTIONS.map((item) => item.value).join(',') === 'debit,cash', 'Pagamentos sem cartão devem oferecer apenas saldo da conta e dinheiro físico.');
-assert(getExpensePaymentOptions([]).map((item) => item.value).join(',') === 'debit,cash', 'Crédito não pode aparecer sem cartão ativo.');
+const noCardsOptions = getExpensePaymentOptions([]);
+assert(noCardsOptions.map((item) => item.value).join(',') === 'debit,credit,cash', 'Crédito deve continuar visível para explicar como liberá-lo.');
+assert(noCardsOptions.find((item) => item.value === 'credit')?.disabled === true, 'Crédito precisa ficar desabilitado sem cartão ativo.');
 assert(getExpensePaymentOptions([{ id: 1, active: true }]).map((item) => item.value).join(',') === 'debit,credit,cash', 'Crédito deve aparecer quando existe cartão ativo.');
-assert(getExpensePaymentOptions([{ id: 1, active: false }]).map((item) => item.value).join(',') === 'debit,cash', 'Cartão inativo não pode liberar crédito.');
+const inactiveCardOptions = getExpensePaymentOptions([{ id: 1, active: false }]);
+assert(inactiveCardOptions.find((item) => item.value === 'credit')?.disabled === true, 'Cartão inativo não pode liberar crédito.');
 
 for (const legacy of ['pix', 'debit', 'transfer']) {
   assert(normalizePaymentMethod(legacy) === 'debit', `O método legado ${legacy} precisa ser tratado como saldo da conta.`);

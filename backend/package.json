@@ -17,7 +17,8 @@
     "check:security": "node scripts/check-security-boundaries.js",
     "check:v16-flows": "node scripts/check-v16-financial-flows.js",
     "check:v18-critical": "node scripts/check-v18-critical-flows.js",
-    "check:v19-history": "node scripts/check-v19-immutable-history.js"
+    "check:v19-history": "node scripts/check-v19-immutable-history.js",
+    "check:v20-invoices": "node scripts/check-v20-invoices-automation.js"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",

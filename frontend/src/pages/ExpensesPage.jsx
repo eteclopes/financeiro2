@@ -545,7 +545,7 @@ export default function ExpensesPage() {
                           setEditFixForm({
                             description: e.description,
                             value: String(e.value),
-                            dueDay: String(e.dueDate ? new Date(e.dueDate).getUTCDate() : '10'),
+                            dueDay: String(e.fixedTemplate?.dueDay ?? (e.dueDate ? new Date(e.dueDate).getUTCDate() : '10')),
                             paymentMethod: normalizePaymentMethod(e.fixedTemplate?.paymentMethod),
                             cardId: e.fixedTemplate?.cardId ? String(e.fixedTemplate.cardId) : '',
                           });
@@ -722,19 +722,18 @@ export default function ExpensesPage() {
           <FormGroup label="Descrição" required>
             <Input value={fixForm.description} onChange={(e) => setFixForm({...fixForm,description:e.target.value})} placeholder="Ex: Netflix, Academia, Internet..." />
           </FormGroup>
-          <div className={`grid grid-cols-1 gap-3 ${fixForm.paymentMethod === 'credit' ? '' : 'sm:grid-cols-2'}`}>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <FormGroup label="Valor mensal" required>
               <Input type="number" min="0" step="0.01" value={fixForm.value} onChange={(e) => setFixForm({...fixForm,value:e.target.value})} />
             </FormGroup>
-            {/* No crédito, quem define o vencimento é o CARTÃO: a cobrança
-                entra numa fatura, que tem fechamento e vencimento próprios.
-                Deixar o campo aberto permitia empurrar a despesa para a
-                fatura errada sem querer. */}
-            {fixForm.paymentMethod !== 'credit' && (
-              <FormGroup label="Dia de vencimento" required>
-                <Input type="number" min="1" max="31" value={fixForm.dueDay} onChange={(e) => setFixForm({...fixForm,dueDay:e.target.value})} />
-              </FormGroup>
-            )}
+            <FormGroup label={fixForm.paymentMethod === 'credit' ? 'Dia da cobrança no cartão' : 'Dia de vencimento'} required>
+              <Input type="number" min="1" max="31" value={fixForm.dueDay} onChange={(e) => setFixForm({...fixForm,dueDay:e.target.value})} />
+              {fixForm.paymentMethod === 'credit' && (
+                <p className="mt-1 text-xs text-muted">
+                  É o dia em que o estabelecimento cobra. O fechamento decide em qual fatura entra; o vencimento vem do cartão.
+                </p>
+              )}
+            </FormGroup>
           </div>
           <FormGroup label="Categoria">
             <CategorySelect
@@ -761,27 +760,24 @@ export default function ExpensesPage() {
                 </Select>
               )}
               <p className="text-xs text-muted mt-1.5">
-                Lançada direto na fatura deste cartão todo mês — não desconta do saldo até a fatura ser paga.
+                Consome o limite no dia da cobrança e só desconta do saldo quando a fatura for paga.
               </p>
               {(() => {
-                // Mostra em qual fatura a cobrança cai, considerando o dia de
-                // fechamento e o dia de vencimento escolhido. O backend já
-                // roteava certo; faltava o usuário enxergar isso na hora.
                 const card = cards.find((c) => String(c.id) === String(fixForm.cardId));
-                if (!card) return null;
-                const dia = Number(card.dueDay); // vem do cartão, não do formulário
-                const fecha = Number(card.closingDay);
-                const base = selectedMonth ? { m: Number(selectedMonth.month), y: Number(selectedMonth.year) } : null;
-                if (!base) return null;
-                let m = base.m, y = base.y;
-                const antesDoFechamento = dia <= fecha;
-                if (!antesDoFechamento) { m += 1; if (m > 12) { m = 1; y += 1; } }
+                if (!card || !selectedMonth) return null;
+                const chargeDay = Math.min(Math.max(Number(fixForm.dueDay) || 1, 1), 31);
+                const closingDay = Number(card.closingDay);
+                const cardDueDay = Number(card.dueDay);
+                const addMonth = ({ m, y }) => (m === 12 ? { m: 1, y: y + 1 } : { m: m + 1, y });
+                const base = { m: Number(selectedMonth.month), y: Number(selectedMonth.year) };
+                const invoiceRef = chargeDay <= closingDay ? base : addMonth(base);
+                const invoiceDueRef = cardDueDay <= closingDay ? addMonth(invoiceRef) : invoiceRef;
                 const meses = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
                 return (
                   <div className="mt-2 rounded-xl border border-primary/20 bg-primary-subtle p-3 text-xs text-primary-dark dark:bg-primary/10 dark:text-primary-hover">
-                    Este cartão fecha dia {fecha} e vence dia {dia} — o vencimento é definido pelo
-                    cartão, não escolhido aqui. A cobrança
-                    {antesDoFechamento ? ' entra na fatura' : ' passa do fechamento e cai na fatura'} de <strong>{meses[m-1]}/{y}</strong>.
+                    Cobrança dia <strong>{chargeDay}</strong>; fechamento dia <strong>{closingDay}</strong>. Ela entra na fatura de{' '}
+                    <strong>{meses[invoiceRef.m - 1]}/{invoiceRef.y}</strong>, com vencimento dia <strong>{cardDueDay}</strong> de{' '}
+                    <strong>{meses[invoiceDueRef.m - 1]}/{invoiceDueRef.y}</strong>.
                   </div>
                 );
               })()}
@@ -812,7 +808,7 @@ export default function ExpensesPage() {
             <FormGroup label="Novo valor" required>
               <Input type="number" min="0" step="0.01" value={editFixForm.value} onChange={(e) => setEditFixForm({...editFixForm,value:e.target.value})} />
             </FormGroup>
-            <FormGroup label="Dia vencimento">
+            <FormGroup label={editFixForm.paymentMethod === 'credit' ? 'Dia da cobrança no cartão' : 'Dia de vencimento'}>
               <Input type="number" min="1" max="31" value={editFixForm.dueDay} onChange={(e) => setEditFixForm({...editFixForm,dueDay:e.target.value})} />
             </FormGroup>
           </div>

@@ -278,7 +278,7 @@ describe('previewAutomations — avisa quando o saldo não dá conta', () => {
     });
     // Fatura de agosto já FECHADA, com 400 em aberto.
     prismaMock.cardInvoice.findMany.mockResolvedValue([
-      { id: 900n, status: 'closed', expenses: [{ value: 400, paidAmount: 0 }] },
+      { id: 900n, status: 'closed', dueDate: new Date(Date.UTC(2026, 7, 17)), expenses: [{ value: 400, paidAmount: 0 }] },
     ]);
 
     const p = await automations.previewAutomations(10n, 60n, 'next');
@@ -289,7 +289,7 @@ describe('previewAutomations — avisa quando o saldo não dá conta', () => {
     expect(p.warnings.some((w) => w.code === 'ESTIMATIVA')).toBe(true);
   });
 
-  test('próximo mês: fatura ainda ABERTA fica de fora e é explicada', async () => {
+  test('próximo mês: fatura ABERTA que vence no mês-alvo entra, igual à execução', async () => {
     cfg();
     balance.getAvailableBalance.mockResolvedValue(1000);
     projectionsService.getProjectionComponents.mockResolvedValue({
@@ -297,30 +297,53 @@ describe('previewAutomations — avisa quando o saldo não dá conta', () => {
       recurringIncome: 0, fixedExpenses: 0, debtSchedule: [0, 0], cardSchedule: [0, 0],
     });
     prismaMock.cardInvoice.findMany.mockResolvedValue([
-      { id: 900n, status: 'open', expenses: [{ value: 90, paidAmount: 0 }] },
+      { id: 900n, status: 'open', dueDate: new Date(Date.UTC(2026, 7, 17)), expenses: [{ value: 90, paidAmount: 0 }] },
     ]);
 
     const p = await automations.previewAutomations(10n, 60n, 'next');
-    // Não entra no total, mas o usuário entende o porquê em vez de ver zero.
-    expect(p.totalToPay).toBe(0);
-    expect(p.warnings.some((w) => w.code === 'FATURA_AINDA_ABERTA')).toBe(true);
-    // E o aviso de que as fixas estão dentro da fatura.
+    expect(p.totalToPay).toBe(90);
+    expect(p.warnings.some((w) => w.code === 'FATURA_FORA_DO_MES_ALVO')).toBe(false);
     expect(p.warnings.some((w) => w.code === 'FIXAS_NO_CARTAO')).toBe(true);
   });
 
-  test('com "adiantar faturas abertas" ligado, a fatura aberta ENTRA', async () => {
-    cfg({ payOpenInvoices: true });
+  test('fatura aberta que vence depois do mês-alvo só entra com antecipação', async () => {
+    cfg();
     balance.getAvailableBalance.mockResolvedValue(1000);
     projectionsService.getProjectionComponents.mockResolvedValue({
       months: [{ month: 7, year: 2026 }, { month: 8, year: 2026 }],
       recurringIncome: 0, fixedExpenses: 0, debtSchedule: [0, 0], cardSchedule: [0, 0],
     });
     prismaMock.cardInvoice.findMany.mockResolvedValue([
-      { id: 900n, status: 'open', expenses: [{ value: 90, paidAmount: 0 }] },
+      { id: 900n, status: 'open', dueDate: new Date(Date.UTC(2026, 8, 17)), expenses: [{ value: 90, paidAmount: 0 }] },
     ]);
 
+    const withoutAdvance = await automations.previewAutomations(10n, 60n, 'next');
+    expect(withoutAdvance.totalToPay).toBe(0);
+    expect(withoutAdvance.warnings.some((w) => w.code === 'FATURA_FORA_DO_MES_ALVO')).toBe(true);
+
+    cfg({ payOpenInvoices: true });
+    const withAdvance = await automations.previewAutomations(10n, 60n, 'next');
+    expect(withAdvance.totalToPay).toBe(90);
+  });
+
+  test('cobrança fixa futura no cartão aparece na prévia antes de ser gerada', async () => {
+    cfg();
+    balance.getAvailableBalance.mockResolvedValue(1000);
+    projectionsService.getProjectionComponents.mockResolvedValue({
+      months: [{ month: 7, year: 2026 }, { month: 8, year: 2026 }],
+      recurringIncome: 0, fixedExpenses: 0, debtSchedule: [0, 0], cardSchedule: [0, 0],
+    });
+    prismaMock.cardInvoice.findMany.mockResolvedValue([]);
+    prismaMock.fixedExpenseTemplate.findMany.mockResolvedValue([{
+      id: 77n, userId: 10n, active: true, paymentMethod: 'credit', value: 55, dueDay: 5,
+      card: { id: 5n, closingDay: 10, dueDay: 17 },
+    }]);
+    prismaMock.expense.findMany.mockResolvedValue([]);
+
     const p = await automations.previewAutomations(10n, 60n, 'next');
-    expect(p.totalToPay).toBe(90);
+    expect(p.totalToPay).toBe(55);
+    expect(p.groups.find((g) => g.key === 'invoices')).toMatchObject({ total: 55, projectedCount: 1 });
+    expect(p.warnings.some((w) => w.code === 'FATURA_PROJETADA')).toBe(true);
   });
 
   test('a prévia NUNCA move dinheiro', async () => {

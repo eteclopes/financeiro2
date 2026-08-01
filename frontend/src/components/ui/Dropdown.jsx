@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useId, Children, useLayoutEffect } from 'react';
+import { useState, useRef, useEffect, useId, Children, useLayoutEffect, isValidElement, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { IconChevronL } from '../icons';
 
@@ -40,20 +40,37 @@ export function Dropdown({ value, onChange, children, className = '', placeholde
   const listRef = useRef(null);
   const listId = useId();
 
-  // Extrai as opções a partir dos filhos <option>. Children.toArray (e não
-  // Array.from) é obrigatório aqui: quando o JSX mistura um <option> fixo
-  // com um {array.map(...)} como irmãos (ex.: <option value="">Selecione...
-  // </option>{categorias.map(...)}), o React entrega `children` como um
-  // array ANINHADO — [elementoFixo, [opção1, opção2, ...]] — e não um
-  // array plano. Children.toArray faz o flatten recursivo desses arrays
-  // aninhados, normalizando para uma lista plana de elementos reais.
-  const options = Children.toArray(children)
-    .filter(Boolean)
-    .map((child) => ({
-      value: child.props.value,
-      label: child.props.children,
-      disabled: child.props.disabled,
-    }));
+  // Extrai <option> DIRETOS e também opções dentro de <optgroup>.
+  // O modal "Pagar conta" separa Contas, Dívidas e Faturas em grupos. A
+  // versão anterior tratava o próprio <optgroup> como uma opção, produzindo
+  // `value: undefined`; por isso a fatura aparecia, mas não podia ser
+  // selecionada no modo individual.
+  function flattenOptions(nodes, inheritedGroup = null, inheritedDisabled = false) {
+    const flattened = [];
+    Children.forEach(nodes, (child) => {
+      if (!isValidElement(child)) return;
+
+      if (child.type === 'optgroup') {
+        flattened.push(...flattenOptions(
+          child.props.children,
+          child.props.label ?? inheritedGroup,
+          inheritedDisabled || !!child.props.disabled,
+        ));
+        return;
+      }
+
+      if (child.type !== 'option') return;
+      flattened.push({
+        value: child.props.value,
+        label: child.props.children,
+        disabled: inheritedDisabled || !!child.props.disabled,
+        group: inheritedGroup,
+      });
+    });
+    return flattened;
+  }
+
+  const options = flattenOptions(children);
 
   const selected = options.find((o) => String(o.value) === String(value));
 
@@ -219,7 +236,7 @@ export function Dropdown({ value, onChange, children, className = '', placeholde
   // menor que a tela toda quando há muitas opções).
   useEffect(() => {
     if (!open || highlightedIndex < 0 || !listRef.current) return;
-    const el = listRef.current.children[highlightedIndex];
+    const el = listRef.current.querySelector(`[data-option-index="${highlightedIndex}"]`);
     el?.scrollIntoView?.({ block: 'nearest' });
   }, [open, highlightedIndex]);
 
@@ -279,24 +296,36 @@ export function Dropdown({ value, onChange, children, className = '', placeholde
           {options.map((o, index) => {
             const isSelected = String(o.value) === String(value);
             const isHighlighted = index === highlightedIndex;
+            const showGroup = o.group && (index === 0 || options[index - 1]?.group !== o.group);
             return (
-              <li
-                key={String(o.value)}
-                id={`${listId}-opt-${index}`}
-                role="option"
-                aria-selected={isSelected}
-                onMouseEnter={() => setHighlightedIndex(index)}
-                onClick={() => !o.disabled && pick(o.value)}
-                className={`px-3.5 py-2 text-sm cursor-pointer transition-colors duration-100 truncate
-                  ${o.disabled ? 'opacity-40 cursor-not-allowed' : ''}
-                  ${isSelected
-                    ? 'bg-primary-subtle dark:bg-primary/20 text-primary-dark dark:text-primary-hover font-semibold'
-                    : isHighlighted
-                      ? 'bg-primary-subtle/70 dark:bg-primary/[0.08] text-slate-700 dark:text-zinc-200'
-                      : 'text-slate-700 dark:text-zinc-200 hover:bg-primary-subtle/70 dark:hover:bg-primary/[0.08]'}`}
-              >
-                {o.label}
-              </li>
+              <Fragment key={`${o.group ?? 'option'}-${String(o.value)}-${index}`}>
+                {showGroup && (
+                  <li
+                    role="presentation"
+                    className="px-3.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.08em] text-muted"
+                  >
+                    {o.group}
+                  </li>
+                )}
+                <li
+                  data-option-index={index}
+                  id={`${listId}-opt-${index}`}
+                  role="option"
+                  aria-selected={isSelected}
+                  aria-disabled={o.disabled || undefined}
+                  onMouseEnter={() => !o.disabled && setHighlightedIndex(index)}
+                  onClick={() => !o.disabled && pick(o.value)}
+                  className={`px-3.5 py-2 text-sm cursor-pointer transition-colors duration-100 truncate
+                    ${o.disabled ? 'opacity-40 cursor-not-allowed' : ''}
+                    ${isSelected
+                      ? 'bg-primary-subtle dark:bg-primary/20 text-primary-dark dark:text-primary-hover font-semibold'
+                      : isHighlighted
+                        ? 'bg-primary-subtle/70 dark:bg-primary/[0.08] text-slate-700 dark:text-zinc-200'
+                        : 'text-slate-700 dark:text-zinc-200 hover:bg-primary-subtle/70 dark:hover:bg-primary/[0.08]'}`}
+                >
+                  {o.label}
+                </li>
+              </Fragment>
             );
           })}
         </ul>,

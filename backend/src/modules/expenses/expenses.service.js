@@ -208,14 +208,12 @@ async function createFixedExpense(userId, payload) {
     }
   }
 
-  // NO CRÉDITO, QUEM MANDA É O CARTÃO.
-  //
-  // Uma cobrança no cartão não vence no dia que a pessoa escolher: ela entra
-  // numa fatura, e essa fatura tem fechamento e vencimento próprios. Enquanto
-  // o dia digitado era aceito, ele decidia em qual fatura a despesa caía — o
-  // usuário podia, sem querer, empurrar a cobrança para o mês errado.
-  // Agora o dia vem do cartão e o campo manual é ignorado no crédito.
-  const effectiveDueDay = isCard ? Number(card.dueDay) : payload.dueDay;
+  // Em despesa fixa no cartão, `dueDay` representa o DIA REAL DA
+  // COBRANÇA recorrente (ex.: streaming cobra todo dia 5). Esse dia é
+  // comparado ao fechamento do cartão por createFixedCardCharge para decidir
+  // a fatura correta. O vencimento da fatura continua vindo exclusivamente
+  // do cartão — nunca deve substituir a data da cobrança.
+  const effectiveDueDay = Number(payload.dueDay);
   const dueDate = dueDateFromDay(month, effectiveDueDay);
 
   return prisma.$transaction(async (tx) => {
@@ -324,11 +322,9 @@ async function updateFixedTemplate(userId, templateId, payload) {
         ...(payload.description && { description: payload.description }),
         ...(payload.value !== undefined && { value: payload.value }),
         ...(payload.categoryId && { categoryId: payload.categoryId }),
-        // No crédito o dia vem do CARTÃO (fatura tem vencimento próprio);
-        // fora dele, vale o que o usuário escolheu.
-        ...(effectiveMethod === 'credit' && card
-          ? { dueDay: Number(card.dueDay) }
-          : (payload.dueDay !== undefined && { dueDay: payload.dueDay })),
+        // Sempre é o dia da obrigação/cobrança. No crédito, ele decide
+        // em qual ciclo a compra entra; o vencimento continua vindo do cartão.
+        ...(payload.dueDay !== undefined && { dueDay: Number(payload.dueDay) }),
         ...(payload.paymentMethod && { paymentMethod: payload.paymentMethod }),
         cardId: effectiveMethod === 'credit' ? effectiveCardId : null,
       },

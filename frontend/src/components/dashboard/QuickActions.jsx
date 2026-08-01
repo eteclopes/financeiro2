@@ -847,7 +847,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                 <FormGroup label="Valor mensal" required>
                   <Input type="number" min="0" step="0.01" value={fixForm.value} onChange={(event) => setFixForm({ ...fixForm, value: event.target.value })} />
                 </FormGroup>
-                <FormGroup label="Dia de vencimento" required>
+                <FormGroup label={fixForm.paymentMethod === 'credit' ? 'Dia da cobrança no cartão' : 'Dia de vencimento'} required>
                   <Input type="number" min="1" max="31" value={fixForm.dueDay} onChange={(event) => setFixForm({ ...fixForm, dueDay: event.target.value })} />
                 </FormGroup>
               </div>
@@ -889,7 +889,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                     </Select>
                   )}
                   <p className="text-xs text-muted mt-1.5">
-                    Será lançada na fatura todo mês e não descontará do saldo até a fatura ser paga.
+                    A cobrança ocorre no dia informado acima. O fechamento define a fatura; o vencimento vem do cartão. O limite é consumido no lançamento e o saldo só diminui ao pagar a fatura.
                   </p>
                 </FormGroup>
               )}
@@ -1005,8 +1005,8 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                     <ToggleSwitch
                       checked={!!auto.payOpenInvoices}
                       onChange={(v) => saveAutomations({ payOpenInvoices: v })}
-                      label="Adiantar faturas ainda abertas"
-                      description="Por padrão a automação só paga fatura já fechada. Uma fatura aberta ainda pode receber compras."
+                      label="Adiantar faturas de meses seguintes"
+                      description="Por padrão entram faturas fechadas ou com vencimento no mês-alvo. Ative para adiantar também faturas abertas que vencem depois."
                     />
                   )}
                   <FormGroup label="Nunca deixar o saldo abaixo de (R$)">

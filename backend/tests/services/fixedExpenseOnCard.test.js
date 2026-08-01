@@ -23,18 +23,19 @@ beforeEach(() => {
   prismaMock.fixedExpenseTemplate.create.mockImplementation(({ data }) => Promise.resolve({ id: 77n, ...data }));
 });
 
-describe('Despesa fixa no cartão — o cartão define o vencimento', () => {
-  test('o dia digitado pelo usuário é IGNORADO no crédito', async () => {
+describe('Despesa fixa no cartão — cobrança segue fechamento e vencimento', () => {
+  test('o dia informado é preservado como dia real da cobrança', async () => {
     await createFixedExpense(10n, {
       monthId: 60n, description: 'Netflix', categoryId: 3n, value: 40,
-      dueDay: 5,                    // usuário digitou 5...
+      dueDay: 5,
       paymentMethod: 'credit', cardId: 5n,
     });
 
     const data = prismaMock.fixedExpenseTemplate.create.mock.calls[0][0].data;
-    // ...mas quem manda é o cartão (vence dia 25). Deixar o 5 valer faria a
-    // cobrança cair na fatura errada.
-    expect(data.dueDay).toBe(25);
+    expect(data.dueDay).toBe(5);
+    expect(cardPurchasesService.createFixedCardCharge).toHaveBeenCalledWith(
+      expect.objectContaining({ dueDate: new Date(Date.UTC(2026, 6, 5)) })
+    );
   });
 
   test('fora do crédito, o dia escolhido continua valendo', async () => {
