@@ -9,6 +9,10 @@ const checks = [
   ['admin routes', 'backend/src/modules/admin/admin.routes.js', /router\.use\(authenticate, requireAdmin\)/],
   ['admin overview', 'backend/src/modules/admin/admin.service.js', /async function overview/],
   ['admin users', 'backend/src/modules/admin/admin.service.js', /async function listUsers/],
+  ['admin delete user', 'backend/src/modules/admin/admin.service.js', /async function deleteUser/],
+  ['admin delete route', 'backend/src/modules/admin/admin.routes.js', /router\.delete\('\/users\/:id'/],
+  ['admin grant Pro', 'admin-frontend/src/pages/UserDetailPage.jsx', /Conceder Plano Pro/],
+  ['admin delete UI', 'admin-frontend/src/pages/UserDetailPage.jsx', /Excluir usuário/],
   ['admin frontend app', 'admin-frontend/src/App.jsx', /AdminLayout/],
   ['admin route registration', 'backend/src/routes/index.js', /router\.use\('\/admin'/],
 ];

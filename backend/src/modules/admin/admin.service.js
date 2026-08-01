@@ -263,6 +263,44 @@ async function revokeUserSessions(adminId, userId) {
   return { revokedSessions: result.count };
 }
 
+async function deleteUser(adminId, userId) {
+  if (String(adminId) === String(userId)) {
+    throw new AppError(
+      'Você não pode excluir a própria conta administrativa.',
+      409,
+      'SELF_DELETE_BLOCKED'
+    );
+  }
+
+  const current = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true, plan: true, planSource: true },
+  });
+  if (!current) throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
+
+  if (current.role === 'admin') {
+    const adminCount = await prisma.user.count({ where: { role: 'admin' } });
+    if (adminCount <= 1) {
+      throw new AppError(
+        'O sistema precisa manter pelo menos um administrador.',
+        409,
+        'LAST_ADMIN_DELETE_BLOCKED'
+      );
+    }
+  }
+
+  await prisma.user.delete({ where: { id: userId } });
+  await recordAuditLog(adminId, 'admin_user', userId, 'delete_user', {
+    oldValue: {
+      role: current.role,
+      plan: current.plan,
+      planSource: current.planSource,
+      accountState: 'active',
+    },
+    newValue: { accountState: 'deleted' },
+  });
+}
+
 async function listBilling({ page, pageSize, search, status }) {
   const where = {
     ...(status ? { status } : {}),
@@ -364,6 +402,7 @@ module.exports = {
   updateUserPlan,
   updateUserRole,
   revokeUserSessions,
+  deleteUser,
   listBilling,
   listAudit,
   systemStatus,

@@ -24,6 +24,7 @@ router.get('/users/:id', validateRequest(userIdSchema), controller.getUser);
 router.patch('/users/:id/plan', validateRequest(updatePlanSchema), controller.updateUserPlan);
 router.patch('/users/:id/role', validateRequest(updateRoleSchema), controller.updateUserRole);
 router.post('/users/:id/revoke-sessions', validateRequest(userIdSchema), controller.revokeUserSessions);
+router.delete('/users/:id', validateRequest(userIdSchema), controller.deleteUser);
 router.get('/billing', validateRequest(listBillingSchema), controller.listBilling);
 router.get('/audit', validateRequest(listAuditSchema), controller.listAudit);
 router.get('/system', controller.systemStatus);

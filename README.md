@@ -93,6 +93,7 @@ Recursos incluídos:
 - concessão e revogação manual do Plano Pro;
 - concessão de papel administrativo com proteção do último administrador;
 - revogação de sessões de uma conta;
+- exclusão permanente de usuários e dados vinculados, com confirmação reforçada e proteção da própria conta administrativa;
 - consulta de compras, auditoria e saúde da API/banco/integrações.
 
 Para criar ou atualizar a primeira conta administrativa:

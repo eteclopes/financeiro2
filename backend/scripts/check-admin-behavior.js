@@ -8,6 +8,7 @@ const users = [
 ];
 let auditCalls = 0;
 let lastUserUpdate = null;
+let deletedUserId = null;
 
 const prisma = {
   user: {
@@ -19,6 +20,13 @@ const prisma = {
     },
     findMany: async ({ take, select } = {}) => users.slice(0, take || users.length).map((u) => ({ ...u })),
     findUnique: async ({ where }) => users.find((u) => u.id === where.id) || null,
+    delete: async ({ where }) => {
+      const index = users.findIndex((u) => u.id === where.id);
+      if (index < 0) throw new Error('missing user');
+      const [deleted] = users.splice(index, 1);
+      deletedUserId = deleted.id;
+      return deleted;
+    },
     update: async ({ where, data, select }) => {
       const user = users.find((u) => u.id === where.id);
       if (!user) throw new Error('missing user');
@@ -79,9 +87,17 @@ Module._load = originalLoad;
 
   const sessions = await service.revokeUserSessions(1n, 2n);
   assert.equal(sessions.revokedSessions, 2);
-  assert.ok(auditCalls >= 3);
 
-  console.log('Comportamento administrativo OK: métricas, papéis, plano e revogação de sessões.');
+  await assert.rejects(
+    () => service.deleteUser(1n, 1n),
+    (error) => error.code === 'SELF_DELETE_BLOCKED'
+  );
+  await service.deleteUser(1n, 2n);
+  assert.equal(deletedUserId, 2n);
+  assert.equal(users.some((u) => u.id === 2n), false);
+  assert.ok(auditCalls >= 4);
+
+  console.log('Comportamento administrativo OK: métricas, papéis, plano, sessões e exclusão protegida.');
 })().catch((error) => {
   console.error(error);
   process.exit(1);

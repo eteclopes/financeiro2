@@ -28,6 +28,11 @@ const revokeUserSessions = asyncHandler(async (req, res) => {
   res.json(await service.revokeUserSessions(req.userId, req.params.id));
 });
 
+const deleteUser = asyncHandler(async (req, res) => {
+  await service.deleteUser(req.userId, req.params.id);
+  res.status(204).send();
+});
+
 const listBilling = asyncHandler(async (req, res) => {
   res.json(await service.listBilling(req.query));
 });
@@ -47,6 +52,7 @@ module.exports = {
   updateUserPlan,
   updateUserRole,
   revokeUserSessions,
+  deleteUser,
   listBilling,
   listAudit,
   systemStatus,
