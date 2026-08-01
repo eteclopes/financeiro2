@@ -27,6 +27,7 @@ function publicUser(user) {
     id: user.id,
     name: user.name,
     email: user.email,
+    role: user.role || 'user',
     createdAt: user.createdAt,
     plan: entitlements.plan,
     isPro: entitlements.isPro,

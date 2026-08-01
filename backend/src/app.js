@@ -37,7 +37,9 @@ app.use(helmet({
 app.use(privateApiHeaders);
 
 const corsPolicy = createOriginPolicy({
-  configuredOrigins: parseConfiguredOrigins(`${env.CORS_ORIGIN},${env.FRONTEND_URL}`),
+  configuredOrigins: parseConfiguredOrigins(
+    [env.CORS_ORIGIN, env.FRONTEND_URL, env.ADMIN_FRONTEND_URL].filter(Boolean).join(',')
+  ),
   vercelProject: env.CORS_VERCEL_PROJECT,
   vercelTeam: env.CORS_VERCEL_TEAM,
   // Produção aceita SOMENTE a lista explícita de origens. Para liberar

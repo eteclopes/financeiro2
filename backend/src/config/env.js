@@ -47,6 +47,7 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
   MAIL_FROM: z.string().default('FinançasPro <no-reply@financaspro.app>'),
   FRONTEND_URL: z.string().default('http://localhost:5173'),
+  ADMIN_FRONTEND_URL: z.string().optional(),
 
   // ── Plano Pro vitalício / Stripe Checkout ───────────────────────────
   // Permanecem opcionais para o app continuar subindo enquanto a conta

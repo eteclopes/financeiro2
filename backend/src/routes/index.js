@@ -23,11 +23,13 @@ const planningRoutes = require('../modules/planning/planning.routes');
 const paymentsRoutes = require('../modules/payments/payments.routes');
 const automationsRoutes = require('../modules/automations/automations.routes');
 const plannerRoutes = require('../modules/planner/planner.routes');
+const adminRoutes = require('../modules/admin/admin.routes');
 const { heavyLimiter } = require('../middlewares/rateLimiters');
 
 const router = Router();
 
 router.use('/auth',               authRoutes);
+router.use('/admin',              adminRoutes);
 router.use('/billing',            billingRoutes);
 router.use('/calculators',        heavyLimiter, calculatorsRoutes);
 router.use('/reports',            heavyLimiter, reportsRoutes);

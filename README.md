@@ -5,8 +5,9 @@ Aplicação de gestão financeira pessoal com frontend React/Vite e API Express/
 ## Estrutura
 
 ```text
-frontend/     interface web
-backend/      API, regras financeiras, Prisma e testes
+frontend/        interface dos usuários
+admin-frontend/  painel administrativo separado
+backend/         API compartilhada, regras, Prisma e testes
 render.yaml   configuração de deploy do backend no Render
 ```
 
@@ -24,7 +25,8 @@ O módulo separado de Assinaturas não faz parte do sistema. Cobranças recorren
 
 ## Stack
 
-- **Frontend:** React 18, Vite, React Router, Zustand, Tailwind CSS e Recharts.
+- **Frontend do usuário:** React 18, Vite, React Router, Zustand, Tailwind CSS e Recharts.
+- **Frontend administrativo:** React 18 e Vite, implantado separadamente.
 - **Backend:** Node.js, Express, Prisma ORM, PostgreSQL, Zod e JWT.
 - **Testes:** Jest e verificações estáticas do projeto.
 
@@ -79,6 +81,39 @@ VITE_API_URL=http://localhost:3333/api
 
 Variáveis `VITE_*` são incorporadas durante o build. Depois de alterá-las em produção, faça um novo deploy do frontend.
 
+
+## Painel administrativo
+
+O painel em `admin-frontend/` utiliza o mesmo backend, mas é uma aplicação separada. As rotas `/api/admin/*` exigem sessão válida e papel `admin`, consultado no banco em todas as requisições.
+
+Recursos incluídos:
+
+- visão geral de usuários, planos, compras e cadastros;
+- busca e detalhes de usuários sem expor valores financeiros pessoais;
+- concessão e revogação manual do Plano Pro;
+- concessão de papel administrativo com proteção do último administrador;
+- revogação de sessões de uma conta;
+- consulta de compras, auditoria e saúde da API/banco/integrações.
+
+Para criar ou atualizar a primeira conta administrativa:
+
+```bash
+cd backend
+# configure ADMIN_NAME, ADMIN_EMAIL e ADMIN_PASSWORD no .env
+npm run seed:admin
+```
+
+Para executar o painel localmente:
+
+```bash
+cd admin-frontend
+cp .env.example .env
+npm ci
+npm run dev
+```
+
+Painel local: `http://localhost:5174`
+
 ## Validação
 
 Backend:
@@ -91,6 +126,7 @@ npm run check:v16-flows
 npm run check:v18-critical
 npm run check:v19-history
 npm run check:v20-invoices
+npm run check:admin
 ```
 
 Frontend:
@@ -111,11 +147,12 @@ npm run check:responsive-v18
 Configure no backend:
 
 ```env
-CORS_ORIGIN=https://SEU-FRONTEND.vercel.app
+CORS_ORIGIN=https://SEU-FRONTEND.vercel.app,https://SEU-ADMIN.vercel.app
 FRONTEND_URL=https://SEU-FRONTEND.vercel.app
+ADMIN_FRONTEND_URL=https://SEU-ADMIN.vercel.app
 ```
 
-Configure no frontend:
+Configure tanto no `frontend/` quanto no `admin-frontend/`:
 
 ```env
 VITE_API_URL=https://SEU-BACKEND.onrender.com/api

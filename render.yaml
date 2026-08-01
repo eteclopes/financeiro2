@@ -22,6 +22,8 @@ services:
         value: eteclopes-projects
       - key: FRONTEND_URL
         value: https://financeiro2-six.vercel.app
+      - key: ADMIN_FRONTEND_URL
+        sync: false
       - key: APP_TIME_ZONE
         value: America/Sao_Paulo
       - key: JWT_ACCESS_SECRET

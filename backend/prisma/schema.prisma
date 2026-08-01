@@ -125,6 +125,12 @@ enum PlanSource {
   basic
   stripe_lifetime
   manual_test
+  manual_admin
+}
+
+enum UserRole {
+  user
+  admin
 }
 
 enum BillingPurchaseStatus {
@@ -141,6 +147,7 @@ model User {
   id           BigInt   @id @default(autoincrement())
   name         String   @db.VarChar(120)
   email        String   @unique @db.VarChar(190)
+  role         UserRole @default(user)
   passwordHash String   @map("password_hash") @db.VarChar(255)
   plan         PlanTier @default(basic)
   planSource   PlanSource @default(basic) @map("plan_source")
@@ -172,6 +179,7 @@ model User {
   dashboardPreference DashboardPreference?
   automationSetting  AutomationSetting?
 
+  @@index([role])
   @@map("users")
 }
 
