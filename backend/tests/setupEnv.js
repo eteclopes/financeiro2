@@ -4,7 +4,7 @@
  * Jest inteiro se um teste (mesmo indiretamente) exigisse esse módulo sem
  * as variáveis presentes. `config/env.js` também chama `dotenv.config()`,
  * que carregaria o `.env` REAL do projeto — e ali o `DIRECT_URL` está de
- * propósito vazio (placeholder pendente, ver AUDITORIA-CLAUDE.md), o que
+ * propósito vazio em alguns ambientes locais, o que
  * faria os testes falharem por um motivo que não tem nada a ver com o
  * teste em si. dotenv não sobrescreve variáveis que já existem em
  * process.env, então definir tudo aqui primeiro (setupFiles roda antes de

@@ -798,7 +798,7 @@ function replaceTerms(source, language) {
   return changed ? result : source;
 }
 
-export function isSupportedLanguage(language) {
+function isSupportedLanguage(language) {
   return SUPPORTED_LANGUAGES.includes(language);
 }
 
@@ -834,6 +834,3 @@ export function translateAttribute(value, language = 'pt') {
   return translateStaticText(value, language);
 }
 
-export function getExactTranslation(source, language = 'pt') {
-  return language === 'pt' ? source : (EXACT[source]?.[language] || replaceTerms(source, language));
-}

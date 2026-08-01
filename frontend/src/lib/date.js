@@ -5,7 +5,7 @@ import { getLocalePreferences } from '../store/localeStore.js';
  * enviado pelos inputs date à API; a ordem visual fica a cargo do navegador,
  * respeitando o atributo lang aplicado pelo componente Input.
  */
-export function localDateInputValue(date = new Date()) {
+function localDateInputValue(date = new Date()) {
   const { timeZone } = getLocalePreferences();
   try {
     const parts = new Intl.DateTimeFormat('en-CA', {

@@ -1,5 +1,3 @@
-import { LineChart, Line, ResponsiveContainer } from 'recharts';
-
 const VARIANTS = {
   primary: 'bg-primary hover:bg-primary-dark text-white shadow-[0_10px_26px_-14px_rgb(124_58_237_/_0.85)] hover:shadow-[0_14px_34px_-16px_rgb(124_58_237_/_0.9)] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.985]',
   danger: 'bg-danger hover:bg-danger-dark text-white shadow-[0_10px_26px_-16px_rgb(220_38_38_/_0.75)] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.985]',
@@ -130,77 +128,6 @@ export function ProgressBar({ value, max = 100, color = 'primary', height = 'h-2
   );
 }
 
-const TONE_ACCENT = {
-  positive: {
-    text: 'text-success-dark dark:text-success-light',
-    ring: 'hover:border-success/25 hover:shadow-[0_18px_42px_-28px_rgb(22_163_74_/_0.6)]',
-    line: '#16A34A',
-    chip: 'bg-success-subtle dark:bg-success/10 text-success-dark dark:text-success-light',
-    icon: 'bg-success-subtle text-success-dark dark:bg-success/10 dark:text-success-light',
-  },
-  negative: {
-    text: 'text-danger-dark dark:text-danger-light',
-    ring: 'hover:border-danger/25 hover:shadow-[0_18px_42px_-28px_rgb(220_38_38_/_0.65)]',
-    line: '#DC2626',
-    chip: 'bg-danger-subtle dark:bg-danger/10 text-danger-dark dark:text-danger-light',
-    icon: 'bg-danger-subtle text-danger-dark dark:bg-danger/10 dark:text-danger-light',
-  },
-  neutral: {
-    text: 'text-primary-dark dark:text-primary-hover',
-    ring: 'hover:border-primary/25 hover:shadow-glow',
-    line: '#7C3AED',
-    chip: 'bg-primary-subtle dark:bg-primary/10 text-primary-dark dark:text-primary-hover',
-    icon: 'bg-primary-subtle text-primary-dark dark:bg-primary/10 dark:text-primary-hover',
-  },
-  warning: {
-    text: 'text-warning-dark dark:text-warning-light',
-    ring: 'hover:border-warning/25 hover:shadow-[0_18px_42px_-28px_rgb(245_158_11_/_0.6)]',
-    line: '#F59E0B',
-    chip: 'bg-warning-subtle dark:bg-warning/10 text-warning-dark dark:text-warning-light',
-    icon: 'bg-warning-subtle text-warning-dark dark:bg-warning/10 dark:text-warning-light',
-  },
-};
-
-export function StatCard({ label, value, tone = 'neutral', icon, subtitle, trend, spark, className = '' }) {
-  const accent = TONE_ACCENT[tone] ?? TONE_ACCENT.neutral;
-  const hasTrend = trend !== undefined && trend !== null;
-  const trendUp = hasTrend && trend >= 0;
-
-  return (
-    <div className={`group premium-card premium-card-hover overflow-hidden p-5 ${accent.ring} animate-fade-in ${className}`}>
-      <div className="pointer-events-none absolute -right-10 -top-12 h-28 w-28 rounded-full bg-primary/5 blur-2xl transition-opacity group-hover:bg-primary/10" />
-      <div className="relative flex items-start justify-between mb-3">
-        <p className="text-[11px] font-bold text-slate-500 dark:text-zinc-500 uppercase tracking-[0.12em] leading-none">{label}</p>
-        {icon && (
-          <span className={`text-lg w-9 h-9 rounded-xl flex items-center justify-center ${accent.icon} group-hover:scale-105 transition-transform duration-300`}>
-            {icon}
-          </span>
-        )}
-      </div>
-      <p className={`relative max-w-full break-words text-[clamp(1.35rem,6vw,1.625rem)] leading-tight font-bold font-mono tabular-nums tracking-tight ${accent.text}`}>{value}</p>
-      <div className="relative flex items-end justify-between mt-3 min-h-[28px]">
-        {hasTrend ? (
-          <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg ${accent.chip}`}>
-            {trendUp ? '↗' : '↘'} {Math.abs(trend).toFixed(1)}%
-          </span>
-        ) : subtitle ? (
-          <p className="text-xs text-slate-500 dark:text-zinc-400 line-clamp-1">{subtitle}</p>
-        ) : <span />}
-
-        {Array.isArray(spark) && spark.length > 1 && (
-          <div className="w-20 h-8 opacity-80 group-hover:opacity-100 transition-opacity duration-200">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={spark.map((v, i) => ({ i, v }))}>
-                <Line type="monotone" dataKey="v" stroke={accent.line} strokeWidth={2} dot={false} isAnimationActive={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 const ALERT_STYLES = {
   info: 'bg-info-subtle border-info/25 text-info-dark dark:bg-info/10 dark:text-info-light dark:border-info/20',
   warning: 'bg-warning-subtle border-warning/25 text-warning-dark dark:bg-warning/10 dark:text-warning-light dark:border-warning/20',
@@ -210,10 +137,6 @@ const ALERT_STYLES = {
 
 export function AlertBanner({ type = 'info', children }) {
   return <div className={`flex items-start gap-2.5 px-4 py-3.5 rounded-xl border text-sm leading-relaxed ${ALERT_STYLES[type]}`}>{children}</div>;
-}
-
-export function Divider({ className = '' }) {
-  return <hr className={`border-slate-200 dark:border-white/[0.07] ${className}`} />;
 }
 
 export function TabGroup({ tabs, value, onChange }) {

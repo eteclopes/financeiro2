@@ -6,10 +6,10 @@
  * conta. Novos lançamentos usam `debit` como valor canônico.
  */
 export const ACCOUNT_BALANCE_METHOD = 'debit';
-export const CREDIT_CARD_METHOD = 'credit';
+const CREDIT_CARD_METHOD = 'credit';
 export const PHYSICAL_CASH_METHOD = 'cash';
 
-export const ACCOUNT_BALANCE_OPTION = {
+const ACCOUNT_BALANCE_OPTION = {
   value: ACCOUNT_BALANCE_METHOD,
   label: 'Saldo da conta',
   icon: '▣',
@@ -17,7 +17,7 @@ export const ACCOUNT_BALANCE_OPTION = {
   tone: 'choice-card-icon-info',
 };
 
-export const CREDIT_CARD_OPTION = {
+const CREDIT_CARD_OPTION = {
   value: CREDIT_CARD_METHOD,
   label: 'Cartão de crédito',
   icon: '◇',
@@ -25,7 +25,7 @@ export const CREDIT_CARD_OPTION = {
   tone: 'choice-card-icon-warning',
 };
 
-export const PHYSICAL_CASH_OPTION = {
+const PHYSICAL_CASH_OPTION = {
   value: PHYSICAL_CASH_METHOD,
   label: 'Dinheiro físico',
   icon: '●',

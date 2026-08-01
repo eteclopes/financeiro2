@@ -19,7 +19,7 @@ function throwIfAborted(signal) {
   if (signal?.aborted) throw abortError();
 }
 
-export function isTutorialElementVisible(element) {
+function isTutorialElementVisible(element) {
   if (!(element instanceof Element)) return false;
   const style = window.getComputedStyle(element);
   const rect = element.getBoundingClientRect();
@@ -41,7 +41,7 @@ export function findVisibleTutorialElement(selectors) {
   return null;
 }
 
-export function hasTutorialSelector(selectors) {
+function hasTutorialSelector(selectors) {
   return selectorsList(selectors).some((selector) => document.querySelector(selector));
 }
 

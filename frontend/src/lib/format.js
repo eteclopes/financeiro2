@@ -1,6 +1,5 @@
 import { getLocalePreferences } from '../store/localeStore.js';
 
-
 function isCalendarDate(value) {
   return /^\d{4}-\d{2}-\d{2}(?:T00:00:00(?:\.000)?Z)?$/.test(String(value || ''));
 }
@@ -23,23 +22,6 @@ export function formatCurrency(value, options = {}) {
   } catch {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(number);
   }
-}
-
-export function formatNumber(value, options = {}) {
-  const { locale } = getLocalePreferences();
-  try {
-    return new Intl.NumberFormat(locale, options).format(safeNumber(value));
-  } catch {
-    return String(safeNumber(value));
-  }
-}
-
-export function formatPercent(value, options = {}) {
-  return formatNumber(value, {
-    style: 'percent',
-    maximumFractionDigits: 1,
-    ...options,
-  });
 }
 
 export function formatMonthLabel(month) {
@@ -72,21 +54,5 @@ export function formatShortDate(dateString, options = {}) {
     }).format(date);
   } catch {
     return date.toISOString().slice(5, 10).split('-').reverse().join('/');
-  }
-}
-
-export function formatLongDate(dateString, options = {}) {
-  if (!dateString) return '';
-  const { locale, timeZone } = getLocalePreferences();
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) return '';
-  try {
-    return new Intl.DateTimeFormat(locale, {
-      dateStyle: 'medium',
-      timeZone: isCalendarDate(dateString) ? 'UTC' : timeZone,
-      ...options,
-    }).format(date);
-  } catch {
-    return date.toISOString().slice(0, 10);
   }
 }

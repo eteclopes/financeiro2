@@ -144,7 +144,7 @@ describe('createCardPurchase — startingInstallment (compra já em andamento) (
   });
 });
 
-// ── AUDITORIA: cobrança não pode cair numa fatura JÁ PAGA ──────────────
+// ── Regressão: cobrança não pode cair em uma fatura já paga ───────────
 // Antes, se a fatura do mês de referência já estivesse paga, a nova compra
 // era anexada a ela e ficava IMPAGÁVEL: a lista de contas a pagar ignora
 // faturas 'paid' e payInvoice recusa com INVOICE_ALREADY_PAID.

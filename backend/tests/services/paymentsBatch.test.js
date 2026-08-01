@@ -149,7 +149,7 @@ describe('payBillsBatch — parcela de dívida PARCIAL acumula (não sobrescreve
   });
 });
 
-// ── AUDITORIA: faturas de meses FUTUROS não podem ser pagas em lote ──
+// ── Regressão: faturas de meses futuros não podem ser pagas em lote ──
 describe('Escopo das faturas: lote manual x automação', () => {
   const { getPayableItems } = require('../../src/modules/payments/payments.service');
 

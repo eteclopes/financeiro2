@@ -170,7 +170,7 @@ function browserLocale(language) {
   return browserRegionalLocale(language) || LANGUAGE_DEFAULTS[language]?.locale || 'pt-BR';
 }
 
-export function isValidTimeZone(value) {
+function isValidTimeZone(value) {
   if (!value || typeof value !== 'string' || value.length > 80) return false;
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: value }).format(new Date());
@@ -364,15 +364,4 @@ export function getLocalePreferences() {
     countryCode: state.countryCode,
     preferenceMode: state.preferenceMode,
   };
-}
-
-export function getCurrencySymbol(currency = getLocalePreferences().currency, locale = getLocalePreferences().locale) {
-  try {
-    const parts = new Intl.NumberFormat(locale, {
-      style: 'currency', currency, currencyDisplay: 'narrowSymbol',
-    }).formatToParts(0);
-    return parts.find((part) => part.type === 'currency')?.value || currency;
-  } catch {
-    return currency;
-  }
 }

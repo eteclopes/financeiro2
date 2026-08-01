@@ -162,7 +162,7 @@ export function FormGroup({ label, htmlFor, error, children, required, hint }) {
   );
 }
 
-// ── Input / Select / Textarea ──────────────────────────────
+// ── Input / Select ─────────────────────────────────────────
 export function Input({ className = '', lang, inputMode, ...props }) {
   const locale = useLocaleStore((state) => state.locale);
   const localizedInputMode = inputMode ?? (props.type === 'number' && String(props.step ?? '').includes('.') ? 'decimal' : undefined);
@@ -175,57 +175,5 @@ export function Select({ children, className = '', lang, ...props }) {
     <Dropdown lang={lang ?? locale} className={className} {...props}>
       {children}
     </Dropdown>
-  );
-}
-
-export function Textarea({ className = '', lang, ...props }) {
-  const locale = useLocaleStore((state) => state.locale);
-  return <textarea lang={lang ?? locale} className={`input-base resize-y ${className}`} rows={3} {...props} />;
-}
-
-// ── Table ──────────────────────────────────────────────────
-export function Table({ columns, data, loading, empty }) {
-  return (
-    <div className="data-table-scroll rounded-2xl border border-slate-200/90 bg-white dark:border-white/[0.07] dark:bg-transparent">
-      <table className="w-full text-sm">
-        <thead className="sticky top-0 bg-slate-50/95 backdrop-blur-sm dark:bg-[#171720]/95">
-          <tr>
-            {columns.map((col) => (
-              <th key={col.key ?? col.label} className="table-header">{col.label}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-200/70 dark:divide-white/[0.055]">
-          {loading
-            ? Array.from({ length: 4 }).map((_, i) => (
-                <tr key={i}>
-                  {columns.map((col) => (
-                    <td key={col.key ?? col.label} className="table-cell">
-                      <div className="h-4 w-3/4 rounded-lg shimmer-bg" />
-                    </td>
-                  ))}
-                </tr>
-              ))
-            : data.length === 0
-              ? (
-                <tr>
-                  <td colSpan={columns.length} className="py-12 text-center text-sm text-muted">
-                    {empty ?? 'Nenhum registro encontrado.'}
-                  </td>
-                </tr>
-              )
-              : data.map((row, i) => (
-                  <tr key={row.id ?? i} className="transition-colors hover:bg-primary-subtle/45 dark:hover:bg-primary/[0.045]">
-                    {columns.map((col) => (
-                      <td key={col.key ?? col.label} className="table-cell">
-                        {col.render ? col.render(row) : row[col.key]}
-                      </td>
-                    ))}
-                  </tr>
-                ))
-          }
-        </tbody>
-      </table>
-    </div>
   );
 }

@@ -1,17 +1,5 @@
 import { api } from '../api';
 
-// ---- Auth ----
-export const authApi = {
-  me: () => api.get('/auth/me'),
-  login: (data) => api.post('/auth/login', data),
-  register: (data) => api.post('/auth/register', data),
-  logout: () => api.post('/auth/logout'),
-  refresh: () => api.post('/auth/refresh'),
-  updateProfile: (data) => api.patch('/auth/me', data),
-  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
-  resetPassword: (data) => api.post('/auth/reset-password', data),
-};
-
 // ---- Months ----
 export const monthsApi = {
   list: () => api.get('/months'),
@@ -133,10 +121,6 @@ export const automationsApi = {
 };
 
 // ---- Financial Health ----
-export const financialHealthApi = {
-  get: (monthId) => api.get('/financial-health', { params: { monthId } }),
-};
-
 // ---- Projections ----
 export const projectionsApi = {
   get: (monthId, monthsAhead = 12) => api.get('/projections', { params: { monthId, monthsAhead } }),
@@ -186,4 +170,3 @@ export const calculatorsApi = {
 export const planningApi = {
   get: (monthId) => api.get('/planning', { params: { monthId } }),
 };
-
