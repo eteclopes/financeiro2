@@ -9,6 +9,7 @@ const users = [
 let auditCalls = 0;
 let lastUserUpdate = null;
 let deletedUserId = null;
+const cleanupCalls = [];
 
 const prisma = {
   user: {
@@ -35,6 +36,15 @@ const prisma = {
       return { ...user };
     },
   },
+  expense: { deleteMany: async () => { cleanupCalls.push('expenses'); return { count: 1 }; } },
+  income: { deleteMany: async () => { cleanupCalls.push('incomes'); return { count: 1 }; } },
+  goalContribution: { deleteMany: async () => { cleanupCalls.push('goalContributions'); return { count: 1 }; } },
+  savingsTransaction: { deleteMany: async () => { cleanupCalls.push('savingsTransactions'); return { count: 1 }; } },
+  cardInvoice: { deleteMany: async () => { cleanupCalls.push('cardInvoices'); return { count: 1 }; } },
+  cardPurchase: { deleteMany: async () => { cleanupCalls.push('cardPurchases'); return { count: 1 }; } },
+  fixedExpenseTemplate: { deleteMany: async () => { cleanupCalls.push('fixedExpenseTemplates'); return { count: 1 }; } },
+  debt: { deleteMany: async () => { cleanupCalls.push('debts'); return { count: 1 }; } },
+  incomeTemplate: { deleteMany: async () => { cleanupCalls.push('incomeTemplates'); return { count: 1 }; } },
   billingPurchase: {
     aggregate: async () => ({ _sum: { amountTotal: 1990 } }),
     count: async ({ where } = {}) => where?.status === 'pending' ? 1 : 2,
@@ -44,6 +54,8 @@ const prisma = {
   auditLog: { count: async () => 0, findMany: async () => [] },
   refreshToken: { updateMany: async () => ({ count: 2 }) },
   $queryRaw: async () => [{ '?column?': 1 }],
+  $executeRaw: async () => { cleanupCalls.push('legacySubscriptions'); return 1; },
+  $transaction: async (operations) => Promise.all(operations),
 };
 
 const originalLoad = Module._load;
@@ -95,9 +107,21 @@ Module._load = originalLoad;
   await service.deleteUser(1n, 2n);
   assert.equal(deletedUserId, 2n);
   assert.equal(users.some((u) => u.id === 2n), false);
+  assert.deepEqual(cleanupCalls, [
+    'expenses',
+    'incomes',
+    'goalContributions',
+    'savingsTransactions',
+    'cardInvoices',
+    'legacySubscriptions',
+    'cardPurchases',
+    'fixedExpenseTemplates',
+    'debts',
+    'incomeTemplates',
+  ]);
   assert.ok(auditCalls >= 4);
 
-  console.log('Comportamento administrativo OK: métricas, papéis, plano, sessões e exclusão protegida.');
+  console.log('Comportamento administrativo OK: métricas, papéis, plano, sessões e exclusão transacional em ordem segura.');
 })().catch((error) => {
   console.error(error);
   process.exit(1);

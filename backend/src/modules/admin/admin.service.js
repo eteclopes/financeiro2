@@ -289,7 +289,46 @@ async function deleteUser(adminId, userId) {
     }
   }
 
-  await prisma.user.delete({ where: { id: userId } });
+  try {
+    // Algumas relações internas usam ON DELETE RESTRICT de propósito para
+    // impedir que cartões, meses, categorias ou caixinhas sejam removidos
+    // isoladamente com histórico vinculado. Ao excluir a CONTA inteira,
+    // removemos primeiro os registros-folha e só então o usuário. Todas as
+    // operações abaixo ficam na mesma transação para evitar exclusão parcial.
+    await prisma.$transaction([
+      prisma.expense.deleteMany({ where: { userId } }),
+      prisma.income.deleteMany({ where: { userId } }),
+      prisma.goalContribution.deleteMany({
+        where: { OR: [{ goal: { userId } }, { month: { userId } }] },
+      }),
+      prisma.savingsTransaction.deleteMany({ where: { userId } }),
+      prisma.cardInvoice.deleteMany({
+        where: { OR: [{ card: { userId } }, { month: { userId } }] },
+      }),
+      // A tabela antiga de assinaturas permanece em bancos que aplicaram a
+      // migration histórica, embora o módulo tenha sido removido do Prisma.
+      // Ela ainda possui FK RESTRICT para cartões e precisa ser limpa aqui.
+      prisma.$executeRaw`DELETE FROM "subscriptions" WHERE "user_id" = ${userId}`,
+      prisma.cardPurchase.deleteMany({ where: { userId } }),
+      prisma.fixedExpenseTemplate.deleteMany({ where: { userId } }),
+      prisma.debt.deleteMany({ where: { userId } }),
+      prisma.incomeTemplate.deleteMany({ where: { userId } }),
+      prisma.user.delete({ where: { id: userId } }),
+    ]);
+  } catch (error) {
+    if (error?.code === 'P2025') {
+      throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
+    }
+    if (error?.code === 'P2003') {
+      throw new AppError(
+        'A conta possui dados vinculados que impediram a exclusão. Atualize o backend e tente novamente.',
+        409,
+        'USER_DELETE_RELATION_CONFLICT'
+      );
+    }
+    throw error;
+  }
+
   await recordAuditLog(adminId, 'admin_user', userId, 'delete_user', {
     oldValue: {
       role: current.role,
