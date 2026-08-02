@@ -305,10 +305,10 @@ async function deleteUser(adminId, userId) {
       prisma.cardInvoice.deleteMany({
         where: { OR: [{ card: { userId } }, { month: { userId } }] },
       }),
-      // A tabela antiga de assinaturas permanece em bancos que aplicaram a
-      // migration histórica, embora o módulo tenha sido removido do Prisma.
-      // Ela ainda possui FK RESTRICT para cartões e precisa ser limpa aqui.
-      prisma.$executeRaw`DELETE FROM "subscriptions" WHERE "user_id" = ${userId}`,
+      // O antigo módulo de Assinaturas foi convertido em despesas fixas e a
+      // migration 20260721030000 removeu a tabela `subscriptions`. Não execute
+      // SQL bruto contra essa tabela: em bancos atualizados ela não existe e o
+      // Prisma retorna P2010 (relação inexistente), abortando toda a exclusão.
       prisma.cardPurchase.deleteMany({ where: { userId } }),
       prisma.fixedExpenseTemplate.deleteMany({ where: { userId } }),
       prisma.debt.deleteMany({ where: { userId } }),

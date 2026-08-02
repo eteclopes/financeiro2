@@ -11,6 +11,7 @@ const checks = [
   ['admin users', 'backend/src/modules/admin/admin.service.js', /async function listUsers/],
   ['admin delete user', 'backend/src/modules/admin/admin.service.js', /async function deleteUser/],
   ['admin delete route', 'backend/src/modules/admin/admin.routes.js', /router\.delete\('\/users\/:id'/],
+  ['admin delete without legacy subscriptions SQL', 'backend/src/modules/admin/admin.service.js', /async function deleteUser[\s\S]*prisma\.user\.delete/],
   ['admin grant Pro', 'admin-frontend/src/pages/UserDetailPage.jsx', /Conceder Plano Pro/],
   ['admin delete UI', 'admin-frontend/src/pages/UserDetailPage.jsx', /Excluir usuário/],
   ['admin frontend app', 'admin-frontend/src/App.jsx', /AdminLayout/],
@@ -24,6 +25,16 @@ for (const [label, relative, pattern] of checks) {
   const ok = pattern.test(content);
   console.log(`${ok ? 'OK' : 'FAIL'} ${label}`);
   if (!ok) failed += 1;
+}
+
+const adminService = fs.readFileSync(path.join(root, 'backend/src/modules/admin/admin.service.js'), 'utf8');
+const hasLegacySubscriptionsSql = adminService.includes('DELETE FROM "subscriptions"')
+  || (adminService.includes('$executeRaw') && adminService.includes('subscriptions'));
+if (hasLegacySubscriptionsSql) {
+  console.log('FAIL admin delete contains legacy subscriptions SQL');
+  failed += 1;
+} else {
+  console.log('OK admin delete has no legacy subscriptions SQL');
 }
 if (failed) process.exit(1);
 console.log('Painel administrativo: estrutura e proteções verificadas.');

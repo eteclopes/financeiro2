@@ -54,7 +54,6 @@ const prisma = {
   auditLog: { count: async () => 0, findMany: async () => [] },
   refreshToken: { updateMany: async () => ({ count: 2 }) },
   $queryRaw: async () => [{ '?column?': 1 }],
-  $executeRaw: async () => { cleanupCalls.push('legacySubscriptions'); return 1; },
   $transaction: async (operations) => Promise.all(operations),
 };
 
@@ -113,7 +112,6 @@ Module._load = originalLoad;
     'goalContributions',
     'savingsTransactions',
     'cardInvoices',
-    'legacySubscriptions',
     'cardPurchases',
     'fixedExpenseTemplates',
     'debts',
@@ -121,7 +119,8 @@ Module._load = originalLoad;
   ]);
   assert.ok(auditCalls >= 4);
 
-  console.log('Comportamento administrativo OK: métricas, papéis, plano, sessões e exclusão transacional em ordem segura.');
+  assert.equal(cleanupCalls.includes('legacySubscriptions'), false);
+  console.log('Comportamento administrativo OK: métricas, papéis, plano, sessões e exclusão transacional sem SQL legado.');
 })().catch((error) => {
   console.error(error);
   process.exit(1);
