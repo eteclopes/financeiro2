@@ -14,6 +14,7 @@ const checks = [
   ['admin delete without legacy subscriptions SQL', 'backend/src/modules/admin/admin.service.js', /async function deleteUser[\s\S]*prisma\.user\.delete/],
   ['admin grant Pro', 'admin-frontend/src/pages/UserDetailPage.jsx', /Conceder Plano Pro/],
   ['admin delete UI', 'admin-frontend/src/pages/UserDetailPage.jsx', /Excluir usuário/],
+  ['admin delete confirmation without typing email', 'admin-frontend/src/pages/UserDetailPage.jsx', /window\.confirm\([\s\S]*não poderá ser desfeita/],
   ['admin frontend app', 'admin-frontend/src/App.jsx', /AdminLayout/],
   ['admin route registration', 'backend/src/routes/index.js', /router\.use\('\/admin'/],
 ];
