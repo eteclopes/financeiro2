@@ -2,7 +2,7 @@ const prisma = require('../../config/prisma');
 const env = require('../../config/env');
 const AppError = require('../../utils/AppError');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
-const { deleteFinancialProfile } = require('../_shared/deleteFinancialProfile');
+const { deleteFinancialProfiles } = require('../_shared/deleteFinancialProfile');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -301,17 +301,17 @@ async function deleteUser(adminId, userId) {
         select: { id: true, profileUserId: true },
       });
 
-      // Remove primeiro os vínculos de ambiente; em seguida apaga cada perfil
-      // financeiro interno e, por último, a conta real do proprietário.
+      // Remove primeiro os vínculos de ambiente e depois todos os perfis em
+      // lote. A versão anterior executava ~10 deleteMany por simulação e
+      // mantinha a transação aberta por tempo demais (risco de P2028).
       if (simulations.length > 0) {
         await tx.simulationWorkspace.deleteMany({ where: { ownerUserId: userId } });
-        for (const simulation of simulations) {
-          await deleteFinancialProfile(simulation.profileUserId, tx);
-        }
       }
-
-      await deleteFinancialProfile(userId, tx);
-    }, { maxWait: 10_000, timeout: 30_000 });
+      await deleteFinancialProfiles(
+        [...simulations.map((simulation) => simulation.profileUserId), userId],
+        tx
+      );
+    }, { maxWait: 10_000, timeout: 45_000 });
   } catch (error) {
     if (error?.code === 'P2025') {
       throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
@@ -402,7 +402,14 @@ async function listAudit({ page, pageSize, search, entity, action }) {
         oldValueJson: true,
         newValueJson: true,
         createdAt: true,
-        user: { select: { id: true, name: true, email: true, role: true } },
+        user: {
+          select: {
+            id: true, name: true, email: true, role: true, isSimulationProfile: true,
+            simulationWorkspaceProfile: {
+              select: { id: true, name: true, owner: { select: { id: true, name: true, email: true } } },
+            },
+          },
+        },
       },
     }),
   ]);

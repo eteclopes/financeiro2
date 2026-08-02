@@ -50,6 +50,9 @@ async function runPayInvoice(closingDate) {
 
   Module._load = function loadMock(request, parent, isMain) {
     const from = parent?.filename || '';
+    if (request === '@prisma/client') {
+      return { Prisma: { sql: (strings, ...values) => ({ strings, values }) } };
+    }
     if (request === '../../config/prisma' && from.endsWith('cardInvoices.service.js')) return prisma;
     if (request === '../_shared/balance' && from.endsWith('cardInvoices.service.js')) {
       return { lockUserBalance: async () => {}, assertSufficientBalance: async () => {} };
@@ -97,6 +100,9 @@ async function checkChargeStaysInSameCycle() {
 
   Module._load = function loadMock(request, parent, isMain) {
     const from = parent?.filename || '';
+    if (request === '@prisma/client') {
+      return { Prisma: { sql: (strings, ...values) => ({ strings, values }) } };
+    }
     if (request === '../../config/prisma' && from.endsWith('cardPurchases.service.js')) return prisma;
     if (request === '../months/months.service' && from.endsWith('cardPurchases.service.js')) return {};
     if (request === '../expenses/expenses.service' && from.endsWith('cardPurchases.service.js')) return {};
@@ -153,6 +159,9 @@ async function checkLegacyFixedChargeRepair() {
 
   Module._load = function loadMock(request, parent, isMain) {
     const from = parent?.filename || '';
+    if (request === '@prisma/client') {
+      return { Prisma: { sql: (strings, ...values) => ({ strings, values }) } };
+    }
     if (request === '../../config/prisma' && from.endsWith('cardPurchases.service.js')) return prisma;
     if (request === '../months/months.service' && from.endsWith('cardPurchases.service.js')) return {};
     if (request === '../expenses/expenses.service' && from.endsWith('cardPurchases.service.js')) return {};
@@ -198,6 +207,9 @@ async function checkRepairIsConservative() {
   };
   Module._load = function loadMock(request, parent, isMain) {
     const from = parent?.filename || '';
+    if (request === '@prisma/client') {
+      return { Prisma: { sql: (strings, ...values) => ({ strings, values }) } };
+    }
     if (request === '../../config/prisma' && from.endsWith('cardPurchases.service.js')) return prisma;
     if (request === '../months/months.service' && from.endsWith('cardPurchases.service.js')) return {};
     if (request === '../expenses/expenses.service' && from.endsWith('cardPurchases.service.js')) return {};

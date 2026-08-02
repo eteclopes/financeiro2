@@ -118,6 +118,11 @@ export const useAuthStore = create((set) => ({
     set({ user: null, status: 'unauthenticated', bootstrapping: false, error: null });
   },
 
+  acceptRefreshedIdentity(user) {
+    if (!user) return;
+    set({ user, status: 'authenticated', error: null });
+  },
+
   forceSignOut() {
     setAccessToken(null);
     writeActiveWorkspaceId('real');

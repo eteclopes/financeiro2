@@ -3,6 +3,8 @@ const monthsService = require('../months/months.service');
 const savingsService = require('../savings/savings.service');
 const cardsService = require('../cards/cards.service');
 const { getAllMonthsChronological } = require('../_shared/financialMetrics');
+const { todayUtcDate } = require('../../utils/dateTime');
+const { aggregateIncome, netIncomeFromAggregate } = require('../_shared/incomeMetrics');
 
 /**
  * Cada regra é uma função pura: recebe o contexto de métricas do mês e
@@ -22,7 +24,7 @@ async function gatherContext(userId, monthId) {
   const idx = allMonths.findIndex((m) => m.id === monthId);
   const previousMonth = idx > 0 ? allMonths[idx - 1] : null;
 
-  const now = new Date();
+  const now = todayUtcDate();
   const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
   const [
@@ -38,12 +40,12 @@ async function gatherContext(userId, monthId) {
     paidTowardDebtThisMonthAgg,
     upcomingBills,
   ] = await Promise.all([
-    prisma.income.aggregate({ where: { userId, monthId }, _sum: { value: true } }),
+    aggregateIncome({ userId, monthId }),
     prisma.expense.aggregate({ where: { userId, monthId, deletedAt: null }, _sum: { value: true } }),
     prisma.expense.count({ where: { userId, monthId, deletedAt: null, status: 'late' } }),
     previousMonth
-      ? prisma.income.aggregate({ where: { userId, monthId: previousMonth.id }, _sum: { value: true } })
-      : Promise.resolve({ _sum: { value: 0 } }),
+      ? aggregateIncome({ userId, monthId: previousMonth.id })
+      : Promise.resolve({ _sum: { value: 0, reversedAmount: 0 } }),
     previousMonth
       ? prisma.expense.aggregate({
           where: { userId, monthId: previousMonth.id, deletedAt: null },
@@ -106,10 +108,10 @@ async function gatherContext(userId, monthId) {
   const avgMonthlyExpense = recentIds.length > 0 ? Number(recentExpensesAgg._sum.paidAmount ?? 0) / recentIds.length : 0;
 
   return {
-    incomeTotal: Number(incomeAgg._sum.value ?? 0),
+    incomeTotal: netIncomeFromAggregate(incomeAgg),
     expensesPlanned: Number(expensesAgg._sum.value ?? 0),
     lateCount,
-    previousIncome: Number(previousIncomeAgg._sum.value ?? 0),
+    previousIncome: netIncomeFromAggregate(previousIncomeAgg),
     previousExpenses: Number(previousExpensesAgg._sum.value ?? 0),
     savingsBalance,
     avgMonthlyExpense,
@@ -117,6 +119,7 @@ async function gatherContext(userId, monthId) {
     goals,
     newDebtThisMonth: Number(debtsCreatedThisMonthAgg._sum.totalValue ?? 0),
     paidTowardDebtThisMonth: Number(paidTowardDebtThisMonthAgg._sum.paidAmount ?? 0),
+    currentDate: now,
     upcomingBills: upcomingBills.map((e) => ({
       id: e.id,
       description: e.description,
@@ -174,8 +177,8 @@ function evaluateRules(ctx) {
   }
 
   // Metas sem aporte há mais de 60 dias
-  const sixtyDaysAgo = new Date();
-  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+  const sixtyDaysAgo = new Date(ctx.currentDate);
+  sixtyDaysAgo.setUTCDate(sixtyDaysAgo.getUTCDate() - 60);
   for (const goal of ctx.goals) {
     const reference = goal.lastContributionDate ?? goal.createdAt;
     if (reference < sixtyDaysAgo) {
@@ -263,42 +266,6 @@ function evaluateRules(ctx) {
  * continuam/passaram a ser válidos. Idempotente: chamar repetidamente no
  * mesmo estado não cria linhas duplicadas (chave única user+mês+tipo).
  */
-/**
- * Throttle de recomputação.
- *
- * Antes, TODO GET /alerts (polling de 60s por aba) e TODA carga do
- * Dashboard executavam `refreshAlerts`, que abre transação e grava
- * (upsert + update de resolvedAt). Duas abas abertas produziam escrita
- * contínua no banco só para exibir a mesma lista. Agora a recomputação
- * acontece no máximo uma vez por janela por (usuário, mês); as demais
- * chamadas fazem leitura pura.
- *
- * O cache é por processo. Em várias instâncias, cada uma recomputa no
- * máximo uma vez por janela — ainda uma redução enorme, e sem risco de
- * inconsistência, porque a recomputação é idempotente.
- */
-const REFRESH_WINDOW_MS = 60_000;
-const lastRefreshByKey = new Map();
-
-function refreshKey(userId, monthId) {
-  return `${userId}:${monthId}`;
-}
-
-function shouldRecompute(userId, monthId, windowMs) {
-  const key = refreshKey(userId, monthId);
-  const last = lastRefreshByKey.get(key) ?? 0;
-  if (Date.now() - last < windowMs) return false;
-  lastRefreshByKey.set(key, Date.now());
-  // Limpeza preguiçosa: impede o Map de crescer sem limite com muitos usuários.
-  if (lastRefreshByKey.size > 5_000) {
-    const cutoff = Date.now() - windowMs * 10;
-    for (const [entryKey, timestamp] of lastRefreshByKey) {
-      if (timestamp < cutoff) lastRefreshByKey.delete(entryKey);
-    }
-  }
-  return true;
-}
-
 /** Leitura pura — nunca grava. Usada pelo polling da barra superior. */
 async function listAlerts(userId, monthId) {
   return prisma.alert.findMany({
@@ -308,14 +275,10 @@ async function listAlerts(userId, monthId) {
 }
 
 /**
- * Recomputa apenas se a janela permitir; caso contrário devolve a lista
- * já persistida. `force` existe para o fechamento de mês, que precisa
- * refletir o novo estado imediatamente.
+ * Leitura pública pura. Recomputação é uma mutação explícita em POST /refresh
+ * ou chamada por casos de uso após mudanças financeiras.
  */
-async function getAlerts(userId, monthId, { force = false, windowMs = REFRESH_WINDOW_MS } = {}) {
-  if (force || shouldRecompute(userId, monthId, windowMs)) {
-    return refreshAlerts(userId, monthId);
-  }
+async function getAlerts(userId, monthId) {
   return listAlerts(userId, monthId);
 }
 
@@ -350,4 +313,4 @@ async function refreshAlerts(userId, monthId) {
   });
 }
 
-module.exports = { refreshAlerts, getAlerts, listAlerts, REFRESH_WINDOW_MS };
+module.exports = { refreshAlerts, getAlerts, listAlerts };

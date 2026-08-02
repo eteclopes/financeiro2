@@ -12,6 +12,8 @@ if (env.SMTP_HOST) {
   });
 }
 
+function isMailConfigured() { return Boolean(transporter); }
+
 async function sendMail({ to, subject, html, text }) {
   if (!transporter) {
     console.warn(
@@ -65,4 +67,4 @@ function sendPasswordResetEmail(toEmail, userName, resetUrl) {
   return sendMail({ to: toEmail, subject, html, text });
 }
 
-module.exports = { sendMail, sendPasswordResetEmail };
+module.exports = { isMailConfigured, sendMail, sendPasswordResetEmail };

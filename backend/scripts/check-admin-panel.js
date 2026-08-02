@@ -6,7 +6,7 @@ const checks = [
   ['schema role', 'backend/prisma/schema.prisma', /enum UserRole[\s\S]*admin[\s\S]*role\s+UserRole/],
   ['migration', 'backend/prisma/migrations/20260801200000_admin_panel/migration.sql', /ADD COLUMN "role"/],
   ['admin middleware', 'backend/src/middlewares/requireAdmin.js', /user\.role !== 'admin'/],
-  ['admin routes', 'backend/src/modules/admin/admin.routes.js', /router\.use\(authenticate, requireAdmin\)/],
+  ['admin routes', 'backend/src/modules/admin/admin.routes.js', /router\.use\(authenticateAdmin, requireAdmin\)/],
   ['admin overview', 'backend/src/modules/admin/admin.service.js', /async function overview/],
   ['admin users', 'backend/src/modules/admin/admin.service.js', /async function listUsers/],
   ['admin delete user', 'backend/src/modules/admin/admin.service.js', /async function deleteUser/],

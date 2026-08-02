@@ -30,8 +30,8 @@ async function listGoals(userId) {
     orderBy: { createdAt: 'desc' },
   });
 
-  const threeMonthsAgo = new Date();
-  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+  const threeMonthsAgo = todayUtcDate();
+  threeMonthsAgo.setUTCMonth(threeMonthsAgo.getUTCMonth() - 3);
 
   return goals.map((goal) => {
     const progress = computeProgress(goal.contributions);

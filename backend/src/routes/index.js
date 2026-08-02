@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const authRoutes = require('../modules/auth/auth.routes');
+const adminAuthRoutes = require('../modules/adminAuth/adminAuth.routes');
 const monthsRoutes = require('../modules/months/months.routes');
 const categoriesRoutes = require('../modules/categories/categories.routes');
 const incomesRoutes = require('../modules/incomes/incomes.routes');
@@ -30,6 +31,7 @@ const { heavyLimiter } = require('../middlewares/rateLimiters');
 const router = Router();
 
 router.use('/auth',               authRoutes);
+router.use('/admin-auth',         adminAuthRoutes);
 router.use('/admin',              adminRoutes);
 router.use('/billing',            billingRoutes);
 router.use('/workspaces',         workspacesRoutes);

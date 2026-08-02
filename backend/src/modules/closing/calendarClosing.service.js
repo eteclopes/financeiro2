@@ -35,8 +35,17 @@ async function ensureCalendarMonthsClosed(userId) {
     )) break;
 
     const result = await closingService.closeMonth(userId, earliestOpen.id);
-    if (!result.repaired && result.nextMonth?.id) {
+    // Catch-up não executa pagamentos retroativos. Receitas recorrentes são
+    // registradas agora (e entram no saldo agora, conforme a regra do produto),
+    // mas não devem financiar automaticamente meses que já passaram. A
+    // automação só roda para o mês que é de fato o calendário atual.
+    const targetIsCurrent = result.nextMonth
+      && Number(result.nextMonth.month) === Number(current.month)
+      && Number(result.nextMonth.year) === Number(current.year);
+    if (!result.repaired && result.nextMonth?.id && targetIsCurrent) {
       result.automations = await automationsService.runOnClose(userId, result.nextMonth.id);
+    } else if (!result.repaired && result.nextMonth?.id) {
+      result.automations = { skipped: true, reason: 'historical_catch_up' };
     }
     closed.push(result);
   }

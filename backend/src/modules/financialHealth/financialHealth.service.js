@@ -4,6 +4,8 @@ const savingsService = require('../savings/savings.service');
 const cardsService = require('../cards/cards.service');
 const { getRecentMonths } = require('../_shared/financialMetrics');
 const { round2 } = require('../../utils/math');
+const { todayUtcDate } = require('../../utils/dateTime');
+const { aggregateIncome, netIncomeFromAggregate } = require('../_shared/incomeMetrics');
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -99,8 +101,8 @@ function scoreGoals(goals) {
   if (goals.length === 0) {
     return { points: 10, max: 10, reason: 'Sem metas ativas no momento' };
   }
-  const sixtyDaysAgo = new Date();
-  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+  const sixtyDaysAgo = todayUtcDate();
+  sixtyDaysAgo.setUTCDate(sixtyDaysAgo.getUTCDate() - 60);
 
   const onTrack = goals.filter(
     (g) => g.progress >= Number(g.targetValue) || (g.lastContributionDate && g.lastContributionDate >= sixtyDaysAgo)
@@ -126,7 +128,7 @@ async function gatherMetrics(userId, monthId) {
     cardsRaw,
     activeGoals,
   ] = await Promise.all([
-    prisma.income.aggregate({ where: { userId, monthId }, _sum: { value: true } }),
+    aggregateIncome({ userId, monthId }),
     prisma.expense.aggregate({ where: { userId, monthId, deletedAt: null }, _sum: { value: true } }),
     prisma.expense.count({ where: { userId, monthId, deletedAt: null, status: 'late' } }),
     prisma.expense.aggregate({
@@ -160,7 +162,7 @@ async function gatherMetrics(userId, monthId) {
 
   return {
     month,
-    incomeTotal: Number(incomeAgg._sum.value ?? 0),
+    incomeTotal: netIncomeFromAggregate(incomeAgg),
     expensesPlanned: Number(expensesAgg._sum.value ?? 0),
     lateCount,
     avgMonthlyExpense:
@@ -172,7 +174,7 @@ async function gatherMetrics(userId, monthId) {
   };
 }
 
-async function computeAndStore(userId, monthId) {
+async function calculateHealthScore(userId, monthId) {
   const metrics = await gatherMetrics(userId, monthId);
 
   const reserve = scoreReserve(metrics.savingsBalance, metrics.avgMonthlyExpense);
@@ -182,38 +184,33 @@ async function computeAndStore(userId, monthId) {
   const debt = scoreDebt(metrics.totalActiveDebt, metrics.incomeTotal);
   const goals = scoreGoals(metrics.goals);
 
-  const breakdown = {
-    reserve,
-    incomeVsExpense,
-    noLate,
-    cardUsage,
-    debt,
-    goals,
-  };
-
+  const breakdown = { reserve, incomeVsExpense, noLate, cardUsage, debt, goals };
   const score = clamp(
     reserve.points + incomeVsExpense.points + noLate.points + cardUsage.points + debt.points + goals.points,
     0,
     100
   );
+  return { score, breakdown, computedAt: new Date().toISOString() };
+}
 
+async function computeAndStore(userId, monthId) {
+  const calculated = await calculateHealthScore(userId, monthId);
   const saved = await prisma.financialHealthScore.upsert({
     where: { monthId },
-    update: { score, breakdownJson: breakdown },
-    create: { userId, monthId, score, breakdownJson: breakdown },
+    update: { score: calculated.score, breakdownJson: calculated.breakdown },
+    create: { userId, monthId, score: calculated.score, breakdownJson: calculated.breakdown },
   });
-
-  return { score, breakdown, computedAt: saved.createdAt };
+  return { ...calculated, computedAt: saved.createdAt };
 }
 
-/**
- * Sempre recalcula na hora (não usa cache obsoleto) — é assim que a regra
- * "atualizar automaticamente quando houver movimentações" é satisfeita sem
- * precisar instalar hooks em todo service existente (receitas, despesas,
- * pagamentos, cartões...): o dado-fonte é sempre lido fresco.
- */
+/** Leitura pura; persistência é uma ação explícita em POST /refresh. */
 async function getOrComputeHealthScore(userId, monthId) {
-  return computeAndStore(userId, monthId);
+  const month = await monthsService.getMonthOrThrow(userId, monthId);
+  if (month.status === 'closed') {
+    const saved = await prisma.financialHealthScore.findUnique({ where: { monthId } });
+    if (saved) return { score: saved.score, breakdown: saved.breakdownJson, computedAt: saved.createdAt };
+  }
+  return calculateHealthScore(userId, monthId);
 }
 
-module.exports = { getOrComputeHealthScore, computeAndStore };
+module.exports = { getOrComputeHealthScore, calculateHealthScore, computeAndStore };

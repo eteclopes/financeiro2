@@ -12,6 +12,7 @@ const AppError    = require('./utils/AppError');
 const { globalLimiter } = require('./middlewares/rateLimiters');
 const { parseConfiguredOrigins, createOriginPolicy } = require('./utils/corsOrigins');
 const billingController = require('./modules/billing/billing.controller');
+const prisma = require('./config/prisma');
 const { localizationContext } = require('./utils/requestContext');
 const {
   requestId,
@@ -36,10 +37,7 @@ app.use(helmet({
 }));
 app.use(privateApiHeaders);
 
-const adminFrontendOrigin = env.ADMIN_FRONTEND_URL
-  || (env.NODE_ENV === 'production'
-    ? 'https://admin-frontend-kzu7.vercel.app'
-    : 'http://localhost:5174');
+const adminFrontendOrigin = env.ADMIN_FRONTEND_URL;
 
 const corsPolicy = createOriginPolicy({
   configuredOrigins: parseConfiguredOrigins(
@@ -89,8 +87,48 @@ app.use(localizationContext);
 app.use(privacyLogger(env.NODE_ENV));
 
 app.get('/', (req, res) => res.status(204).send());
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', uptime: Math.floor(process.uptime()) });
+app.get('/health', async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    const migration = await prisma.$queryRaw`
+      SELECT
+        EXISTS (
+          SELECT 1 FROM "_prisma_migrations"
+          WHERE migration_name = '20260802180000_stabilization_v30'
+            AND finished_at IS NOT NULL
+            AND rolled_back_at IS NULL
+        ) AS required_applied,
+        (
+          SELECT migration_name FROM "_prisma_migrations"
+          WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+          ORDER BY finished_at DESC
+          LIMIT 1
+        ) AS latest_migration
+    `;
+    const requiredApplied = Boolean(migration?.[0]?.required_applied);
+    const latestMigration = migration?.[0]?.latest_migration || null;
+    // Uma migration futura não pode deixar o serviço artificialmente
+    // indisponível; readiness exige a migration mínima da estabilização.
+    const schemaReady = requiredApplied;
+    return res.status(schemaReady ? 200 : 503).json({
+      status: schemaReady ? 'ready' : 'migration_pending',
+      database: 'ok',
+      schema: latestMigration,
+      requiredMigration: '20260802180000_stabilization_v30',
+      version: 'v30',
+      uptime: Math.floor(process.uptime()),
+      latencyMs: Date.now() - startedAt,
+    });
+  } catch {
+    return res.status(503).json({
+      status: 'unavailable',
+      database: 'unavailable',
+      version: 'v30',
+      uptime: Math.floor(process.uptime()),
+      latencyMs: Date.now() - startedAt,
+    });
+  }
 });
 
 app.use('/api', routes);

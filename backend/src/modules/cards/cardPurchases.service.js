@@ -1,4 +1,5 @@
 const prisma = require('../../config/prisma');
+const { Prisma } = require('@prisma/client');
 const AppError = require('../../utils/AppError');
 const monthsService = require('../months/months.service');
 const expensesService = require('../expenses/expenses.service');
@@ -57,17 +58,17 @@ async function getOrCreateInvoice(card, refMonth, refYear, client = prisma) {
   }
 }
 
-function lifecycleStatusForNewCharge(invoice, card) {
+function lifecycleStatusForNewCharge(invoice, card, financialDate = todayUtcDate()) {
   const closingDate = invoice.closingDate ?? invoiceDates(
     Number(invoice.referenceMonth),
     Number(invoice.referenceYear),
     Number(card.closingDay),
     Number(card.dueDay)
   ).closingDate;
-  return new Date(closingDate).getTime() < todayUtcDate().getTime() ? 'closed' : 'open';
+  return new Date(closingDate).getTime() < new Date(financialDate).getTime() ? 'closed' : 'open';
 }
 
-async function registerChargeOnInvoice(invoice, card, amount, client = prisma) {
+async function registerChargeOnInvoice(invoice, card, amount, client = prisma, financialDate = todayUtcDate()) {
   // Uma cobrança nova torna a fatura devedora novamente. Antes do fechamento
   // ela volta a `open`; depois do fechamento, a `closed`. Nunca é empurrada
   // para outro mês apenas porque houve um pagamento antecipado.
@@ -75,7 +76,7 @@ async function registerChargeOnInvoice(invoice, card, amount, client = prisma) {
     where: { id: invoice.id },
     data: {
       totalValue: { increment: Number(amount) },
-      status: lifecycleStatusForNewCharge(invoice, card),
+      status: lifecycleStatusForNewCharge(invoice, card, financialDate),
       paidAt: null,
     },
   });
@@ -106,7 +107,7 @@ async function recalculateInvoiceTotal(invoiceId, client = prisma) {
 }
 
 /** Cria uma cobrança fixa real no cartão, preservando o mês de competência. */
-async function createFixedCardCharge({ userId, card, template, month, dueDate, observation, client = prisma }) {
+async function createFixedCardCharge({ userId, card, template, month, dueDate, observation, client = prisma, financialDate = todayUtcDate() }) {
   await client.$executeRaw`SELECT pg_advisory_xact_lock(${card.id})`;
   // Releitura após o lock: impede que uma compra use limite/estado antigo
   // enquanto outra requisição reduz o limite ou desativa o cartão.
@@ -139,7 +140,7 @@ async function createFixedCardCharge({ userId, card, template, month, dueDate, o
     include: { category: true, fixedTemplate: true, cardInvoice: { include: { card: true } } },
   });
 
-  await registerChargeOnInvoice(invoice, lockedCard, Number(template.value), client);
+  await registerChargeOnInvoice(invoice, lockedCard, Number(template.value), client, financialDate);
 
   return { expense, invoice };
 }
@@ -165,10 +166,67 @@ async function createCardPurchase(userId, payload) {
     }
     await assertCardLimit(lockedCard, remainingTotalValue, tx);
 
+    const installments = [];
+    let accumulated = 0;
+    for (let i = startingInstallment; i <= installmentsCount; i += 1) {
+      const ref = addMonths(base.month, base.year, i - 1);
+      const value = i === installmentsCount ? round2(remainingTotalValue - accumulated) : nominal;
+      accumulated = round2(accumulated + value);
+      installments.push({ number: i, ref, value });
+    }
+
+    // Meses e faturas são materializados em lote. O fluxo antigo executava
+    // três queries por parcela e podia estourar P2028 em parcelamentos longos.
+    const distinctRefs = [...new Map(installments.map((item) => [
+      `${item.ref.year}-${item.ref.month}`,
+      item.ref,
+    ])).values()];
+    await tx.month.createMany({
+      data: distinctRefs.map((ref) => ({ userId, month: ref.month, year: ref.year, status: 'open' })),
+      skipDuplicates: true,
+    });
+    const months = await tx.month.findMany({
+      where: {
+        userId,
+        OR: distinctRefs.map((ref) => ({ month: ref.month, year: ref.year })),
+      },
+      select: { id: true, month: true, year: true },
+    });
+    const monthByRef = new Map(months.map((month) => [`${month.year}-${month.month}`, month]));
+
+    await tx.cardInvoice.createMany({
+      data: distinctRefs.map((ref) => {
+        const month = monthByRef.get(`${ref.year}-${ref.month}`);
+        if (!month) throw new AppError('Não foi possível preparar o mês da fatura.', 500, 'INVOICE_MONTH_INIT_FAILED');
+        const dates = invoiceDates(ref.month, ref.year, Number(lockedCard.closingDay), Number(lockedCard.dueDay));
+        return {
+          cardId: lockedCard.id,
+          monthId: month.id,
+          referenceMonth: ref.month,
+          referenceYear: ref.year,
+          closingDate: dates.closingDate,
+          dueDate: dates.dueDate,
+          totalValue: 0,
+          status: 'open',
+        };
+      }),
+      skipDuplicates: true,
+    });
+    const invoices = await tx.cardInvoice.findMany({
+      where: {
+        cardId: lockedCard.id,
+        OR: distinctRefs.map((ref) => ({ referenceMonth: ref.month, referenceYear: ref.year })),
+      },
+    });
+    const invoiceByRef = new Map(invoices.map((invoice) => [
+      `${invoice.referenceYear}-${invoice.referenceMonth}`,
+      invoice,
+    ]));
+
     const purchase = await tx.cardPurchase.create({
       data: {
         userId,
-        cardId: card.id,
+        cardId: lockedCard.id,
         description: payload.description,
         categoryId: payload.categoryId,
         totalValue: remainingTotalValue,
@@ -178,39 +236,47 @@ async function createCardPurchase(userId, payload) {
       },
     });
 
-    const expenses = [];
-    let accumulated = 0;
-    let firstInvoice = null;
+    const expenseData = installments.map((item) => {
+      const invoice = invoiceByRef.get(`${item.ref.year}-${item.ref.month}`);
+      if (!invoice) throw new AppError('Não foi possível preparar a fatura da parcela.', 500, 'INVOICE_INIT_FAILED');
+      return {
+        userId,
+        monthId: invoice.monthId,
+        type: 'card',
+        description: installmentsCount > 1
+          ? `${payload.description} (${item.number}/${installmentsCount})`
+          : payload.description,
+        categoryId: payload.categoryId,
+        dueDate: invoice.dueDate,
+        value: item.value,
+        status: 'pending',
+        paymentMethod: 'credit',
+        cardInvoiceId: invoice.id,
+        cardPurchaseId: purchase.id,
+      };
+    });
+    await tx.expense.createMany({ data: expenseData });
 
-    for (let i = startingInstallment; i <= installmentsCount; i += 1) {
-      const ref = addMonths(base.month, base.year, i - 1);
-      const invoice = await getOrCreateInvoice(lockedCard, ref.month, ref.year, tx);
-      if (!firstInvoice) firstInvoice = invoice;
-      const value = i === installmentsCount ? round2(remainingTotalValue - accumulated) : nominal;
-      accumulated = round2(accumulated + value);
-
-      const expense = await tx.expense.create({
-        data: {
-          userId,
-          monthId: invoice.monthId,
-          type: 'card',
-          description: installmentsCount > 1
-            ? `${payload.description} (${i}/${installmentsCount})`
-            : payload.description,
-          categoryId: payload.categoryId,
-          dueDate: invoice.dueDate,
-          value,
-          status: 'pending',
-          paymentMethod: 'credit',
-          cardInvoiceId: invoice.id,
-          cardPurchaseId: purchase.id,
-        },
-      });
-
-      await registerChargeOnInvoice(invoice, lockedCard, value, tx);
-      expenses.push(expense);
+    const increments = installments.map((item) => {
+      const invoice = invoiceByRef.get(`${item.ref.year}-${item.ref.month}`);
+      return Prisma.sql`(${invoice.id}, ${item.value}::numeric, ${lifecycleStatusForNewCharge(invoice, lockedCard)}::"CardInvoiceStatus")`;
+    });
+    if (increments.length > 0) {
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE "card_invoices" AS ci
+        SET "total_value" = ci."total_value" + updates.amount,
+            "status" = updates.status,
+            "paid_at" = NULL
+        FROM (VALUES ${Prisma.join(increments)}) AS updates(id, amount, status)
+        WHERE ci."id" = updates.id
+      `);
     }
 
+    const expenses = await tx.expense.findMany({
+      where: { cardPurchaseId: purchase.id },
+      orderBy: { dueDate: 'asc' },
+    });
+    const firstInvoice = invoiceByRef.get(`${base.year}-${base.month}`) || null;
     return {
       purchase,
       expenses,
@@ -221,7 +287,7 @@ async function createCardPurchase(userId, payload) {
         dueDate: firstInvoice.dueDate,
       },
     };
-  }).then(async (result) => {
+  }, { maxWait: 10_000, timeout: 30_000 }).then(async (result) => {
     await recordAuditLog(userId, 'cardPurchase', result.purchase.id, 'create', { newValue: result.purchase });
     return result;
   });
@@ -234,7 +300,7 @@ async function repairPendingFixedChargeAssignments(userId, cardId = null) {
         userId,
         type: 'card',
         deletedAt: null,
-        status: { not: 'paid' },
+        status: { in: ['pending', 'partial', 'late'] },
         fixedTemplateId: { not: null },
         cardInvoice: { card: { userId, ...(cardId ? { id: cardId } : {}) } },
       },

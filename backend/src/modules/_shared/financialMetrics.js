@@ -1,4 +1,5 @@
 const prisma = require('../../config/prisma');
+const { aggregateIncome, netIncomeFromAggregate } = require('./incomeMetrics');
 
 /**
  * Centraliza consultas que vários módulos precisam ("média dos últimos N
@@ -24,11 +25,8 @@ async function getAllMonthsChronological(userId) {
 async function getAverageRecentIncome(userId, monthId, count = 3) {
   const months = await getRecentMonths(userId, monthId, count);
   if (months.length === 0) return 0;
-  const agg = await prisma.income.aggregate({
-    where: { userId, monthId: { in: months.map((m) => m.id) } },
-    _sum: { value: true },
-  });
-  return Number(agg._sum.value ?? 0) / months.length;
+  const agg = await aggregateIncome({ userId, monthId: { in: months.map((m) => m.id) } });
+  return netIncomeFromAggregate(agg) / months.length;
 }
 
 async function getAverageRecentExpense(userId, monthId, count = 3, field = 'paidAmount') {

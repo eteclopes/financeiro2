@@ -4,6 +4,7 @@ const monthsService = require('../months/months.service');
 const { assertSufficientBalance, lockUserBalance } = require('../_shared/balance');
 const { todayUtcDate, isFutureDate } = require('../../utils/dateTime');
 const { round2 } = require('../../utils/math');
+const { getRequestWorkspaceType } = require('../../utils/requestContext');
 
 function assertDateMatchesMonth(date, month) {
   const matches = date.getUTCMonth() + 1 === month.month && date.getUTCFullYear() === month.year;
@@ -26,17 +27,11 @@ async function assertCategoryIsValid(userId, categoryId, client = prisma) {
   }
 }
 
-async function syncOverdueStatuses(userId, monthId) {
-  await prisma.expense.updateMany({
-    where: {
-      userId,
-      monthId,
-      status: { in: ['pending', 'partial'] },
-      // Vence hoje continua pendente durante todo o dia; só fica atrasada amanhã.
-      dueDate: { lt: todayUtcDate() },
-    },
-    data: { status: 'late' },
-  });
+function withDerivedStatus(expense) {
+  if (['pending', 'partial'].includes(expense.status) && expense.dueDate < todayUtcDate()) {
+    return { ...expense, status: 'late' };
+  }
+  return expense;
 }
 
 /**
@@ -90,15 +85,13 @@ async function listOverdueFromPreviousMonths(userId, monthId) {
 
 async function listExpenses(userId, monthId, type) {
   await monthsService.getMonthOrThrow(userId, monthId);
-  await syncOverdueStatuses(userId, monthId);
-
   const typeFilter = type === 'fixed'
     ? { fixedTemplateId: { not: null } }
     : type
       ? { type }
       : {};
 
-  return prisma.expense.findMany({
+  const rows = await prisma.expense.findMany({
     where: { userId, monthId, deletedAt: null, ...typeFilter },
     include: {
       category: true,
@@ -108,6 +101,7 @@ async function listExpenses(userId, monthId, type) {
     },
     orderBy: { dueDate: 'asc' },
   });
+  return rows.map(withDerivedStatus);
 }
 
 // ---------------- Despesa Variável ----------------
@@ -140,13 +134,9 @@ async function createVariableExpense(userId, payload) {
     return { ...result.expenses[0], cardInvoiceRef: result.firstInvoice ?? null };
   }
 
-  // Observação de produto: a data é COMPETÊNCIA, não a data do caixa —
-  // mesma regra já usada em receitas (uma receita com data futura entra no
-  // saldo na hora). Por isso uma despesa marcada como paga é aceita com
-  // qualquer data DENTRO do mês selecionado, mesmo que a data seja "futura"
-  // em relação a hoje. `assertDateMatchesMonth` (acima) já impede datas
-  // fora do mês. O bloqueio anterior confundia o usuário e era incoerente
-  // com a regra das receitas.
+  // A data escolhida é competência/vencimento. Se o usuário marcar como
+  // paga, o dinheiro sai AGORA e `paidAt` registra a data financeira atual
+  // do workspace (real ou simulado), nunca uma data futura de competência.
 
   if (!payload.paid) {
     return prisma.expense.create({
@@ -180,7 +170,7 @@ async function createVariableExpense(userId, payload) {
         dueDate: payload.date,
         value: payload.value,
         paidAmount: payload.value,
-        paidAt: payload.date,
+        paidAt: todayUtcDate(),
         status: 'paid',
         paymentMethod: payload.paymentMethod,
         observation: payload.observation,
@@ -442,7 +432,19 @@ async function updateExpense(userId, expenseId, payload) {
   assertDateMatchesMonth(initialEffectiveDate, initial.month);
   if (payload.categoryId) await assertCategoryIsValid(userId, payload.categoryId);
 
+  if (initial.status === 'reversed' || Number(initial.reversedAmount ?? 0) > 0) {
+    throw new AppError('Esta despesa já foi estornada e não pode ser editada.', 409, 'EXPENSE_ALREADY_REVERSED');
+  }
+
   const isAlreadyPaid = ['paid', 'settled', 'flex_paid'].includes(initial.status);
+  const rewritesPaidFact = isAlreadyPaid && (payload.value !== undefined || payload.dueDate);
+  if (rewritesPaidFact && getRequestWorkspaceType() !== 'simulation') {
+    throw new AppError(
+      'No financeiro real, valor e data de uma despesa paga não podem ser reescritos. Estorne o pagamento e registre a correção.',
+      409,
+      'PAID_EXPENSE_FINANCIAL_FIELDS_IMMUTABLE'
+    );
+  }
   if (['partial', 'flex_paid'].includes(initial.status) && (payload.value !== undefined || payload.dueDate)) {
     throw new AppError(
       'Não é possível alterar valor ou data de uma parcela que já recebeu pagamento — isso quebraria a conta do saldo residual.',
@@ -493,7 +495,7 @@ async function updateExpense(userId, expenseId, payload) {
         ...(payload.description && { description: payload.description }),
         ...(payload.value !== undefined && { value: payload.value, paidAmount: payload.value }),
         ...(payload.categoryId && { categoryId: payload.categoryId }),
-        ...(payload.dueDate && { dueDate: payload.dueDate, paidAt: payload.dueDate }),
+        ...(payload.dueDate && { dueDate: payload.dueDate }),
         ...(payload.observation !== undefined && { observation: payload.observation }),
       },
       include: { category: true },
@@ -502,17 +504,56 @@ async function updateExpense(userId, expenseId, payload) {
 }
 
 async function deleteExpense(userId, expenseId) {
-  const expense = await getOwnedExpenseOrThrow(userId, expenseId);
-  assertEditableType(expense);
-  if (expense.type === 'priority') {
-    throw new AppError(
-      'Parcelas de dívida não podem ser excluídas individualmente — exclua a dívida de origem.',
-      409,
-      'EXPENSE_TYPE_NOT_EDITABLE'
-    );
-  }
-  monthsService.assertMonthIsOpen(expense.month);
-  await prisma.expense.delete({ where: { id: expenseId } });
+  return prisma.$transaction(async (tx) => {
+    await lockUserBalance(tx, userId);
+    const expense = await getOwnedExpenseOrThrow(userId, expenseId, tx);
+    assertEditableType(expense);
+    if (expense.type === 'priority') {
+      throw new AppError(
+        'Parcelas de dívida não podem ser excluídas individualmente — exclua ou renegocie a dívida de origem.',
+        409,
+        'EXPENSE_TYPE_NOT_EDITABLE'
+      );
+    }
+    if (expense.status === 'reversed' || Number(expense.reversedAmount ?? 0) > 0) {
+      throw new AppError('Esta despesa já foi estornada.', 409, 'EXPENSE_ALREADY_REVERSED');
+    }
+
+    const paid = Number(expense.paidAmount ?? 0);
+    if (paid > 0.009 || expense.paidAt) {
+      if (getRequestWorkspaceType() === 'simulation') {
+        // Simulação é reversível: em um período reaberto, remover uma conta
+        // deve desfazer seu efeito e permitir o recálculo, sem criar um estorno
+        // permanente como no ledger real. O soft delete mantém vínculos/IDs.
+        monthsService.assertMonthIsOpen(expense.month);
+        return tx.expense.update({
+          where: { id: expense.id },
+          data: { deletedAt: new Date() },
+        });
+      }
+      // No financeiro real nunca se apaga o fato financeiro. O estorno devolve
+      // o valor ao saldo e mantém pagamento/data disponíveis para auditoria.
+      return tx.expense.update({
+        where: { id: expense.id },
+        data: {
+          status: 'reversed',
+          reversedAt: todayUtcDate(),
+          reversedAmount: paid,
+        },
+      });
+    }
+
+    // Rascunho/pendência sem efeito no caixa só pode ser removido enquanto o
+    // mês de competência estiver aberto. Estorno de pagamento antigo acima é
+    // permitido porque cria um fato novo na data atual, sem reescrever o mês.
+    monthsService.assertMonthIsOpen(expense.month);
+    // Rascunho/pendência sem efeito no caixa: soft delete, preservando IDs e
+    // evitando quebra de referências técnicas.
+    return tx.expense.update({
+      where: { id: expense.id },
+      data: { deletedAt: new Date() },
+    });
+  });
 }
 
 // ---------------- Pagamento ----------------
@@ -584,5 +625,4 @@ module.exports = {
   dueDateFromDay,
   assertCategoryIsValid,
   assertDateMatchesMonth,
-  syncOverdueStatuses,
 };

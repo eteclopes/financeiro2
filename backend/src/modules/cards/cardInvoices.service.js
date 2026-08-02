@@ -21,51 +21,7 @@ function invoiceStatusWithOutstanding(closingDate, today = todayUtcDate()) {
   return isInvoiceCycleClosed(closingDate, today) ? 'closed' : 'open';
 }
 
-async function syncInvoiceStatuses(userId, cardId = null) {
-  const scope = { card: { userId, ...(cardId ? { id: cardId } : {}) } };
-  const today = todayUtcDate();
-  const pendingExpense = { deletedAt: null, status: { not: 'paid' } };
-
-  // 1) Ciclos que ainda não fecharam são SEMPRE abertos. Isto também repara
-  // faturas futuras marcadas como `paid` pela versão antiga após antecipação.
-  await prisma.cardInvoice.updateMany({
-    where: {
-      ...scope,
-      closingDate: { gte: today },
-      status: { not: 'open' },
-    },
-    data: { status: 'open' },
-  });
-
-  // 2) Depois do fechamento, saldo pendente significa fatura fechada.
-  await prisma.cardInvoice.updateMany({
-    where: {
-      ...scope,
-      closingDate: { lt: today },
-      expenses: { some: pendingExpense },
-      status: { not: 'closed' },
-    },
-    data: { status: 'closed', paidAt: null },
-  });
-
-  // 3) Depois do fechamento, sem nenhum lançamento pendente, a fatura está
-  // efetivamente paga. `paidAt` das despesas continua sendo a fonte exata da
-  // data de cada pagamento antecipado; não inventamos uma nova data aqui.
-  await prisma.cardInvoice.updateMany({
-    where: {
-      ...scope,
-      closingDate: { lt: today },
-      expenses: { none: pendingExpense },
-      status: { not: 'paid' },
-    },
-    data: { status: 'paid' },
-  });
-}
-
 async function listInvoices(userId, cardId) {
-  const { repairPendingFixedChargeAssignments } = require('./cardPurchases.service');
-  await repairPendingFixedChargeAssignments(userId, cardId);
-  await syncInvoiceStatuses(userId, cardId);
   const invoices = await prisma.cardInvoice.findMany({
     where: { card: { id: cardId, userId } },
     include: {
@@ -89,12 +45,16 @@ async function listInvoices(userId, cardId) {
         (sum, expense) => sum + Math.max(Number(expense.value) - Number(expense.paidAmount ?? 0), 0),
         0
       ));
+      const derivedStatus = outstandingValue > MONEY_TOLERANCE
+        ? invoiceStatusWithOutstanding(invoice.closingDate)
+        : invoiceStatusAfterSettlement(invoice.closingDate);
       return {
         ...invoice,
+        status: derivedStatus,
         totalValue,
         paidValue: round2(Math.max(totalValue - outstandingValue, 0)),
         outstandingValue,
-        prepaid: invoice.status === 'open' && outstandingValue <= MONEY_TOLERANCE,
+        prepaid: derivedStatus === 'open' && outstandingValue <= MONEY_TOLERANCE,
       };
     });
 }
@@ -138,7 +98,7 @@ async function payInvoice(userId, invoiceId, paymentMethod) {
     // pode ter sido marcada como `paid` cedo demais e depois recebido uma
     // cobrança; a fonte da verdade é o saldo dos lançamentos.
     const pending = await tx.expense.findMany({
-      where: { cardInvoiceId: invoiceId, deletedAt: null, status: { not: 'paid' } },
+      where: { cardInvoiceId: invoiceId, deletedAt: null, status: { in: ['pending', 'partial', 'late'] } },
       select: { id: true, value: true, paidAmount: true },
     });
 
@@ -174,7 +134,6 @@ module.exports = {
   listInvoices,
   getOwnedInvoiceOrThrow,
   payInvoice,
-  syncInvoiceStatuses,
   isInvoiceCycleClosed,
   invoiceStatusAfterSettlement,
   invoiceStatusWithOutstanding,

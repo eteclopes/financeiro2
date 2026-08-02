@@ -114,21 +114,6 @@ async function createDebt(userId, payload) {
 }
 
 async function listDebts(userId) {
-  // Marca como ATRASADA toda parcela de dívida vencida e ainda não paga
-  // (em meses abertos). Assim o Dashboard e a lista de dívidas mostram o
-  // atraso de verdade, em vez de "pendente" para sempre.
-  await prisma.expense.updateMany({
-    where: {
-      userId,
-      debtId: { not: null },
-      deletedAt: null,
-      status: { in: ['pending', 'partial'] },
-      dueDate: { lt: todayUtcDate() },
-      month: { status: 'open' },
-    },
-    data: { status: 'late' },
-  });
-
   const debts = await prisma.debt.findMany({
     where: { userId },
     include: { category: true, _count: { select: { expenses: true } } },
@@ -350,7 +335,7 @@ async function applyPaymentToInstallment(userId, expense, amount, paymentMethod)
       where: { id: currentExpense.id },
       data: {
         paidAmount: newPaidAmount,
-        paidAt: todayUtcDate(),
+        paidAt: currentExpense.paidAt || todayUtcDate(),
         status: newStatus,
         paymentMethod,
         residualAmount: newResidual,

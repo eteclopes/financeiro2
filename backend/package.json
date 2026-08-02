@@ -23,7 +23,10 @@
     "check:admin": "node scripts/check-admin-panel.js && node scripts/check-admin-behavior.js",
     "check:cors": "node scripts/check-cors-production.js",
     "check:v28-invoices": "node scripts/check-v28-open-invoice-prepayment.js",
-    "check:v29-modes": "node scripts/check-v29-real-simulation-modes.js"
+    "check:v29-modes": "node scripts/check-v29-real-simulation-modes.js",
+    "test:coverage": "jest --coverage",
+    "check:v30-stability": "node scripts/check-v30-stabilization.js",
+    "check:all": "npm run check:security && npm run check:v16-flows && npm run check:v18-critical && npm run check:v19-history && npm run check:v20-invoices && npm run check:v28-invoices && npm run check:v29-modes && npm run check:v30-stability && npm run check:admin && npm run check:cors"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
@@ -45,6 +48,6 @@
     "prisma": "^5.20.0"
   },
   "engines": {
-    "node": ">=18.18"
+    "node": ">=20.19.0"
   }
 }

@@ -40,7 +40,9 @@ const remove = asyncHandler(async (req, res) => {
     { allowNegativeBalance }
   );
   res.json({
-    deleted: true,
+    deleted: result.action === 'deleted',
+    reversed: result.action === 'reversed',
+    action: result.action,
     resultingBalance: result.resultingBalance,
     wentNegative: result.wentNegative,
   });

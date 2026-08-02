@@ -4,6 +4,7 @@ import { api } from '../api';
 export const monthsApi = {
   list: () => api.get('/months'),
   current: () => api.get('/months/current'),
+  syncCalendar: () => api.post('/months/sync-calendar'),
   get: (id) => api.get(`/months/${id}`),
   closingPreview: (id) => api.get(`/months/${id}/closing-preview`),
   close: (id) => api.post(`/months/${id}/close`),
@@ -25,7 +26,7 @@ export const incomesApi = {
   list: (monthId) => api.get('/incomes', { params: { monthId } }),
   create: (data) => api.post('/incomes', data),
   update: (id, data) => api.patch(`/incomes/${id}`, data),
-  delete: (id) => api.delete(`/incomes/${id}`),
+  delete: (id, confirm = false) => api.delete(`/incomes/${id}`, { params: confirm ? { confirm: true } : undefined }),
   deactivateTemplate: (id) => api.patch(`/incomes/templates/${id}/deactivate`),
 };
 

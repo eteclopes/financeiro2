@@ -27,6 +27,7 @@ export default function WorkspacesPage() {
     startMonth: 1,
     startYear: now.year + 1,
     copySetup: true,
+    initialBalance: 0,
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(null);
@@ -40,6 +41,7 @@ export default function WorkspacesPage() {
         ...form,
         startMonth: Number(form.startMonth),
         startYear: Number(form.startYear),
+        initialBalance: Number(form.initialBalance || 0),
       });
       toast.success('Simulação criada e ativada.');
       navigate('/dashboard');
@@ -109,6 +111,15 @@ export default function WorkspacesPage() {
                 <Input type="number" min="2000" max="2200" value={form.startYear} onChange={(event) => setForm({ ...form, startYear: event.target.value })} />
               </FormGroup>
             </div>
+            <FormGroup label="Saldo inicial da simulação">
+              <Input
+                type="number"
+                step="0.01"
+                value={form.initialBalance}
+                onChange={(event) => setForm({ ...form, initialBalance: event.target.value })}
+              />
+              <p className="mt-1 text-xs text-muted">Use o saldo com que o cenário deve começar. Ele nunca altera o financeiro real.</p>
+            </FormGroup>
             <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm dark:border-white/[0.08]">
               <input
                 type="checkbox"
@@ -144,6 +155,7 @@ export default function WorkspacesPage() {
                     <div>
                       <p className="font-bold text-slate-900 dark:text-white">{workspace.name}</p>
                       <p className="mt-1 text-xs text-muted">Início: {String(workspace.startMonth).padStart(2, '0')}/{workspace.startYear}</p>
+                      <p className="mt-1 text-xs text-muted">Data simulada: {workspace.currentDate ? new Date(workspace.currentDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—'}</p>
                     </div>
                     <Badge variant={active ? 'purple' : 'default'}>{active ? 'ATIVA' : 'SIMULAÇÃO'}</Badge>
                   </div>

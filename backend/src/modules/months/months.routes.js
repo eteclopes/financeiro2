@@ -11,30 +11,33 @@ const { parseBigIntParam } = require('../../utils/parseParams');
 const router = Router();
 router.use(authenticate);
 
-async function syncRealCalendar(req) {
-  if (req.workspace?.type === 'simulation') return null;
-  return calendarClosingService.ensureCalendarMonthsClosed(req.userId);
-}
-
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const autoClose = await syncRealCalendar(req);
     const months = await monthsService.listMonths(req.userId, {
       includeFuture: req.workspace?.type === 'simulation',
     });
-    res.json({ months, mode: req.workspace?.type || 'real', autoClosed: autoClose?.closed?.length || 0 });
+    res.json({ months, mode: req.workspace?.type || 'real' });
   })
 );
 
 router.get(
   '/current',
   asyncHandler(async (req, res) => {
-    const autoClose = await syncRealCalendar(req);
-    const month = req.workspace?.type === 'simulation'
-      ? await monthsService.getSimulationCurrentMonth(req.userId)
-      : await monthsService.getCurrentMonth(req.userId);
-    res.json({ month, mode: req.workspace?.type || 'real', autoClosed: autoClose?.closed?.length || 0 });
+    const month = await monthsService.findCurrentMonthOrThrow(req.userId);
+    res.json({ month, mode: req.workspace?.type || 'real' });
+  })
+);
+
+
+router.post(
+  '/sync-calendar',
+  asyncHandler(async (req, res) => {
+    if (req.workspace?.type === 'simulation') {
+      return res.json({ current: null, closed: [], mode: 'simulation' });
+    }
+    const result = await calendarClosingService.ensureCalendarMonthsClosed(req.userId);
+    return res.json({ ...result, mode: 'real' });
   })
 );
 

@@ -19,3 +19,5 @@ process.env.JWT_ACCESS_SECRET = 'test-secret-com-32-caracteres-no-minimo-ok';
 
 process.env.JWT_ISSUER = 'financehub-api';
 process.env.JWT_AUDIENCE = 'financehub-web';
+
+process.env.JWT_ADMIN_AUDIENCE = 'financehub-admin';

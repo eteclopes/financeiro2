@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     rootDir: backend
-    buildCommand: npm install && npm run build
+    buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /health
     envVars:
@@ -15,25 +15,45 @@ services:
       - key: DIRECT_URL
         sync: false
       - key: CORS_ORIGIN
-        value: https://financeiro2-six.vercel.app,https://admin-frontend-kzu7.vercel.app
+        sync: false
+      - key: CORS_ALLOW_PREVIEWS
+        value: "false"
       - key: CORS_VERCEL_PROJECT
-        value: financeiro2
+        sync: false
       - key: CORS_VERCEL_TEAM
-        value: eteclopes-projects
+        sync: false
       - key: FRONTEND_URL
-        value: https://financeiro2-six.vercel.app
+        sync: false
       - key: ADMIN_FRONTEND_URL
-        value: https://admin-frontend-kzu7.vercel.app
+        sync: false
       - key: APP_TIME_ZONE
         value: America/Sao_Paulo
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_ACCESS_EXPIRES_IN
         value: 15m
+      - key: JWT_ISSUER
+        value: financehub-api
+      - key: JWT_AUDIENCE
+        value: financehub-web
+      - key: JWT_ADMIN_AUDIENCE
+        value: financehub-admin
       - key: JWT_REFRESH_EXPIRES_IN_DAYS
         value: "30"
       - key: PASSWORD_RESET_EXPIRES_IN_HOURS
         value: "1"
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET

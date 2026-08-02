@@ -42,7 +42,11 @@ async function getBehavioralAnalysis(userId, monthId, periods = 6) {
   }
 
   const [incomeRows, expenseRows, cardExpenseRows, debtExpenseRows] = await Promise.all([
-    prisma.income.groupBy({ by: ['monthId'], where: { userId, monthId: { in: sliceIds } }, _sum: { value: true } }),
+    prisma.income.groupBy({
+      by: ['monthId'],
+      where: { userId, monthId: { in: sliceIds } },
+      _sum: { value: true, reversedAmount: true },
+    }),
     prisma.expense.groupBy({
       by: ['monthId'],
       where: { userId, monthId: { in: sliceIds }, deletedAt: null },
@@ -61,7 +65,12 @@ async function getBehavioralAnalysis(userId, monthId, periods = 6) {
   ]);
 
   // ---- Receita e despesa por mês ----
-  const incomeByMonth = seriesFromGroupBy(incomeRows, sliceIds);
+  const incomeByMonth = sliceIds.map((id) => {
+    const row = incomeRows.find((item) => String(item.monthId) === String(id));
+    return row
+      ? round2(Number(row._sum.value ?? 0) - Number(row._sum.reversedAmount ?? 0))
+      : 0;
+  });
   const expenseByMonth = seriesFromGroupBy(expenseRows, sliceIds);
 
   const incomeTrend = linearTrend(incomeByMonth);

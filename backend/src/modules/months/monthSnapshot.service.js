@@ -4,7 +4,7 @@ const { monthDateRange } = require('../../utils/dateTime');
 const { round2 } = require('../../utils/math');
 const { getBalanceAsOf } = require('../_shared/balance');
 
-const SNAPSHOT_VERSION = 1;
+const SNAPSHOT_VERSION = 5;
 const SNAPSHOT_TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 30_000 };
 
 function createdBeforeFilter(recordedBefore) {
@@ -20,52 +20,63 @@ function isPendingAtSnapshot(expense, recordedBefore) {
   return ['pending', 'partial', 'late'].includes(expense.status);
 }
 
-async function getSavingsBalanceAt(userId, client, recordedBefore) {
+async function getSavingsBalanceAt(userId, client, asOf, recordedBefore) {
   const createdFilter = createdBeforeFilter(recordedBefore);
+  const dateFilter = asOf ? { transactionDate: { lte: asOf } } : {};
   const [deposits, withdrawals] = await Promise.all([
     client.savingsTransaction.aggregate({
-      where: { userId, type: 'deposit', ...createdFilter },
+      where: { userId, type: 'deposit', ...dateFilter, ...createdFilter },
       _sum: { value: true },
     }),
     client.savingsTransaction.aggregate({
-      where: { userId, type: 'withdraw', ...createdFilter },
+      where: { userId, type: 'withdraw', ...dateFilter, ...createdFilter },
       _sum: { value: true },
     }),
   ]);
   return round2(Number(deposits._sum.value ?? 0) - Number(withdrawals._sum.value ?? 0));
 }
 
-async function getDebtBalanceAt(userId, client, recordedBefore) {
-  if (!recordedBefore) {
-    const aggregate = await client.debt.aggregate({
-      where: { userId, status: 'active' },
-      _sum: { remainingBalance: true },
+async function getDebtFactsAt(userId, client, recordedBefore) {
+  const debts = await client.debt.findMany({
+    where: { userId, ...(recordedBefore ? { createdAt: { lte: recordedBefore } } : {}) },
+    select: { id: true, totalValue: true, remainingBalance: true, installmentValue: true },
+  });
+  if (debts.length === 0) return { totalBalance: 0, activeCount: 0, remainingInstallments: 0 };
+
+  let remainingByDebt;
+  if (recordedBefore) {
+    const payments = await client.expense.groupBy({
+      by: ['debtId'],
+      where: {
+        userId,
+        debtId: { in: debts.map((debt) => debt.id) },
+        deletedAt: null,
+        updatedAt: { lte: recordedBefore },
+        paidAmount: { gt: 0 },
+      },
+      _sum: { paidAmount: true, reversedAmount: true },
     });
-    return round2(Number(aggregate._sum.remainingBalance ?? 0));
+    const paidByDebt = new Map(payments.map((row) => [
+      String(row.debtId),
+      Number(row._sum.paidAmount ?? 0) - Number(row._sum.reversedAmount ?? 0),
+    ]));
+    remainingByDebt = debts.map((debt) => ({
+      ...debt,
+      remaining: Math.max(Number(debt.totalValue) - (paidByDebt.get(String(debt.id)) ?? 0), 0),
+    }));
+  } else {
+    remainingByDebt = debts.map((debt) => ({ ...debt, remaining: Number(debt.remainingBalance) }));
   }
 
-  const debts = await client.debt.findMany({
-    where: { userId, createdAt: { lte: recordedBefore } },
-    select: { id: true, totalValue: true },
-  });
-  if (debts.length === 0) return 0;
-
-  const payments = await client.expense.groupBy({
-    by: ['debtId'],
-    where: {
-      userId,
-      debtId: { in: debts.map((debt) => debt.id) },
-      deletedAt: null,
-      updatedAt: { lte: recordedBefore },
-      paidAmount: { gt: 0 },
-    },
-    _sum: { paidAmount: true },
-  });
-  const paidByDebt = new Map(payments.map((row) => [String(row.debtId), Number(row._sum.paidAmount ?? 0)]));
-  return round2(debts.reduce(
-    (sum, debt) => sum + Math.max(Number(debt.totalValue) - (paidByDebt.get(String(debt.id)) ?? 0), 0),
-    0
-  ));
+  const active = remainingByDebt.filter((debt) => debt.remaining > 0.009);
+  return {
+    totalBalance: round2(active.reduce((sum, debt) => sum + debt.remaining, 0)),
+    activeCount: active.length,
+    remainingInstallments: active.reduce((sum, debt) => {
+      const nominal = Number(debt.installmentValue);
+      return sum + (nominal > 0 ? Math.max(Math.ceil(round2(debt.remaining) / nominal), 1) : 1);
+    }, 0),
+  };
 }
 
 /**
@@ -83,27 +94,44 @@ async function buildMonthSnapshot(userId, month, client = prisma, {
   const dayBeforeStart = new Date(start.getTime() - 1);
   const incomeRecordedFilter = createdBeforeFilter(recordedBefore);
   const expenseRecordedFilter = createdBeforeFilter(recordedBefore);
-  const paidRecordedFilter = updatedBeforeFilter(recordedBefore);
+  const paidRecordedFilter = createdBeforeFilter(recordedBefore);
   const contributionRecordedFilter = createdBeforeFilter(recordedBefore);
   const savingsRecordedFilter = createdBeforeFilter(recordedBefore);
 
   const [
     incomesAgg,
+    incomeReversalAgg,
     monthExpenses,
     paidAgg,
+    reversedAgg,
     goalMovements,
+    cumulativeGoalMovements,
     cashIncomesAgg,
+    cashIncomeReversalsAgg,
     cashExpensesPaidAgg,
+    cashExpensesReversedAgg,
     digitalIncomesAgg,
+    digitalIncomeReversalsAgg,
     digitalExpensesPaidAgg,
+    digitalExpensesReversedAgg,
     openingBalance,
     closingBalance,
     savingsBalance,
-    totalActiveDebt,
+    debtFacts,
+    healthScore,
   ] = await Promise.all([
     client.income.aggregate({
       where: { userId, monthId: month.id, ...incomeRecordedFilter },
       _sum: { value: true },
+    }),
+    client.income.aggregate({
+      where: {
+        userId,
+        monthId: month.id,
+        reversedAt: { lte: end },
+        ...updatedBeforeFilter(recordedBefore),
+      },
+      _sum: { reversedAmount: true },
     }),
     client.expense.findMany({
       where: { userId, monthId: month.id, deletedAt: null, ...expenseRecordedFilter },
@@ -118,13 +146,34 @@ async function buildMonthSnapshot(userId, month, client = prisma, {
       },
       _sum: { paidAmount: true },
     }),
+    client.expense.aggregate({
+      where: {
+        userId,
+        deletedAt: null,
+        reversedAt: { gte: start, lte: end },
+        ...paidRecordedFilter,
+      },
+      _sum: { reversedAmount: true },
+    }),
     client.goalContribution.findMany({
       where: { monthId: month.id, goal: { userId }, ...contributionRecordedFilter },
       select: { type: true, value: true },
     }),
+    client.goalContribution.findMany({
+      where: {
+        goal: { userId },
+        contributionDate: { lte: end },
+        ...contributionRecordedFilter,
+      },
+      select: { type: true, value: true },
+    }),
     client.income.aggregate({
-      where: { userId, monthId: month.id, origin: 'physical', ...incomeRecordedFilter },
+      where: { userId, origin: 'physical', effectiveDate: { gte: start, lte: end }, ...incomeRecordedFilter },
       _sum: { value: true },
+    }),
+    client.income.aggregate({
+      where: { userId, origin: 'physical', reversedAt: { gte: start, lte: end }, ...updatedBeforeFilter(recordedBefore) },
+      _sum: { reversedAmount: true },
     }),
     client.expense.aggregate({
       where: {
@@ -136,9 +185,23 @@ async function buildMonthSnapshot(userId, month, client = prisma, {
       },
       _sum: { paidAmount: true },
     }),
+    client.expense.aggregate({
+      where: {
+        userId,
+        paymentMethod: 'cash',
+        deletedAt: null,
+        reversedAt: { gte: start, lte: end },
+        ...paidRecordedFilter,
+      },
+      _sum: { reversedAmount: true },
+    }),
     client.income.aggregate({
-      where: { userId, monthId: month.id, origin: 'digital', ...incomeRecordedFilter },
+      where: { userId, origin: 'digital', effectiveDate: { gte: start, lte: end }, ...incomeRecordedFilter },
       _sum: { value: true },
+    }),
+    client.income.aggregate({
+      where: { userId, origin: 'digital', reversedAt: { gte: start, lte: end }, ...updatedBeforeFilter(recordedBefore) },
+      _sum: { reversedAmount: true },
     }),
     client.expense.aggregate({
       where: {
@@ -150,15 +213,29 @@ async function buildMonthSnapshot(userId, month, client = prisma, {
       },
       _sum: { paidAmount: true },
     }),
+    client.expense.aggregate({
+      where: {
+        userId,
+        paymentMethod: { not: 'cash' },
+        deletedAt: null,
+        reversedAt: { gte: start, lte: end },
+        ...paidRecordedFilter,
+      },
+      _sum: { reversedAmount: true },
+    }),
     getBalanceAsOf(userId, dayBeforeStart, client, recordedBefore),
     getBalanceAsOf(userId, end, client, recordedBefore),
-    getSavingsBalanceAt(userId, client, recordedBefore),
-    getDebtBalanceAt(userId, client, recordedBefore),
+    getSavingsBalanceAt(userId, client, end, recordedBefore),
+    getDebtFactsAt(userId, client, recordedBefore),
+    client.financialHealthScore.findUnique({
+      where: { monthId: month.id },
+      select: { score: true, createdAt: true },
+    }),
   ]);
 
-  const incomeTotal = Number(incomesAgg._sum.value ?? 0);
+  const incomeTotal = round2(Number(incomesAgg._sum.value ?? 0) - Number(incomeReversalAgg._sum.reversedAmount ?? 0));
   const expensesPlanned = round2(monthExpenses.reduce((sum, expense) => sum + Number(expense.value), 0));
-  const expensesPaid = Number(paidAgg._sum.paidAmount ?? 0);
+  const expensesPaid = round2(Number(paidAgg._sum.paidAmount ?? 0) - Number(reversedAgg._sum.reversedAmount ?? 0));
   const outstanding = round2(monthExpenses.reduce((sum, expense) => {
     if (!isPendingAtSnapshot(expense, recordedBefore)) return sum;
     const paidAtSnapshot = recordedBefore && expense.updatedAt > recordedBefore ? 0 : Number(expense.paidAmount ?? 0);
@@ -166,6 +243,10 @@ async function buildMonthSnapshot(userId, month, client = prisma, {
   }, 0));
   const pendingExpensesCount = monthExpenses.filter((expense) => isPendingAtSnapshot(expense, recordedBefore)).length;
   const goalNet = round2(goalMovements.reduce(
+    (sum, item) => sum + (item.type === 'contribution' ? Number(item.value) : -Number(item.value)),
+    0
+  ));
+  const goalsBalance = round2(cumulativeGoalMovements.reduce(
     (sum, item) => sum + (item.type === 'contribution' ? Number(item.value) : -Number(item.value)),
     0
   ));
@@ -210,10 +291,26 @@ async function buildMonthSnapshot(userId, month, client = prisma, {
     savingsBalance,
     savingsNet,
     goalNet,
-    physicalCash: round2(Number(cashIncomesAgg._sum.value ?? 0) - Number(cashExpensesPaidAgg._sum.paidAmount ?? 0)),
-    digitalCash: round2(Number(digitalIncomesAgg._sum.value ?? 0) - Number(digitalExpensesPaidAgg._sum.paidAmount ?? 0)),
-    totalActiveDebt,
+    goalsBalance,
+    physicalCash: round2(
+      Number(cashIncomesAgg._sum.value ?? 0)
+      - Number(cashIncomeReversalsAgg._sum.reversedAmount ?? 0)
+      - Number(cashExpensesPaidAgg._sum.paidAmount ?? 0)
+      + Number(cashExpensesReversedAgg._sum.reversedAmount ?? 0)
+    ),
+    digitalCash: round2(
+      Number(digitalIncomesAgg._sum.value ?? 0)
+      - Number(digitalIncomeReversalsAgg._sum.reversedAmount ?? 0)
+      - Number(digitalExpensesPaidAgg._sum.paidAmount ?? 0)
+      + Number(digitalExpensesReversedAgg._sum.reversedAmount ?? 0)
+    ),
+    totalActiveDebt: debtFacts.totalBalance,
+    activeDebtsCount: debtFacts.activeCount,
+    remainingInstallments: debtFacts.remainingInstallments,
     pendingExpensesCount,
+    financialHealthScore: healthScore && (!recordedBefore || healthScore.createdAt <= recordedBefore)
+      ? Number(healthScore.score)
+      : null,
   };
 }
 

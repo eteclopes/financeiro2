@@ -63,6 +63,7 @@ enum ExpenseStatus {
   /// residual (`residualAmount`) e é somado à parcela seguinte. Sai das
   /// pendências do mês; não é atraso.
   flex_paid
+  reversed
 }
 
 enum CardInvoiceStatus {
@@ -133,6 +134,11 @@ enum UserRole {
   admin
 }
 
+enum AuthClient {
+  user_app
+  admin_app
+}
+
 enum SimulationWorkspaceStatus {
   active
   archived
@@ -162,10 +168,12 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
   isSimulationProfile Boolean @default(false) @map("is_simulation_profile")
+  timezone     String   @default("America/Sao_Paulo") @db.VarChar(80)
 
   ownedSimulationWorkspaces SimulationWorkspace[] @relation("SimulationWorkspaceOwner")
   simulationWorkspaceProfile SimulationWorkspace? @relation("SimulationWorkspaceProfile")
   categories         Category[]
+  categoryBudgets    CategoryBudget[]
   refreshTokens      RefreshToken[]
   passwordResets     PasswordReset[]
   months             Month[]
@@ -201,6 +209,8 @@ model SimulationWorkspace {
   status        SimulationWorkspaceStatus @default(active)
   startMonth    Int                       @map("start_month") @db.SmallInt
   startYear     Int                       @map("start_year") @db.SmallInt
+  currentDate   DateTime                  @map("current_date") @db.Date
+  initialBalance Decimal                  @default(0) @map("initial_balance") @db.Decimal(12, 2)
   createdAt     DateTime                  @default(now()) @map("created_at")
   updatedAt     DateTime                  @updatedAt @map("updated_at")
 
@@ -220,6 +230,7 @@ model RefreshToken {
   /// Detectar reuso de um token já rotacionado permite revogar a sessão
   /// inteira, em vez de apenas recusar aquela requisição.
   familyId   String    @map("family_id") @db.VarChar(36)
+  client     AuthClient @default(user_app)
   expiresAt  DateTime  @map("expires_at")
   revokedAt  DateTime? @map("revoked_at")
   createdAt  DateTime  @default(now()) @map("created_at")
@@ -228,6 +239,7 @@ model RefreshToken {
 
   @@index([userId])
   @@index([familyId], map: "refresh_tokens_family_id_idx")
+  @@index([userId, client, revokedAt], map: "refresh_tokens_user_client_revoked_idx")
   @@index([userId, revokedAt], map: "refresh_tokens_user_id_revoked_at_idx")
   @@map("refresh_tokens")
 }
@@ -252,9 +264,6 @@ model Category {
   name      String       @db.VarChar(80)
   type      CategoryType
   isDefault Boolean      @default(false) @map("is_default")
-  // Orçamento mensal opcional (só faz sentido para categorias de despesa).
-  // Null = sem limite definido, comportamento atual preservado.
-  monthlyLimit Decimal?  @map("monthly_limit") @db.Decimal(12, 2)
   createdAt DateTime     @default(now()) @map("created_at")
 
   user                User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -264,10 +273,28 @@ model Category {
   debts               Debt[]
   cardPurchases       CardPurchase[]
   expenses            Expense[]
+  budgets             CategoryBudget[]
 
   @@unique([userId, name, type])
   @@index([type])
   @@map("categories")
+}
+
+
+model CategoryBudget {
+  id           BigInt   @id @default(autoincrement())
+  userId       BigInt   @map("user_id")
+  categoryId   BigInt   @map("category_id")
+  monthlyLimit Decimal  @map("monthly_limit") @db.Decimal(12, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId])
+  @@index([userId])
+  @@map("category_budgets")
 }
 
 model Month {
@@ -325,6 +352,9 @@ model Income {
   paymentMethod PaymentMethod @map("payment_method")
   origin        IncomeOrigin  @default(digital)
   incomeDate    DateTime      @map("income_date") @db.Date
+  effectiveDate DateTime      @default(now()) @map("effective_date") @db.Date
+  reversedAt    DateTime?     @map("reversed_at") @db.Date
+  reversedAmount Decimal      @default(0) @map("reversed_amount") @db.Decimal(12, 2)
   observation   String?       @db.VarChar(255)
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
@@ -340,6 +370,8 @@ model Income {
   @@unique([templateId, monthId], map: "incomes_template_id_month_id_key")
   @@index([userId, monthId])
   @@index([userId, incomeDate], map: "incomes_user_id_income_date_idx")
+  @@index([userId, effectiveDate], map: "incomes_user_id_effective_date_idx")
+  @@index([userId, reversedAt], map: "incomes_user_id_reversed_at_idx")
   @@map("incomes")
 }
 
@@ -473,6 +505,8 @@ model Expense {
   /// Parcela que recebeu este saldo residual (o acréscimo dela).
   carriedToExpenseId BigInt?  @map("carried_to_expense_id")
   paidAt          DateTime?     @map("paid_at") @db.Date
+  reversedAt      DateTime?     @map("reversed_at") @db.Date
+  reversedAmount  Decimal       @default(0) @map("reversed_amount") @db.Decimal(12, 2)
   status          ExpenseStatus @default(pending)
   paymentMethod   PaymentMethod? @map("payment_method")
   fixedTemplateId BigInt?       @map("fixed_template_id")
@@ -499,6 +533,7 @@ model Expense {
   // 20260721030000; sem isso o Prisma enxergaria drift de nome.
   @@unique([fixedTemplateId, competenceMonth, competenceYear], map: "expenses_fixed_template_competence_key")
   @@index([userId, paidAt], map: "expenses_user_id_paid_at_idx")
+  @@index([userId, reversedAt], map: "expenses_user_id_reversed_at_idx")
   @@index([debtId, status], map: "expenses_debt_id_status_idx")
   @@map("expenses")
 }

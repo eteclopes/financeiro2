@@ -5,6 +5,7 @@ const { todayUtcDate } = require('../../utils/dateTime');
 
 const { clampDay, resolveInvoiceForPurchase } = require('../../utils/cardCycle');
 const { addMonths } = require('../../utils/monthMath');
+const { aggregateIncome, netIncomeFromAggregate } = require('../_shared/incomeMetrics');
 
 function estimateCardPurchaseWindow(card, purchaseDate = todayUtcDate()) {
   const { closingDate, dueDate } = resolveInvoiceForPurchase(
@@ -113,14 +114,17 @@ async function getPlanningOverview(userId, monthId) {
     }),
     prisma.card.findMany({ where: { userId, active: true }, orderBy: { createdAt: 'asc' } }),
     prisma.cardInvoice.findMany({
-      where: { card: { userId }, status: { in: ['open', 'closed'] } },
+      where: {
+        card: { userId },
+        expenses: { some: { deletedAt: null, status: { in: ['pending', 'partial', 'late'] } } },
+      },
       include: {
         card: { select: { id: true, name: true, color: true } },
-        expenses: { where: { deletedAt: null, status: { not: 'paid' } }, select: { value: true } },
+        expenses: { where: { deletedAt: null, status: { in: ['pending', 'partial', 'late'] } }, select: { value: true } },
       },
       orderBy: [{ referenceYear: 'asc' }, { referenceMonth: 'asc' }],
     }),
-    prisma.income.aggregate({ where: { userId, monthId }, _sum: { value: true } }),
+    aggregateIncome({ userId, monthId }),
   ]);
 
   const usedExpenses = cards.length === 0 ? [] : await prisma.expense.findMany({
@@ -187,7 +191,7 @@ async function getPlanningOverview(userId, monthId) {
 
   const debtPlan = buildDebtPlan(debts);
   const goalPlans = goals.map((goal) => buildGoalPlan(goal, today));
-  const monthlyIncome = Number(income._sum.value ?? 0);
+  const monthlyIncome = netIncomeFromAggregate(income);
   const smartAlerts = [];
 
   const criticalCard = cardPlans.find((card) => card.usagePercentage >= 80);

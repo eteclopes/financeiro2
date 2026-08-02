@@ -95,8 +95,24 @@ export default function IncomesPage() {
   async function handleDelete() {
     setDeleting(true);
     try {
-      await incomesApi.delete(deleteTarget.id);
-      toast.success('Receita removida.'); setDeleteTarget(null); load();
+      let response;
+      try {
+        response = await incomesApi.delete(deleteTarget.id);
+      } catch (error) {
+        const apiError = error?.response?.data?.error;
+        if (apiError?.code !== 'INCOME_DELETE_NEEDS_CONFIRMATION') throw error;
+        const resulting = apiError?.details?.resultingBalance;
+        const confirmed = window.confirm(
+          `Parte desta receita já foi usada. A correção deixará o saldo em ${formatCurrency(resulting)}. Deseja continuar?`
+        );
+        if (!confirmed) return;
+        response = await incomesApi.delete(deleteTarget.id, true);
+      }
+      toast.success(response?.data?.reversed
+        ? 'Receita estornada. O histórico foi preservado.'
+        : 'Receita removida.');
+      setDeleteTarget(null);
+      load();
     } catch (e) { toast.error(extractErrorMessage(e, 'Erro ao excluir.')); }
     finally { setDeleting(false); }
   }
@@ -111,7 +127,9 @@ export default function IncomesPage() {
     finally { setStoppingRecurring(false); }
   }
 
-  const total = incomes.reduce((s, i) => s + Number(i.value), 0);
+  const total = incomes.reduce((sum, income) => (
+    sum + Number(income.value) - Number(income.reversedAmount ?? 0)
+  ), 0);
   const selectedMonthDateRange = ledgerMonthDateRange(selectedMonth);
 
   return (
@@ -142,9 +160,16 @@ export default function IncomesPage() {
               <tbody className="divide-y divide-border/60 dark:divide-white/[0.06]">
                 {incomes.map((inc) => (
                   <tr key={inc.id} className="hover:bg-subtle/40 dark:hover:bg-white/[0.03] transition-colors">
-                    <td data-label="Descrição" className="table-cell font-semibold text-slate-800 dark:text-zinc-200"><UserText>{inc.description}</UserText></td>
+                    <td data-label="Descrição" className="table-cell font-semibold text-slate-800 dark:text-zinc-200">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <UserText>{inc.description}</UserText>
+                        {Number(inc.reversedAmount ?? 0) > 0 && <Badge variant="danger">Estornada</Badge>}
+                      </div>
+                    </td>
                     <td data-label="Categoria" className="table-cell text-muted">{inc.category?.name}</td>
-                    <td data-label="Valor" className="table-cell font-mono tabular-nums font-bold text-primary-dark dark:text-primary-light">{formatCurrency(inc.value)}</td>
+                    <td data-label="Valor" className={`table-cell font-mono tabular-nums font-bold ${Number(inc.reversedAmount ?? 0) > 0 ? 'text-muted line-through' : 'text-primary-dark dark:text-primary-light'}`}>
+                      {formatCurrency(Number(inc.value) - Number(inc.reversedAmount ?? 0))}
+                    </td>
                     <td data-label="Data" className="table-cell text-muted">{formatShortDate(inc.incomeDate)}</td>
                     <td data-label="Forma" className="table-cell"><Badge>{getPaymentMethodLabel(inc.origin === 'physical' ? PHYSICAL_CASH_METHOD : ACCOUNT_BALANCE_METHOD)}</Badge></td>
                     <td data-label="Recorrente" className="table-cell">
@@ -159,8 +184,14 @@ export default function IncomesPage() {
                     </td>
                     <td data-label="Ações" className="table-cell">
                       <div className="flex flex-wrap gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(inc)}>Editar</Button>
-                        <Button variant="ghost" size="sm" className="text-danger" onClick={() => setDeleteTarget(inc)}>Excluir</Button>
+                        {Number(inc.reversedAmount ?? 0) > 0 ? (
+                          <span className="text-xs text-muted">Histórico preservado</span>
+                        ) : (
+                          <>
+                            <Button variant="ghost" size="sm" onClick={() => openEdit(inc)}>Editar</Button>
+                            <Button variant="ghost" size="sm" className="text-danger" onClick={() => setDeleteTarget(inc)}>Excluir</Button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -221,8 +252,8 @@ export default function IncomesPage() {
 
       <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
         loading={deleting} title="Excluir receita"
-        description={`Excluir "${deleteTarget?.description}"? Esta ação não pode ser desfeita.`}
-        confirmLabel="Excluir" />
+        description={`Corrigir "${deleteTarget?.description}"? Se a receita já afetou um período encerrado, será criado um estorno para preservar o histórico.`}
+        confirmLabel="Confirmar correção" />
 
       <ConfirmDialog open={!!stopRecurringTarget} onClose={() => setStopRecurringTarget(null)} onConfirm={handleStopRecurring}
         loading={stoppingRecurring} title="Parar recorrência" variant="primary"

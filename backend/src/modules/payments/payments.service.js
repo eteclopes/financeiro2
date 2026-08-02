@@ -21,9 +21,6 @@ async function getPayableItems(userId, monthId, { dueOnly = false } = {}) {
     select: { month: true, year: true },
   });
 
-  // Mantém os status em dia (fatura cujo fechamento já passou vira 'closed').
-  await cardInvoicesService.syncInvoiceStatuses(userId);
-
   // QUAIS FATURAS ENTRAM NA LISTA
   //
   // Por padrão, TODAS as faturas com saldo em aberto. Uma compra feita em
@@ -41,7 +38,7 @@ async function getPayableItems(userId, monthId, { dueOnly = false } = {}) {
     const endOfTargetMonth = new Date(Date.UTC(targetMonth.year, targetMonth.month, 0, 23, 59, 59, 999));
     invoiceScope = {
       OR: [
-        { status: 'closed' },
+        { closingDate: { lt: todayUtcDate() } },
         { dueDate: { lte: endOfTargetMonth } },
       ],
     };
@@ -113,7 +110,11 @@ async function getPayableItems(userId, monthId, { dueOnly = false } = {}) {
       orderBy: { dueDate: 'asc' },
     }),
     prisma.cardInvoice.findMany({
-      where: { card: { userId }, status: { not: 'paid' }, ...invoiceScope },
+      where: {
+        card: { userId },
+        expenses: { some: { deletedAt: null, status: { in: ['pending', 'partial', 'late'] } } },
+        ...invoiceScope,
+      },
       include: { card: { select: { id: true, name: true } } },
       orderBy: { dueDate: 'asc' },
     }),
@@ -123,7 +124,7 @@ async function getPayableItems(userId, monthId, { dueOnly = false } = {}) {
   const pendingByInvoice = invoiceIds.length
     ? await prisma.expense.groupBy({
         by: ['cardInvoiceId'],
-        where: { cardInvoiceId: { in: invoiceIds }, deletedAt: null, status: { not: 'paid' } },
+        where: { cardInvoiceId: { in: invoiceIds }, deletedAt: null, status: { in: ['pending', 'partial', 'late'] } },
         _sum: { value: true, paidAmount: true },
       })
     : [];
@@ -177,10 +178,10 @@ async function getPayableItems(userId, monthId, { dueOnly = false } = {}) {
       dueDate: invoice.dueDate,
       closingDate: invoice.closingDate,
       amount: outstandingByInvoice.get(String(invoice.id)) ?? 0,
-      status: invoice.status,
-      // Fatura ainda aberta: pode receber novos lançamentos até fechar.
-      // A tela avisa para o usuário saber que está adiantando.
-      stillOpen: invoice.status === 'open',
+      status: cardInvoicesService.invoiceStatusWithOutstanding(invoice.closingDate),
+      // O estado é derivado do fechamento, não de um campo persistido que pode
+      // ficar defasado apenas pela passagem do tempo.
+      stillOpen: !cardInvoicesService.isInvoiceCycleClosed(invoice.closingDate),
     }))
     .filter((invoice) => invoice.amount > 0);
 
@@ -281,6 +282,7 @@ async function payBillsBatch(userId, { expenseIds = [], invoiceIds = [], payment
         amount,
         fullValue: Number(inst.value),
         priorPaid: Number(inst.paidAmount ?? 0),
+        priorPaidAt: inst.paidAt ?? null,
         debtId: inst.debtId,
       });
     }
@@ -295,7 +297,7 @@ async function payBillsBatch(userId, { expenseIds = [], invoiceIds = [], payment
       `;
       if (rows.length === 0) throw new AppError('Uma ou mais faturas não foram encontradas.', 404, 'INVOICE_NOT_FOUND');
       const pending = await tx.expense.findMany({
-        where: { cardInvoiceId: invoiceId, deletedAt: null, status: { not: 'paid' } },
+        where: { cardInvoiceId: invoiceId, deletedAt: null, status: { in: ['pending', 'partial', 'late'] } },
         select: { id: true, value: true, paidAmount: true },
       });
       const amount = round2(pending.reduce((sum, item) => sum + (Number(item.value) - Number(item.paidAmount ?? 0)), 0));
@@ -328,7 +330,7 @@ async function payBillsBatch(userId, { expenseIds = [], invoiceIds = [], payment
     for (const bill of billsToPay) {
       await tx.expense.update({
         where: { id: bill.id },
-        data: { paidAmount: bill.value, paidAt, status: 'paid', paymentMethod: method },  // quita a conta pelo valor registrado
+        data: { paidAmount: bill.value, paidAt: bill.paidAt || paidAt, status: 'paid', paymentMethod: method },  // quita a conta pelo valor registrado
       });
     }
 
@@ -347,7 +349,7 @@ async function payBillsBatch(userId, { expenseIds = [], invoiceIds = [], payment
           where: { id: dp.expenseId },
           data: {
             paidAmount: newPaid,
-            paidAt,
+            paidAt: dp.priorPaidAt || paidAt,
             paymentMethod: method,
             residualAmount: newResidual,
             residualSettledAt: newResidual <= SETTLE_TOLERANCE ? paidAt : null,
@@ -370,7 +372,7 @@ async function payBillsBatch(userId, { expenseIds = [], invoiceIds = [], payment
       const isFull = newPaid >= dp.fullValue - SETTLE_TOLERANCE;
       await tx.expense.update({
         where: { id: dp.expenseId },
-        data: { paidAmount: newPaid, paidAt, status: isFull ? 'paid' : 'partial', paymentMethod: method },
+        data: { paidAmount: newPaid, paidAt: dp.priorPaidAt || paidAt, status: isFull ? 'paid' : 'partial', paymentMethod: method },
       });
     }
     // Atualiza o saldo devedor de cada dívida (uma vez por dívida).
@@ -389,9 +391,15 @@ async function payBillsBatch(userId, { expenseIds = [], invoiceIds = [], payment
     for (const invoice of invoicesToPay) {
       await tx.expense.updateMany({
         where: { id: { in: invoice.pendingIds } },
-        data: { status: 'paid', paymentMethod: method, paidAt },
+        data: { status: 'paid', paymentMethod: method },
       });
-      await tx.$executeRaw`UPDATE expenses SET paid_amount = value WHERE id = ANY(${invoice.pendingIds}::bigint[])`;
+      // `paidAt` é a data do PRIMEIRO efeito no caixa e não pode ser
+      // reescrita em uma segunda quitação da mesma fatura aberta.
+      await tx.$executeRaw`
+        UPDATE expenses
+        SET paid_amount = value, paid_at = COALESCE(paid_at, ${paidAt}::date)
+        WHERE id = ANY(${invoice.pendingIds}::bigint[])
+      `;
       await tx.cardInvoice.update({
         where: { id: invoice.invoiceId },
         data: { status: invoice.finalStatus, paidAt },

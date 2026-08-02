@@ -16,4 +16,13 @@ router.get(
   })
 );
 
+router.post(
+  '/refresh',
+  asyncHandler(async (req, res) => {
+    const monthId = parseMonthId(req.body || req.query);
+    const result = await service.computeAndStore(req.userId, monthId);
+    res.json(result);
+  })
+);
+
 module.exports = router;

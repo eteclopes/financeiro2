@@ -21,12 +21,18 @@ const prisma = {
     },
     findMany: async ({ take, select } = {}) => users.slice(0, take || users.length).map((u) => ({ ...u })),
     findUnique: async ({ where }) => users.find((u) => u.id === where.id) || null,
-    delete: async ({ where }) => {
-      const index = users.findIndex((u) => u.id === where.id);
-      if (index < 0) throw new Error('missing user');
-      const [deleted] = users.splice(index, 1);
-      deletedUserId = deleted.id;
-      return deleted;
+    deleteMany: async ({ where }) => {
+      const ids = where.id.in;
+      let count = 0;
+      for (const id of ids) {
+        const index = users.findIndex((u) => u.id === id);
+        if (index >= 0) {
+          const [deleted] = users.splice(index, 1);
+          deletedUserId = deleted.id;
+          count += 1;
+        }
+      }
+      return { count };
     },
     update: async ({ where, data, select }) => {
       const user = users.find((u) => u.id === where.id);
@@ -58,6 +64,7 @@ const prisma = {
     deleteMany: async () => ({ count: 0 }),
   },
   $queryRaw: async () => [{ '?column?': 1 }],
+  $executeRawUnsafe: async () => 1,
   $transaction: async (operations) => typeof operations === 'function'
     ? operations(prisma)
     : Promise.all(operations),

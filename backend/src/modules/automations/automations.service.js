@@ -231,7 +231,7 @@ async function getNextInvoicePreview(userId, nextRef, config) {
       where: { card: { userId } },
       include: {
         expenses: {
-          where: { deletedAt: null, status: { not: 'paid' } },
+          where: { deletedAt: null, status: { in: ['pending', 'partial', 'late'] } },
           select: { value: true, paidAmount: true },
         },
       },

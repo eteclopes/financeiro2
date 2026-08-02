@@ -25,24 +25,30 @@ async function getCurrentMonth(userId, client = prisma) {
   return getOrCreateMonth(userId, month, year, client);
 }
 
+
+async function findCurrentMonthOrThrow(userId, client = prisma) {
+  const { month, year } = getCalendarDateParts();
+  const current = await client.month.findUnique({
+    where: { userId_month_year: { userId, month, year } },
+  });
+  if (!current) {
+    throw new AppError(
+      'O calendário financeiro ainda não foi sincronizado. Atualize a lista de meses.',
+      409,
+      'CALENDAR_SYNC_REQUIRED'
+    );
+  }
+  return current;
+}
+
 /**
  * A simulação não segue o calendário real. Seu "mês atual" é o primeiro mês
  * aberto da linha do tempo manual. Isso evita criar agosto/2026 dentro de uma
  * simulação que começou, por exemplo, em janeiro/2027.
  */
 async function getSimulationCurrentMonth(userId, client = prisma) {
-  const firstOpen = await client.month.findFirst({
-    where: { userId, status: 'open' },
-    orderBy: [{ year: 'asc' }, { month: 'asc' }],
-  });
-  if (firstOpen) return firstOpen;
-
-  const latest = await client.month.findFirst({
-    where: { userId },
-    orderBy: [{ year: 'desc' }, { month: 'desc' }],
-  });
-  if (latest) return latest;
-
+  // O relógio do workspace já foi carregado no contexto da requisição.
+  // Nunca há fallback para o calendário real.
   const { month, year } = getCalendarDateParts();
   return getOrCreateMonth(userId, month, year, client);
 }
@@ -118,6 +124,7 @@ function assertMonthIsOpen(month) {
 module.exports = {
   getOrCreateMonth,
   getCurrentMonth,
+  findCurrentMonthOrThrow,
   getSimulationCurrentMonth,
   listMonths,
   getMonthOrThrow,

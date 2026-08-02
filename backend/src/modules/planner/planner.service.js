@@ -1,5 +1,6 @@
 const prisma = require('../../config/prisma');
 const { round2 } = require('../../utils/math');
+const { todayUtcDate } = require('../../utils/dateTime');
 const { getAvailableBalance } = require('../_shared/balance');
 const { getAverageRecentExpense } = require('../_shared/financialMetrics');
 const monthsService = require('../months/months.service');
@@ -101,7 +102,7 @@ async function getMonthlyPlan(userId, monthId) {
       const missing = Math.max(Number(goal.targetValue) - saved, 0);
       if (missing <= 0) continue;
       const monthsLeft = goal.targetDate
-        ? Math.max(monthsBetween(new Date(), new Date(goal.targetDate)), 1)
+        ? Math.max(monthsBetween(todayUtcDate(), new Date(goal.targetDate)), 1)
         : 12;
       neededPerMonth += missing / monthsLeft;
     }

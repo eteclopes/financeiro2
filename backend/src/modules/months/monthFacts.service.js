@@ -59,10 +59,14 @@ const FACT_DEFAULTS = Object.freeze({
   savingsBalance: 0,
   savingsNet: 0,
   goalNet: 0,
+  goalsBalance: 0,
   physicalCash: 0,
   digitalCash: 0,
   totalActiveDebt: 0,
+  activeDebtsCount: 0,
+  remainingInstallments: 0,
   pendingExpensesCount: 0,
+  financialHealthScore: null,
 });
 
 /**
@@ -78,6 +82,10 @@ function normalizeFacts(facts) {
       if (Number.isFinite(value)) safe[key] = value;
     }
   }
+  const rawHealth = facts?.financialHealthScore;
+  safe.financialHealthScore = rawHealth == null || !Number.isFinite(Number(rawHealth))
+    ? null
+    : Number(rawHealth);
   return {
     ...safe,
     source: facts?.source ?? 'live',

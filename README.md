@@ -1,57 +1,65 @@
-# FinançasPro
+# FinançasPro — V30 estabilizada
 
-Aplicação de gestão financeira pessoal com frontend React/Vite e API Express/Prisma/PostgreSQL.
+Gestor financeiro pessoal com dois ambientes isolados:
 
-## Estrutura
+- `frontend/`: aplicação dos usuários;
+- `admin-frontend/`: painel administrativo separado;
+- `backend/`: API Express, Prisma e PostgreSQL;
+- `.github/workflows/ci.yml`: build, testes e PostgreSQL descartável.
+
+## Invariantes do produto
+
+1. **Receita instantânea:** toda receita cadastrada aumenta o saldo imediatamente, inclusive com competência futura. `incomeDate` é a competência; `effectiveDate` registra quando entrou no caixa.
+2. **Histórico Real imutável:** meses anteriores são fechados automaticamente pela data civil validada do dispositivo/fuso. Pagamentos tardios e estornos são eventos novos; fatos antigos não são reescritos.
+3. **Simulação isolada:** cada cenário possui perfil, saldo inicial, relógio, meses, cartões, faturas, dívidas, metas e reservas próprios.
+4. **Reabertura recalculável:** reabrir uma simulação invalida snapshots e regenera recorrências, parcelas, faturas e saldos derivados a partir daquele mês.
+5. **Cartão por ciclo:** cobrança + fechamento escolhem a fatura; vencimento define pagamento. Pagar antecipadamente não encerra o ciclo.
+6. **Sem exclusão de dinheiro realizado:** receitas/despesas que já afetaram caixa são estornadas. Exclusão física fica restrita a registros sem efeito financeiro ou a simulações reabertas.
+7. **Sessões separadas:** usuário e administrador usam cookies, refresh tokens e audiência JWT diferentes.
+
+A especificação completa está em `backend/docs/FINANCIAL-INVARIANTS.md`.
+
+## Modo Real
+
+- Não há botão manual para fechar mês aberto.
+- Antes de qualquer mutação financeira, o backend sincroniza o calendário e encerra meses anteriores ainda abertos.
+- O PostgreSQL possui uma segunda barreira que impede reescrita estrutural de mês fechado ou já passado.
+- Leituras não criam nem reparam registros; sincronizações e reparos usam comandos `POST` explícitos.
+- Mês fechado é exibido exclusivamente pelo snapshot congelado, sem misturar cartões, metas ou dívidas atuais.
+
+## Modo Simulação
+
+- Plano Básico: 1 cenário ativo; Plano Pro: até 10.
+- O cenário possui `currentDate` própria e não usa o relógio real.
+- O usuário fecha e reabre meses manualmente.
+- Ao reabrir, meses posteriores são invalidados e derivados são reconstruídos em ordem cronológica.
+- É possível começar com saldo inicial e copiar categorias, cartões, recorrências e dívidas ativas, sem copiar transações reais realizadas.
+
+## Autenticação
+
+Aplicação normal:
 
 ```text
-frontend/        interface dos usuários
-admin-frontend/  painel administrativo separado
-backend/         API compartilhada, regras, Prisma e testes
-render.yaml   configuração de deploy do backend no Render
+/api/auth/*
+cookie __Host-financehub_refresh (produção)
+audience financehub-web
 ```
 
-O módulo separado de Assinaturas não faz parte do sistema. Cobranças recorrentes, mensalidades e anuidades devem ser cadastradas em **Despesas Fixas**.
+Painel administrativo:
 
-## Modos financeiros
+```text
+/api/admin-auth/*
+cookie __Secure-financehub_admin_refresh (produção, Path=/api/admin-auth)
+audience financehub-admin
+```
 
-### Financeiro real
+Refresh tokens são de uso único. O frontend serializa a rotação entre abas. Redefinir a senha invalida todos os links anteriores e todas as sessões da conta.
 
-- É o histórico oficial da conta.
-- Não possui botão manual para encerrar um mês aberto.
-- Na primeira consulta após a virada do calendário local, todos os meses anteriores ainda abertos são encerrados em ordem.
-- Se o aplicativo permanecer aberto durante a virada, ele detecta a mudança de data e sincroniza a lista de meses.
-- Meses encerrados continuam imutáveis; a ação **Reparar mês** permanece disponível apenas para regenerar lançamentos faltantes com segurança.
+## Desenvolvimento local
 
-### Simulações
+Requer Node.js `>=20.19` e PostgreSQL.
 
-- Cada cenário possui perfil financeiro, meses, cartões, faturas, receitas, despesas, dívidas, metas e reservas totalmente isolados do ambiente real.
-- O usuário escolhe o mês e o ano inicial da linha do tempo.
-- O fechamento permanece manual e cria o mês seguinte como no fluxo tradicional.
-- Um mês simulado encerrado pode ser reaberto; os meses posteriores também são reabertos para permitir correções no cenário.
-- Ao criar o cenário, é possível copiar cartões, categorias, receitas recorrentes, despesas fixas e o saldo devedor atual das dívidas, sem copiar movimentações reais já realizadas.
-- Plano Básico: até 1 simulação ativa. Plano Pro: até 10 simulações ativas.
-
-O seletor **Financeiro real / Simulações** fica no topo do frontend. Toda requisição financeira envia `X-Workspace-ID`, e o backend confirma a propriedade do cenário antes de trocar a identidade financeira interna.
-
-## Regras principais
-
-- Toda receita cadastrada aumenta o saldo imediatamente, inclusive quando possui data futura.
-- Pagamentos, aportes e depósitos que usam o saldo não podem ultrapassar o valor disponível.
-- Compras e despesas fixas no crédito exigem cartão ativo e limite disponível.
-- A data real da cobrança é comparada ao fechamento do cartão para definir a fatura.
-- O vencimento do cartão define quando a fatura deve ser paga.
-- O limite é reduzido quando a cobrança é lançada e liberado quando a fatura é quitada.
-- Meses fechados preservam os dados registrados no fechamento.
-
-## Stack
-
-- **Frontend do usuário:** React 18, Vite, React Router, Zustand, Tailwind CSS e Recharts.
-- **Frontend administrativo:** React 18 e Vite, implantado separadamente.
-- **Backend:** Node.js, Express, Prisma ORM, PostgreSQL, Zod e JWT.
-- **Testes:** Jest e verificações estáticas do projeto.
-
-## Backend local
+### Backend
 
 ```bash
 cd backend
@@ -63,29 +71,7 @@ node prisma/seed.js
 npm run dev
 ```
 
-Variáveis essenciais:
-
-- `DATABASE_URL`: conexão usada pela API em execução.
-- `DIRECT_URL`: conexão direta usada pelo Prisma Migrate.
-- `JWT_ACCESS_SECRET`: segredo forte para autenticação.
-- `CORS_ORIGIN`: origem permitida do frontend.
-- `FRONTEND_URL`: endereço usado nos links enviados por e-mail.
-- `APP_TIME_ZONE`: normalmente `America/Sao_Paulo`.
-
-API local: `http://localhost:3333/api`
-
-Health check: `http://localhost:3333/health`
-
-### Supabase no Render
-
-Use o Transaction Pooler na aplicação e uma conexão direta ou Session Pooler nas migrations:
-
-```env
-DATABASE_URL=postgresql://postgres.PROJECT_REF:SENHA@aws-0-REGION.pooler.supabase.com:6543/postgres?pgbouncer=true
-DIRECT_URL=postgresql://postgres.PROJECT_REF:SENHA@aws-0-REGION.pooler.supabase.com:5432/postgres
-```
-
-## Frontend local
+### Frontend do usuário
 
 ```bash
 cd frontend
@@ -94,38 +80,7 @@ npm ci
 npm run dev
 ```
 
-Exemplo:
-
-```env
-VITE_API_URL=http://localhost:3333/api
-```
-
-Variáveis `VITE_*` são incorporadas durante o build. Depois de alterá-las em produção, faça um novo deploy do frontend.
-
-
-## Painel administrativo
-
-O painel em `admin-frontend/` utiliza o mesmo backend, mas é uma aplicação separada. As rotas `/api/admin/*` exigem sessão válida e papel `admin`, consultado no banco em todas as requisições.
-
-Recursos incluídos:
-
-- visão geral de usuários, planos, compras e cadastros;
-- busca e detalhes de usuários sem expor valores financeiros pessoais;
-- concessão e revogação manual do Plano Pro;
-- concessão de papel administrativo com proteção do último administrador;
-- revogação de sessões de uma conta;
-- exclusão permanente de usuários e dados vinculados, com confirmação reforçada e proteção da própria conta administrativa;
-- consulta de compras, auditoria e saúde da API/banco/integrações.
-
-Para criar ou atualizar a primeira conta administrativa:
-
-```bash
-cd backend
-# configure ADMIN_NAME, ADMIN_EMAIL e ADMIN_PASSWORD no .env
-npm run seed:admin
-```
-
-Para executar o painel localmente:
+### Painel administrativo
 
 ```bash
 cd admin-frontend
@@ -134,7 +89,80 @@ npm ci
 npm run dev
 ```
 
-Painel local: `http://localhost:5174`
+Nos dois frontends:
+
+```env
+VITE_API_URL=http://localhost:3333/api
+```
+
+Em produção, `VITE_API_URL` é obrigatória no build. Não existe fallback para a API real no repositório.
+
+## Variáveis essenciais do backend
+
+```env
+DATABASE_URL=postgresql://...
+DIRECT_URL=postgresql://...
+CORS_ORIGIN=https://seu-frontend.vercel.app,https://seu-admin.vercel.app
+FRONTEND_URL=https://seu-frontend.vercel.app
+ADMIN_FRONTEND_URL=https://seu-admin.vercel.app
+JWT_ACCESS_SECRET=segredo-aleatorio-com-32-ou-mais-caracteres
+JWT_ISSUER=financehub-api
+JWT_AUDIENCE=financehub-web
+JWT_ADMIN_AUDIENCE=financehub-admin
+```
+
+Para recuperação de senha em produção, configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` e `MAIL_FROM`. Sem entrega disponível, a API responde `503`; ela não informa falsamente que enviou o e-mail.
+
+## Deploy
+
+### Render — backend
+
+O `render.yaml` usa:
+
+```text
+Root Directory: backend
+Build: npm ci && npm run build
+Start: npm start
+Health: /health
+```
+
+`npm run build` executa `prisma generate` e `prisma migrate deploy`. A V30 inclui a migration:
+
+```text
+20260802180000_stabilization_v30
+```
+
+O health check valida conexão com o banco e presença dessa migration.
+
+### Vercel — frontends
+
+Crie dois projetos no mesmo repositório:
+
+- Root Directory `frontend`;
+- Root Directory `admin-frontend`.
+
+Configure `VITE_API_URL` em cada projeto e mantenha as duas URLs fixas na allowlist `CORS_ORIGIN` do Render. URLs de Preview ficam bloqueadas em produção por padrão.
+
+Os arquivos `vercel.json` aplicam CSP, HSTS, `no-store`, proteção contra frame e políticas de permissões. Quando trocar o domínio do backend, atualize também o host de `connect-src` nos dois arquivos para manter a CSP restritiva.
+
+## Administrador
+
+Configure temporariamente:
+
+```env
+ADMIN_NAME=Administrador
+ADMIN_EMAIL=seu-email@exemplo.com
+ADMIN_PASSWORD=senha-forte-com-12-ou-mais-caracteres
+```
+
+Execute uma vez:
+
+```bash
+cd backend
+npm run seed:admin
+```
+
+Depois remova `ADMIN_PASSWORD` do ambiente.
 
 ## Validação
 
@@ -142,61 +170,15 @@ Backend:
 
 ```bash
 cd backend
-npm test -- --runInBand
-npm run check:security
-npm run check:v16-flows
-npm run check:v18-critical
-npm run check:v19-history
-npm run check:v20-invoices
-npm run check:v28-invoices
-npm run check:v29-modes
-npm run check:admin
+npm run check:all
+npm run test:coverage -- --runInBand
 ```
 
-Frontend:
+Frontends:
 
 ```bash
-cd frontend
-npm run build
-npm run check:tutorial
-npm run check:i18n
-npm run check:ledger-forms
-npm run check:security
-npm run check:payments
-npm run check:responsive-v18
+cd frontend && npm run build && npm run check:all
+cd ../admin-frontend && npm run build && npm run check
 ```
 
-## Produção
-
-Antes de publicar esta versão, aplique a migration que cria os ambientes de simulação:
-
-```bash
-cd backend
-npx prisma migrate deploy
-```
-
-Configure no backend:
-
-```env
-CORS_ORIGIN=https://SEU-FRONTEND.vercel.app,https://SEU-ADMIN.vercel.app
-FRONTEND_URL=https://SEU-FRONTEND.vercel.app
-ADMIN_FRONTEND_URL=https://SEU-ADMIN.vercel.app
-```
-
-Configure tanto no `frontend/` quanto no `admin-frontend/`:
-
-```env
-VITE_API_URL=https://SEU-BACKEND.onrender.com/api
-```
-
-O Plano Básico permite até dois cartões ativos. O Plano Pro libera os recursos avançados e limites ampliados. Para criar a conta Pro de teste configurada pelo projeto:
-
-```bash
-cd backend
-npm run seed:pro-test
-```
-
-
-## CORS do painel administrativo
-
-A origem de produção `https://admin-frontend-kzu7.vercel.app` está configurada no `render.yaml` e também é usada como fallback seguro pelo backend em produção. Ao iniciar, a API registra no log a lista exata de origens permitidas.
+A CI executa migrations em PostgreSQL 16, testes, cobertura, checks e builds dos dois frontends.

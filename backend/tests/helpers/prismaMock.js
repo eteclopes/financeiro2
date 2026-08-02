@@ -25,34 +25,38 @@ function modelMock(methods) {
 
 function createPrismaMock() {
   const mock = {
-    user: modelMock(['findUnique', 'create', 'update', 'upsert']),
-    auditLog: modelMock(['create']),
+    user: modelMock(['findUnique', 'findFirst', 'findMany', 'create', 'update', 'updateMany', 'upsert', 'count', 'deleteMany']),
+    auditLog: modelMock(['create', 'count', 'findMany']),
     savingsBucket: modelMock(['findFirst', 'findMany', 'create', 'update']),
     savingsTransaction: modelMock(['findFirst', 'findMany', 'create', 'update', 'delete', 'aggregate']),
     card: modelMock(['findMany', 'findFirst', 'findUnique', 'create', 'update', 'delete', 'count']),
-    cardInvoice: modelMock(['findUnique', 'findFirst', 'findMany', 'create', 'update', 'updateMany', 'count', 'deleteMany']),
+    cardInvoice: modelMock(['findUnique', 'findFirst', 'findMany', 'create', 'createMany', 'update', 'updateMany', 'count', 'delete', 'deleteMany']),
     cardPurchase: modelMock(['create', 'findMany', 'groupBy', 'deleteMany']),
     expense: modelMock(['findMany', 'findFirst', 'aggregate', 'groupBy', 'count', 'update', 'updateMany', 'create', 'createMany', 'delete', 'deleteMany']),
-    income: modelMock(['aggregate', 'groupBy', 'count', 'create', 'createMany', 'findFirst', 'findMany', 'update', 'delete']),
-    incomeTemplate: modelMock(['count', 'findMany', 'aggregate', 'create', 'update', 'findFirst']),
-    fixedExpenseTemplate: modelMock(['count', 'findMany', 'aggregate', 'create', 'update', 'updateMany', 'delete', 'findFirst']),
-    debt: modelMock(['findMany', 'findFirst', 'aggregate', 'create', 'update', 'count']),
-    category: modelMock(['findMany', 'findFirst', 'create', 'update', 'delete']),
+    income: modelMock(['aggregate', 'groupBy', 'count', 'create', 'createMany', 'findFirst', 'findMany', 'update', 'updateMany', 'delete', 'deleteMany']),
+    incomeTemplate: modelMock(['count', 'findMany', 'aggregate', 'create', 'createMany', 'update', 'updateMany', 'findFirst', 'deleteMany']),
+    fixedExpenseTemplate: modelMock(['count', 'findMany', 'aggregate', 'create', 'createMany', 'update', 'updateMany', 'delete', 'deleteMany', 'findFirst']),
+    debt: modelMock(['findMany', 'findFirst', 'aggregate', 'create', 'createMany', 'update', 'count', 'deleteMany']),
+    category: modelMock(['findMany', 'findFirst', 'create', 'createMany', 'update', 'delete']),
+    categoryBudget: modelMock(['findMany', 'createMany', 'upsert', 'deleteMany']),
     goal: modelMock(['findMany', 'create', 'findFirst', 'update', 'count']),
-    goalContribution: modelMock(['create', 'findMany', 'aggregate']),
+    goalContribution: modelMock(['create', 'findMany', 'aggregate', 'deleteMany']),
     simulation: modelMock(['findFirst', 'findMany', 'create', 'update', 'delete']),
     simulationResult: modelMock(['createMany']),
-    financialHealthScore: modelMock(['findFirst', 'upsert']),
-    alert: modelMock(['findMany', 'update', 'upsert']),
-    month: modelMock(['findFirst', 'findUnique', 'findMany', 'create', 'update']),
+    simulationWorkspace: modelMock(['findUnique', 'findFirst', 'findMany', 'create', 'update', 'updateMany', 'delete', 'deleteMany', 'count']),
+    monthSnapshotVersion: modelMock(['create', 'deleteMany']),
+    financialHealthScore: modelMock(['findFirst', 'findUnique', 'findMany', 'upsert', 'deleteMany']),
+    alert: modelMock(['findMany', 'update', 'upsert', 'deleteMany']),
+    month: modelMock(['findFirst', 'findUnique', 'findMany', 'create', 'createMany', 'update', 'updateMany', 'count']),
     refreshToken: modelMock(['findUnique', 'create', 'update', 'updateMany', 'deleteMany']),
-    passwordReset: modelMock(['findFirst', 'findUnique', 'create', 'update', 'deleteMany']),
+    passwordReset: modelMock(['findFirst', 'findUnique', 'create', 'update', 'updateMany', 'delete', 'deleteMany']),
     billingPurchase: modelMock(['findUnique', 'findFirst', 'upsert', 'update', 'updateMany']),
     stripeEvent: modelMock(['findUnique', 'create']),
     dashboardPreference: modelMock(['findUnique', 'upsert']),
     automationSetting: modelMock(['findUnique', 'upsert', 'create', 'update']),
     $transaction: jest.fn(),
     $executeRaw: jest.fn(),
+    $executeRawUnsafe: jest.fn(),
     $queryRaw: jest.fn(),
   };
 
@@ -71,6 +75,7 @@ function createPrismaMock() {
 function installDefaults(mock) {
   mock.$transaction.mockImplementation((arg) => (typeof arg === 'function' ? arg(mock) : Promise.all(arg)));
   mock.$executeRaw.mockResolvedValue(undefined);
+  mock.$executeRawUnsafe.mockResolvedValue(undefined);
   mock.$queryRaw.mockResolvedValue([]);
 
   mock.user.findUnique.mockResolvedValue({
@@ -82,6 +87,20 @@ function installDefaults(mock) {
     planExpiresAt: null,
     stripeCustomerId: null,
   });
+  mock.user.findFirst.mockResolvedValue(null);
+  mock.user.findMany.mockResolvedValue([]);
+  mock.user.count.mockResolvedValue(0);
+  mock.user.updateMany.mockResolvedValue({ count: 0 });
+  mock.user.deleteMany.mockResolvedValue({ count: 0 });
+  mock.simulationWorkspace.findUnique.mockResolvedValue(null);
+  mock.simulationWorkspace.findFirst.mockResolvedValue(null);
+  mock.simulationWorkspace.findMany.mockResolvedValue([]);
+  mock.simulationWorkspace.count.mockResolvedValue(0);
+  mock.simulationWorkspace.updateMany.mockResolvedValue({ count: 0 });
+  mock.categoryBudget.findMany.mockResolvedValue([]);
+  mock.categoryBudget.createMany.mockResolvedValue({ count: 0 });
+  mock.categoryBudget.deleteMany.mockResolvedValue({ count: 0 });
+  mock.monthSnapshotVersion.deleteMany.mockResolvedValue({ count: 0 });
   mock.card.count.mockResolvedValue(0);
   mock.card.findMany.mockResolvedValue([]);
   mock.billingPurchase.findUnique.mockResolvedValue(null);
@@ -156,8 +175,12 @@ function installDefaults(mock) {
   mock.refreshToken.deleteMany.mockResolvedValue({ count: 0 });
   mock.refreshToken.updateMany.mockResolvedValue({ count: 1 });
   mock.passwordReset.deleteMany.mockResolvedValue({ count: 0 });
+  mock.passwordReset.updateMany.mockResolvedValue({ count: 0 });
   mock.simulationResult.createMany.mockResolvedValue({ count: 0 });
   mock.financialHealthScore.findFirst.mockResolvedValue(null);
+  mock.financialHealthScore.findUnique.mockResolvedValue(null);
+  mock.financialHealthScore.findMany.mockResolvedValue([]);
+  mock.financialHealthScore.deleteMany.mockResolvedValue({ count: 0 });
   mock.financialHealthScore.upsert.mockResolvedValue({});
   mock.cardInvoice.count.mockResolvedValue(0);
   mock.cardInvoice.findMany.mockResolvedValue([]);
@@ -167,6 +190,7 @@ function installDefaults(mock) {
   mock.cardPurchase.groupBy.mockResolvedValue([]);
   mock.cardPurchase.findMany.mockResolvedValue([]);
   mock.alert.findMany.mockResolvedValue([]);
+  mock.alert.deleteMany.mockResolvedValue({ count: 0 });
   mock.alert.update.mockResolvedValue({});
   mock.alert.upsert.mockResolvedValue({});
 }

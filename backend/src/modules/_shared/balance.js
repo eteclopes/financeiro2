@@ -2,26 +2,75 @@ const prisma = require('../../config/prisma');
 const AppError = require('../../utils/AppError');
 const { round2 } = require('../../utils/math');
 
+async function getSimulationOpeningBalance(userId, client, asOf = null) {
+  const workspace = await client.simulationWorkspace.findUnique({
+    where: { profileUserId: userId },
+    select: { initialBalance: true, startMonth: true, startYear: true },
+  });
+  if (!workspace) return 0;
+  const startsAt = new Date(Date.UTC(Number(workspace.startYear), Number(workspace.startMonth) - 1, 1));
+  if (asOf && asOf.getTime() < startsAt.getTime()) return 0;
+  return Number(workspace.initialBalance ?? 0);
+}
+
 async function getBalanceComponents(userId, client = prisma, asOf = null, recordedBefore = null) {
   const dateFilter = asOf ? { lte: asOf } : undefined;
   const incomeRecordedFilter = recordedBefore ? { createdAt: { lte: recordedBefore } } : {};
+  // Estornos são fatos posteriores ao lançamento; ao reconstruir um snapshot,
+  // o corte deve considerar quando o estorno foi gravado, não quando a receita
+  // original foi criada.
+  const incomeReversalRecordedFilter = recordedBefore ? { updatedAt: { lte: recordedBefore } } : {};
   const expenseRecordedFilter = recordedBefore ? { updatedAt: { lte: recordedBefore } } : {};
   const contributionRecordedFilter = recordedBefore ? { createdAt: { lte: recordedBefore } } : {};
   const savingsRecordedFilter = recordedBefore ? { createdAt: { lte: recordedBefore } } : {};
 
-  const [incomeAgg, expenseAgg, goalContributions, goalRefunds, savingsDeposits, savingsWithdrawals] = await Promise.all([
+  const [
+    openingBalance,
+    incomeAgg,
+    incomeReversalAgg,
+    expenseAgg,
+    reversalAgg,
+    goalContributions,
+    goalRefunds,
+    savingsDeposits,
+    savingsWithdrawals,
+  ] = await Promise.all([
+    getSimulationOpeningBalance(userId, client, asOf),
     client.income.aggregate({
-      where: { userId, ...(dateFilter ? { incomeDate: dateFilter } : {}), ...incomeRecordedFilter },
+      where: {
+        userId,
+        ...(dateFilter ? { effectiveDate: dateFilter } : {}),
+        ...incomeRecordedFilter,
+      },
       _sum: { value: true },
+    }),
+    client.income.aggregate({
+      where: {
+        userId,
+        reversedAmount: { gt: 0 },
+        ...(dateFilter ? { reversedAt: dateFilter } : {}),
+        ...incomeReversalRecordedFilter,
+      },
+      _sum: { reversedAmount: true },
     }),
     client.expense.aggregate({
       where: {
         userId,
         deletedAt: null,
+        paidAmount: { gt: 0 },
         ...(dateFilter ? { paidAt: dateFilter } : {}),
         ...expenseRecordedFilter,
       },
       _sum: { paidAmount: true },
+    }),
+    client.expense.aggregate({
+      where: {
+        userId,
+        reversedAmount: { gt: 0 },
+        ...(dateFilter ? { reversedAt: dateFilter } : {}),
+        ...expenseRecordedFilter,
+      },
+      _sum: { reversedAmount: true },
     }),
     client.goalContribution.aggregate({
       where: {
@@ -63,8 +112,11 @@ async function getBalanceComponents(userId, client = prisma, asOf = null, record
   ]);
 
   return {
+    openingBalance,
     income: Number(incomeAgg._sum.value ?? 0),
+    incomeReversals: Number(incomeReversalAgg._sum.reversedAmount ?? 0),
     paidExpenses: Number(expenseAgg._sum.paidAmount ?? 0),
+    expenseReversals: Number(reversalAgg._sum.reversedAmount ?? 0),
     goalContributions: Number(goalContributions._sum.value ?? 0),
     goalRefunds: Number(goalRefunds._sum.value ?? 0),
     savingsDepositsFromBalance: Number(savingsDeposits._sum.value ?? 0),
@@ -74,8 +126,11 @@ async function getBalanceComponents(userId, client = prisma, asOf = null, record
 
 function calculateBalance(components) {
   return round2(
-    components.income
+    (components.openingBalance || 0)
+      + components.income
+      - (components.incomeReversals || 0)
       - components.paidExpenses
+      + (components.expenseReversals || 0)
       - components.goalContributions
       + components.goalRefunds
       - components.savingsDepositsFromBalance
@@ -83,15 +138,7 @@ function calculateBalance(components) {
   );
 }
 
-/**
- * Saldo livre acumulado de todos os meses. O valor nunca é reiniciado na
- * virada do mês: toda entrada e saída real participa do mesmo caixa.
- */
 async function getAvailableBalance(userId, client = prisma) {
-  // A data dos lançamentos é referência contábil/relatório. Quando uma
-  // operação real é salva, seu efeito no caixa é imediato. Por isso o saldo
-  // disponível considera todos os lançamentos já persistidos, inclusive uma
-  // receita recorrente gerada para o próximo mês.
   return calculateBalance(await getBalanceComponents(userId, client));
 }
 
@@ -112,7 +159,6 @@ async function assertSufficientBalance(userId, amount, client = prisma) {
   return available;
 }
 
-/** Serializa todas as operações que podem consumir o saldo do mesmo usuário. */
 async function lockUserBalance(client, userId) {
   await client.$executeRaw`SELECT pg_advisory_xact_lock(${userId})`;
 }

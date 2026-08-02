@@ -215,6 +215,7 @@ export default function App() {
   const localeInitialized = useLocaleStore((s) => s.initialized);
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const forceSignOut = useAuthStore((s) => s.forceSignOut);
+  const acceptRefreshedIdentity = useAuthStore((s) => s.acceptRefreshedIdentity);
 
   useEffect(() => { bootstrap(); }, [bootstrap]);
 
@@ -256,10 +257,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const h = () => forceSignOut();
-    window.addEventListener('auth:session-expired', h);
-    return () => window.removeEventListener('auth:session-expired', h);
-  }, [forceSignOut]);
+    const expired = () => forceSignOut();
+    const refreshed = (event) => acceptRefreshedIdentity(event.detail);
+    window.addEventListener('auth:session-expired', expired);
+    window.addEventListener('auth:identity-refreshed', refreshed);
+    return () => {
+      window.removeEventListener('auth:session-expired', expired);
+      window.removeEventListener('auth:identity-refreshed', refreshed);
+    };
+  }, [forceSignOut, acceptRefreshedIdentity]);
 
   if (!localeInitialized) {
     return (

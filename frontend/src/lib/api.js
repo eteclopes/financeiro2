@@ -3,9 +3,10 @@ import { getAccessToken, setAccessToken } from './tokenStore';
 import { getLocalePreferences } from '../store/localeStore';
 import { readActiveWorkspaceId } from './workspaceStorage';
 
-const DEFAULT_API_URL = import.meta.env.PROD
-  ? 'https://financeiro2-8kgt.onrender.com/api'
-  : 'http://localhost:3333/api';
+const DEFAULT_API_URL = 'http://localhost:3333/api';
+if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) {
+  throw new Error('VITE_API_URL é obrigatória no build de produção.');
+}
 
 // Aceita tanto `https://backend.exemplo.com` quanto
 // `https://backend.exemplo.com/api`. Isso evita 404 em produção quando a
@@ -16,6 +17,16 @@ function normalizeApiBaseURL(rawURL) {
 }
 
 let refreshPromise = null;
+
+async function withCrossTabRefreshLock(task) {
+  // O refresh é estritamente de uso único. Duas abas compartilhando o mesmo
+  // cookie precisam serializar a rotação; a segunda entra aqui depois que o
+  // navegador já recebeu o cookie sucessor da primeira.
+  if (typeof navigator !== 'undefined' && navigator.locks?.request) {
+    return navigator.locks.request('financehub-user-refresh', { mode: 'exclusive' }, task);
+  }
+  return task();
+}
 
 const baseURL = normalizeApiBaseURL(import.meta.env.VITE_API_URL);
 
@@ -62,11 +73,12 @@ api.interceptors.request.use(async (config) => {
 // interceptador compartilham a mesma Promise, impedindo rajadas de refresh.
 export function refreshAccessToken() {
   if (!refreshPromise) {
-    refreshPromise = api.post('/auth/refresh')
+    refreshPromise = withCrossTabRefreshLock(() => api.post('/auth/refresh')
       .then(({ data }) => {
         setAccessToken(data.accessToken);
+        if (data.user) window.dispatchEvent(new CustomEvent('auth:identity-refreshed', { detail: data.user }));
         return data.accessToken;
-      })
+      }))
       .finally(() => {
         refreshPromise = null;
       });

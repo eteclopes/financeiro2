@@ -17,8 +17,18 @@ for (const file of walk(modulesDir).filter((name) => name.endsWith('.routes.js')
   const relative = path.relative(root, file);
   const source = fs.readFileSync(file, 'utf8');
   if (relative.endsWith(path.join('auth', 'auth.routes.js'))) continue;
-  if (!source.includes("require('../../middlewares/authenticate')") || !/router\.use\(authenticate/.test(source)) {
-    failures.push(`${relative}: módulo privado sem router.use(authenticate)`);
+  if (relative.endsWith(path.join('adminAuth', 'adminAuth.routes.js'))) {
+    if (!source.includes("require('../../middlewares/authenticate')") || !/router\.get\('\/me', authenticateAdmin, requireAdmin/.test(source)) {
+      failures.push(`${relative}: /me administrativo sem autenticação separada`);
+    }
+    continue;
+  }
+  const isAdminRoutes = relative.endsWith(path.join('admin', 'admin.routes.js'));
+  const hasAuth = isAdminRoutes
+    ? source.includes("require('../../middlewares/authenticate')") && /router\.use\(authenticateAdmin, requireAdmin/.test(source)
+    : source.includes("require('../../middlewares/authenticate')") && /router\.use\(authenticate/.test(source);
+  if (!hasAuth) {
+    failures.push(`${relative}: módulo privado sem autenticação apropriada`);
   }
 }
 

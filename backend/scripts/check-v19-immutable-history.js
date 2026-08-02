@@ -13,9 +13,9 @@ const { buildMonthSnapshot } = require(path.join(root, 'src/modules/months/month
 const closedAt = new Date('2026-07-23T12:00:00.000Z');
 const month = { id: 31n, userId: 7n, month: 7, year: 2026, status: 'closed', closedAt };
 const incomes = [
-  { userId: 7n, monthId: 31n, value: 2060, origin: 'digital', incomeDate: new Date('2026-07-10'), createdAt: new Date('2026-07-10T10:00:00Z') },
+  { userId: 7n, monthId: 31n, value: 2060, origin: 'digital', paymentMethod: 'pix', incomeDate: new Date('2026-07-10'), effectiveDate: new Date('2026-07-10'), reversedAt: null, reversedAmount: 0, createdAt: new Date('2026-07-10T10:00:00Z'), updatedAt: new Date('2026-07-10T10:00:00Z') },
   // Receita do mês seguinte criada no fechamento: não pode alterar julho.
-  { userId: 7n, monthId: 32n, value: 3000, origin: 'digital', incomeDate: new Date('2026-08-01'), createdAt: new Date('2026-07-23T12:00:01Z') },
+  { userId: 7n, monthId: 32n, value: 3000, origin: 'digital', paymentMethod: 'pix', incomeDate: new Date('2026-08-01'), effectiveDate: new Date('2026-07-23'), reversedAt: null, reversedAmount: 0, createdAt: new Date('2026-07-23T12:00:01Z'), updatedAt: new Date('2026-07-23T12:00:01Z') },
 ];
 const expenses = [
   { userId: 7n, monthId: 31n, value: 100, paidAmount: 100, status: 'paid', paymentMethod: 'balance', paidAt: new Date('2026-07-10'), deletedAt: null, createdAt: new Date('2026-07-05T10:00:00Z'), updatedAt: new Date('2026-07-10T10:00:00Z') },
@@ -63,6 +63,8 @@ function aggregateRows(rows, where, fields) {
 }
 
 const client = {
+  simulationWorkspace: { findUnique: async () => null },
+  financialHealthScore: { findUnique: async () => null },
   income: {
     aggregate: async ({ where, _sum }) => aggregateRows(incomes, where, Object.keys(_sum)),
   },
@@ -104,7 +106,10 @@ const client = {
   assert.ok(migration.includes('snapshot_version'));
 
   const dashboard = fs.readFileSync(path.join(root, 'src/modules/dashboard/dashboard.service.js'), 'utf8');
-  assert.ok(dashboard.includes('ensureClosedMonthSnapshot'));
+  const closedStart = dashboard.indexOf('async function getClosedDashboard');
+  const openStart = dashboard.indexOf('async function getDashboard');
+  const closedDashboardSource = dashboard.slice(closedStart, openStart);
+  assert.ok(!closedDashboardSource.includes('getOrComputeHealthScore'), 'dashboard fechado não deve consultar saúde atual');
   // A imutabilidade deixou de viver só no Dashboard: agora TODAS as telas
   // agregadas (Dashboard, Histórico, Saúde) leem por getMonthFacts, que
   // devolve o snapshot congelado para mês fechado. O comportamento é

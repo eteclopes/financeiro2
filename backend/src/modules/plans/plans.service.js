@@ -56,7 +56,24 @@ async function getUserPlan(userId, client = prisma) {
     },
   });
   if (!user) throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
-  return { user, entitlements: buildEntitlements(user) };
+
+  // Perfis de simulação não possuem um plano independente. As permissões e
+  // limites pertencem à conta real proprietária e são resolvidos em leitura,
+  // sem atualizar o banco como efeito colateral de cada GET.
+  let billingUser = user;
+  const simulation = await client.simulationWorkspace.findUnique({
+    where: { profileUserId: user.id },
+    select: {
+      owner: {
+        select: {
+          id: true, email: true, plan: true, planSource: true,
+          planGrantedAt: true, planExpiresAt: true, stripeCustomerId: true,
+        },
+      },
+    },
+  });
+  if (simulation?.owner) billingUser = simulation.owner;
+  return { user: billingUser, entitlements: buildEntitlements(billingUser) };
 }
 
 async function assertPro(userId, client = prisma) {

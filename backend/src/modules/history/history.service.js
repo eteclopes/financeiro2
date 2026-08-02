@@ -34,20 +34,20 @@ async function getFinancialHistory(userId, monthId, periodMonths = 6) {
 
   if (slice.length === 0) return { periods: 0, months: [], summary: {} };
 
-  // Uma consulta para os scores e uma para as parcelas de dívida de TODOS
-  // os meses da janela — em vez de duas por mês.
-  const monthIds = slice.map((month) => month.id);
+  // Mês fechado usa exclusivamente o snapshot. Indicadores vivos são
+  // consultados apenas para meses abertos, evitando que o histórico mude.
+  const openMonthIds = slice.filter((month) => month.status !== 'closed').map((month) => month.id);
   const [factsList, healthScores, debtGroups] = await Promise.all([
     getMonthFactsBatch(userId, slice),
-    prisma.financialHealthScore.findMany({
-      where: { userId, monthId: { in: monthIds } },
+    openMonthIds.length ? prisma.financialHealthScore.findMany({
+      where: { userId, monthId: { in: openMonthIds } },
       select: { monthId: true, score: true },
-    }),
-    prisma.expense.groupBy({
+    }) : Promise.resolve([]),
+    openMonthIds.length ? prisma.expense.groupBy({
       by: ['monthId'],
-      where: { userId, monthId: { in: monthIds }, type: 'priority', deletedAt: null },
+      where: { userId, monthId: { in: openMonthIds }, type: 'priority', deletedAt: null },
       _sum: { value: true },
-    }),
+    }) : Promise.resolve([]),
   ]);
 
   const scoreByMonth = new Map(healthScores.map((row) => [String(row.monthId), row.score]));
@@ -71,9 +71,13 @@ async function getFinancialHistory(userId, monthId, periodMonths = 6) {
       savingsBalance: round2(facts.savingsBalance),
       // Patrimônio financeiro do mês (regra 8.5): saldo livre + reservas.
       // Transferir entre eles não altera este total.
-      totalWealth: round2(facts.currentBalance + facts.savingsBalance),
-      healthScore: scoreByMonth.get(String(month.id)) ?? null,
-      debtInstallments: round2(debtByMonth.get(String(month.id)) ?? 0),
+      totalWealth: round2(facts.currentBalance + facts.savingsBalance + facts.goalsBalance),
+      healthScore: facts.isFrozen
+        ? facts.financialHealthScore
+        : (scoreByMonth.get(String(month.id)) ?? null),
+      debtInstallments: facts.isFrozen
+        ? round2(facts.totalActiveDebt)
+        : round2(debtByMonth.get(String(month.id)) ?? 0),
     };
   });
 
@@ -114,7 +118,7 @@ async function getMonthStatement(userId, monthId) {
       orderBy: [{ dueDate: 'asc' }],
     }),
     prisma.income.findMany({
-      where: { userId, monthId, deletedAt: null },
+      where: { userId, monthId },
       include: { category: true },
       orderBy: [{ incomeDate: 'asc' }],
     }),
@@ -135,26 +139,35 @@ async function getMonthStatement(userId, monthId) {
 
   for (const e of expenses) {
     const full = Number(e.value);
-    const paid = Number(e.paidAmount ?? 0);
-    const remaining = round2(Math.max(full - paid, 0));
+    const grossPaid = Number(e.paidAmount ?? 0);
+    const reversedAmount = Number(e.reversedAmount ?? 0);
+    const paid = round2(Math.max(grossPaid - reversedAmount, 0));
+    // `reversed` representa cancelamento auditável da obrigação; o pagamento
+    // volta ao caixa, mas a conta não reaparece como pendência.
+    const remaining = e.status === 'reversed'
+      ? 0
+      : round2(Math.max(full - grossPaid, 0));
     const isDebt = e.type === 'priority';
 
     entries.push({
       kind: 'expense',
       subtype: e.type,
       id: String(e.id),
-      date: e.paidAt ?? e.dueDate,
+      date: e.reversedAt ?? e.paidAt ?? e.dueDate,
       dueDate: e.dueDate,
       paidAt: e.paidAt ?? null,
+      reversedAt: e.reversedAt ?? null,
       description: e.description,
       category: e.category?.name ?? null,
       status: e.status,
       paymentMethod: e.paymentMethod ?? null,
-      // Valores: o combinado, o que saiu e o que ficou faltando.
+      // Valores líquidos, preservando também os fatos brutos para auditoria.
       installmentValue: round2(full),
-      paidAmount: round2(paid),
+      grossPaidAmount: round2(grossPaid),
+      reversedAmount: round2(reversedAmount),
+      paidAmount: paid,
       remaining,
-      isPartial: paid > 0 && remaining > 0.009,
+      isPartial: e.status !== 'reversed' && grossPaid > 0 && remaining > 0.009,
       // Contexto de dívida e de cartão.
       debt: isDebt && e.debt ? { id: String(e.debt.id), name: e.debt.description } : null,
       card: e.cardInvoice?.card?.name ?? null,
@@ -165,13 +178,22 @@ async function getMonthStatement(userId, monthId) {
   }
 
   for (const i of incomes) {
+    const grossAmount = Number(i.value);
+    const reversedAmount = Number(i.reversedAmount ?? 0);
     entries.push({
       kind: 'income',
       id: String(i.id),
+      // Competência permanece incomeDate; effectiveDate mostra quando entrou
+      // instantaneamente no caixa, conforme a regra do produto.
       date: i.incomeDate,
+      effectiveDate: i.effectiveDate,
+      reversedAt: i.reversedAt ?? null,
       description: i.description,
       category: i.category?.name ?? null,
-      amount: round2(Number(i.value)),
+      grossAmount: round2(grossAmount),
+      reversedAmount: round2(reversedAmount),
+      amount: round2(Math.max(grossAmount - reversedAmount, 0)),
+      status: reversedAmount > 0 ? 'reversed' : 'received',
       origin: i.origin ?? null,
     });
   }
@@ -211,7 +233,14 @@ async function getMonthStatement(userId, monthId) {
     partialCount: entries.filter((e) => e.isPartial).length,
   };
 
-  return { month: { id: String(month.id), month: month.month, year: month.year, status: month.status }, entries, totals };
+  return {
+    month: { id: String(month.id), month: month.month, year: month.year, status: month.status },
+    // Extrato lê o ledger atual líquido; totais agregados de mês fechado
+    // continuam vindo do snapshot imutável.
+    source: 'current_ledger_net',
+    entries,
+    totals,
+  };
 }
 
 function buildSummary(months) {

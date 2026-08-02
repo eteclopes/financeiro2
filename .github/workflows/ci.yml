@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: financehub
+          POSTGRES_PASSWORD: financehub
+          POSTGRES_DB: financehub_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U financehub -d financehub_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://financehub:financehub@localhost:5432/financehub_test
+      DIRECT_URL: postgresql://financehub:financehub@localhost:5432/financehub_test
+      CORS_ORIGIN: http://localhost:5173
+      FRONTEND_URL: http://localhost:5173
+      ADMIN_FRONTEND_URL: http://localhost:5174
+      JWT_ACCESS_SECRET: ci-secret-with-at-least-thirty-two-characters
+      JWT_ISSUER: financehub-api
+      JWT_AUDIENCE: financehub-web
+      JWT_ADMIN_AUDIENCE: financehub-admin
+      RUN_DB_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma migrate deploy
+      - run: npm run test:coverage -- --runInBand
+      - run: npm run check:all
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      VITE_API_URL: http://localhost:3333/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm run check:all
+
+  admin-frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin-frontend
+    env:
+      VITE_API_URL: http://localhost:3333/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+          cache: npm
+          cache-dependency-path: admin-frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm run check

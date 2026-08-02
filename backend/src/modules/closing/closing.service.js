@@ -6,6 +6,8 @@ const debtsService = require('../debts/debts.service');
 const { addMonths } = require('../../utils/monthMath');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
 const { buildMonthSnapshot, SNAPSHOT_VERSION } = require('../months/monthSnapshot.service');
+const { todayUtcDate } = require('../../utils/dateTime');
+const { setRequestFinancialContext } = require('../../utils/requestContext');
 
 const CLOSE_TRANSACTION_OPTIONS = {
   maxWait: 10_000,
@@ -82,7 +84,7 @@ async function getClosingPreview(userId, monthId) {
       where: {
         monthId,
         card: { userId },
-        expenses: { some: { deletedAt: null, status: { not: 'paid' } } },
+        expenses: { some: { deletedAt: null, status: { in: ['pending', 'partial', 'late'] } } },
       },
     }),
     prisma.goal.count({ where: { userId, status: 'active' } }),
@@ -125,7 +127,7 @@ async function getClosingPreview(userId, monthId) {
   };
 }
 
-async function generateNextMonthEntries(tx, userId, current, nextMonth, next) {
+async function generateNextMonthEntries(tx, userId, current, nextMonth, next, options = {}) {
   const snapshot = await getGenerationSnapshot(tx, userId, nextMonth, next);
   const generated = { incomes: 0, fixedExpenses: 0, debtInstallments: 0 };
 
@@ -146,6 +148,7 @@ async function generateNextMonthEntries(tx, userId, current, nextMonth, next) {
         paymentMethod: template.paymentMethod,
         origin: template.paymentMethod === 'cash' ? 'physical' : 'digital',
         incomeDate: expensesService.dueDateFromDay(nextMonth, template.incomeDay ?? 1),
+        effectiveDate: options.effectiveDate || todayUtcDate(),
       })),
     });
     generated.incomes = result.count;
@@ -180,6 +183,7 @@ async function generateNextMonthEntries(tx, userId, current, nextMonth, next) {
         month: nextMonth,
         dueDate,
         client: tx,
+        financialDate: options.financialDate || todayUtcDate(),
       });
       generated.fixedExpenses += 1;
     } else {
@@ -230,11 +234,6 @@ async function generateNextMonthEntries(tx, userId, current, nextMonth, next) {
 }
 
 async function closeMonth(userId, monthId) {
-  // Corrige, antes do fechamento, cobranças fixas pendentes que versões
-  // antigas empurraram para o ciclo seguinte após pagamento antecipado.
-  const cardPurchasesService = require('../cards/cardPurchases.service');
-  await cardPurchasesService.repairPendingFixedChargeAssignments(userId);
-
   let result;
   try {
     result = await prisma.$transaction(async (tx) => {
@@ -286,7 +285,9 @@ async function closeMonth(userId, monthId) {
           );
         }
       }
-      const hasSnapshot = current.financialSnapshot && Number(current.snapshotVersion) === SNAPSHOT_VERSION;
+      // Qualquer snapshot existente é histórico válido. Reparar recorrências
+      // nunca substitui um retrato antigo apenas porque o formato evoluiu.
+      const hasSnapshot = Boolean(current.financialSnapshot && Number(current.snapshotVersion) >= 1);
       const snapshot = hasSnapshot
         ? current.financialSnapshot
         : await buildMonthSnapshot(userId, current, tx, repaired
@@ -314,6 +315,13 @@ async function closeMonth(userId, monthId) {
         await tx.month.update({
           where: { id: monthId },
           data: { financialSnapshot: snapshot, snapshotVersion: SNAPSHOT_VERSION },
+        });
+      }
+
+      if (!repaired) {
+        await tx.simulationWorkspace.updateMany({
+          where: { profileUserId: userId, status: 'active' },
+          data: { currentDate: new Date(Date.UTC(next.year, next.month - 1, 1)) },
         });
       }
 
@@ -347,42 +355,152 @@ async function closeMonth(userId, monthId) {
 }
 
 
-async function reopenSimulationMonth(userId, monthId) {
-  const month = await prisma.month.findFirst({ where: { id: monthId, userId } });
-  if (!month) throw new AppError('Mês não encontrado.', 404, 'MONTH_NOT_FOUND');
-  if (month.status !== 'closed') return { reopenedMonths: 0, month };
+async function rebuildSimulationTimeline(tx, userId, startMonth) {
+  const workspace = await tx.simulationWorkspace.findUnique({
+    where: { profileUserId: userId },
+  });
+  if (!workspace) {
+    throw new AppError('Este perfil não pertence a uma simulação.', 409, 'SIMULATION_REQUIRED');
+  }
 
-  const affected = await prisma.month.findMany({
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${userId})`;
+  const affected = await tx.month.findMany({
     where: {
       userId,
       OR: [
-        { year: { gt: Number(month.year) } },
-        { year: Number(month.year), month: { gte: Number(month.month) } },
+        { year: { gt: Number(startMonth.year) } },
+        { year: Number(startMonth.year), month: { gte: Number(startMonth.month) } },
       ],
     },
-    select: { id: true },
+    orderBy: [{ year: 'asc' }, { month: 'asc' }],
   });
-  const ids = affected.map((item) => item.id);
+  const monthIds = affected.map((item) => item.id);
+  if (monthIds.length === 0) return { reopenedMonths: 0, regenerated: 0 };
 
-  await prisma.$transaction(async (tx) => {
-    if (ids.length > 0) {
-      await tx.monthSnapshotVersion.deleteMany({ where: { monthId: { in: ids } } });
-      await tx.month.updateMany({
-        where: { id: { in: ids }, userId },
+  // Reabre a linha do tempo antes de remover os derivados. Os guards do banco
+  // impedem DELETE em mês fechado; dentro desta transação a reabertura e a
+  // reconstrução continuam atômicas e são revertidas juntas em caso de falha.
+  await tx.month.updateMany({
+    where: { id: { in: monthIds }, userId },
+    data: { status: 'open', closedAt: null, financialSnapshot: null, snapshotVersion: null },
+  });
+  const rebuiltFinancialDate = new Date(Date.UTC(Number(startMonth.year), Number(startMonth.month) - 1, 1));
+  await tx.simulationWorkspace.update({
+    where: { id: workspace.id },
+    data: { currentDate: rebuiltFinancialDate },
+  });
+  // Atualiza também o relógio em memória da requisição. Sem isso, serviços
+  // chamados na mesma transação continuariam comparando faturas com a data
+  // antiga do cenário, embora o banco já estivesse no mês reaberto.
+  setRequestFinancialContext({ financialDate: rebuiltFinancialDate, workspaceType: 'simulation' });
+
+  const generatedExpenses = await tx.expense.findMany({
+    where: {
+      userId,
+      monthId: { in: monthIds },
+      OR: [{ fixedTemplateId: { not: null } }, { debtId: { not: null } }],
+    },
+    select: { id: true, cardInvoiceId: true },
+  });
+  const touchedInvoiceIds = [...new Set(
+    generatedExpenses.map((item) => item.cardInvoiceId).filter(Boolean).map(String)
+  )].map(BigInt);
+
+  await tx.expense.deleteMany({ where: { id: { in: generatedExpenses.map((item) => item.id) } } });
+  await tx.income.deleteMany({
+    where: { userId, monthId: { in: monthIds }, templateId: { not: null } },
+  });
+  await tx.alert.deleteMany({ where: { userId, monthId: { in: monthIds } } });
+  await tx.financialHealthScore.deleteMany({ where: { userId, monthId: { in: monthIds } } });
+  await tx.monthSnapshotVersion.deleteMany({ where: { monthId: { in: monthIds } } });
+
+  // Reconstitui o saldo das dívidas apenas com pagamentos anteriores ao ponto
+  // reaberto. Os pagamentos posteriores são descartados junto com as parcelas
+  // geradas, pois pertenciam à versão antiga da linha do tempo.
+  const debts = await tx.debt.findMany({ where: { userId } });
+  if (debts.length > 0) {
+    const monthsBefore = await tx.month.findMany({
+      where: {
+        userId,
+        OR: [
+          { year: { lt: Number(startMonth.year) } },
+          { year: Number(startMonth.year), month: { lt: Number(startMonth.month) } },
+        ],
+      },
+      select: { id: true },
+    });
+    const paidBefore = monthsBefore.length > 0
+      ? await tx.expense.groupBy({
+        by: ['debtId'],
+        where: {
+          userId,
+          debtId: { in: debts.map((debt) => debt.id) },
+          monthId: { in: monthsBefore.map((item) => item.id) },
+          deletedAt: null,
+        },
+        _sum: { paidAmount: true, reversedAmount: true },
+      })
+      : [];
+    const paidMap = new Map(paidBefore.map((row) => [
+      String(row.debtId),
+      Math.max(Number(row._sum.paidAmount ?? 0) - Number(row._sum.reversedAmount ?? 0), 0),
+    ]));
+    for (const debt of debts) {
+      const remaining = Math.max(Number(debt.totalValue) - (paidMap.get(String(debt.id)) ?? 0), 0);
+      await tx.debt.update({
+        where: { id: debt.id },
         data: {
-          status: 'open',
-          closedAt: null,
-          financialSnapshot: null,
-          snapshotVersion: null,
+          remainingBalance: remaining,
+          pendingCarryOver: 0,
+          status: remaining <= 0.009 ? 'settled' : 'active',
         },
       });
     }
-  });
+  }
 
-  await recordAuditLog(userId, 'month', monthId, 'simulation_reopen', {
-    newValue: { reopenedMonths: ids.length },
+  let regenerated = 0;
+  for (const month of affected) {
+    const result = await generateNextMonthEntries(
+      tx,
+      userId,
+      null,
+      month,
+      { month: Number(month.month), year: Number(month.year) },
+      {
+        effectiveDate: new Date(Date.UTC(Number(month.year), Number(month.month) - 1, 1)),
+        financialDate: rebuiltFinancialDate,
+      }
+    );
+    regenerated += result.generated.incomes + result.generated.fixedExpenses + result.generated.debtInstallments;
+  }
+
+  const savingsService = require('../savings/savings.service');
+  await savingsService.recalculateSavingsLedger(userId, tx, { updateFromDate: rebuiltFinancialDate });
+
+  const cardPurchasesService = require('../cards/cardPurchases.service');
+  for (const invoiceId of touchedInvoiceIds) {
+    const stillExists = await tx.cardInvoice.findUnique({ where: { id: invoiceId } });
+    if (!stillExists) continue;
+    const total = await cardPurchasesService.recalculateInvoiceTotal(invoiceId, tx);
+    if (total <= 0.009) await tx.cardInvoice.delete({ where: { id: invoiceId } });
+  }
+
+  return { reopenedMonths: monthIds.length, regenerated };
+}
+
+async function reopenSimulationMonth(userId, monthId) {
+  const month = await prisma.month.findFirst({ where: { id: monthId, userId } });
+  if (!month) throw new AppError('Mês não encontrado.', 404, 'MONTH_NOT_FOUND');
+
+  const result = await prisma.$transaction(
+    (tx) => rebuildSimulationTimeline(tx, userId, month),
+    CLOSE_TRANSACTION_OPTIONS
+  );
+
+  await recordAuditLog(userId, 'month', monthId, 'simulation_reopen_rebuild', {
+    newValue: result,
   });
-  return { reopenedMonths: ids.length, monthId };
+  return { ...result, monthId };
 }
 
 module.exports = {
@@ -390,5 +508,6 @@ module.exports = {
   closeMonth,
   generateNextMonthEntries,
   reopenSimulationMonth,
+  rebuildSimulationTimeline,
   CLOSE_TRANSACTION_OPTIONS,
 };

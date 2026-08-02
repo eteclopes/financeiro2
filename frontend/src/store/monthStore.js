@@ -50,6 +50,9 @@ export const useMonthStore = create((set, get) => ({
   async initialize() {
     set({ status: 'loading' });
     try {
+      if (readActiveWorkspaceId() === 'real') {
+        await monthsApi.syncCalendar();
+      }
       const list = await monthsApi.list();
       const chronological = [...(list.data.months ?? [])].sort((a, b) =>
         a.year === b.year ? a.month - b.month : a.year - b.year

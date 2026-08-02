@@ -4,21 +4,18 @@ const prisma = require('../../config/prisma');
 const env = require('../../config/env');
 const AppError = require('../../utils/AppError');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
-const { sendPasswordResetEmail } = require('../../utils/mailer');
+const { isMailConfigured, sendPasswordResetEmail } = require('../../utils/mailer');
 const { buildEntitlements } = require('../plans/plans.service');
 const {
-  hashToken, generateOpaqueToken, signAccessToken,
-  refreshTokenExpiryDate, passwordResetExpiryDate,
+  AUTH_CLIENTS,
+  hashToken,
+  generateOpaqueToken,
+  signAccessToken,
+  refreshTokenExpiryDate,
+  passwordResetExpiryDate,
 } = require('../../utils/tokens');
 
 const BCRYPT_ROUNDS = 12;
-const REFRESH_CONCURRENCY_GRACE_MS = 10_000;
-
-// Hash bcrypt válido mas "morto" (nenhuma senha real corresponde a ele).
-// Usado apenas para igualar o tempo de resposta do login quando o e-mail não
-// existe — sem isso, `!user` retorna em ~1ms enquanto um e-mail existente
-// gasta ~100ms+ em bcrypt.compare, e essa diferença de tempo permite
-// enumerar e-mails cadastrados mesmo com uma mensagem de erro genérica.
 const DUMMY_PASSWORD_HASH = '$2a$12$RXUW.qmEXBzInhTZlg2mM.VsSzXz7.mx2Ym7fdqSQc5iXHat1EaKC';
 
 function publicUser(user) {
@@ -52,19 +49,26 @@ function pruneExpiredPasswordResets() {
   }).catch(() => {});
 }
 
-async function issueSession(userId, client = prisma, familyId = null) {
-  const accessToken = signAccessToken(userId);
+async function issueSession(userId, {
+  clientType = AUTH_CLIENTS.USER,
+  client = prisma,
+  familyId = null,
+} = {}) {
+  const accessToken = signAccessToken(userId, clientType);
   const rawRefreshToken = generateOpaqueToken();
   await client.refreshToken.create({
     data: {
       userId,
       tokenHash: hashToken(rawRefreshToken),
-      // Sem família informada é um login novo: começa uma família própria.
       familyId: familyId || randomUUID(),
+      client: clientType,
       expiresAt: refreshTokenExpiryDate(),
     },
   });
-  if (client === prisma && Math.random() < 0.02) { pruneExpiredTokens(); pruneExpiredPasswordResets(); }
+  if (client === prisma && Math.random() < 0.02) {
+    pruneExpiredTokens();
+    pruneExpiredPasswordResets();
+  }
   return { accessToken, refreshToken: rawRefreshToken };
 }
 
@@ -72,46 +76,56 @@ async function register({ name, email, password }) {
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) throw new AppError('Este e-mail já está cadastrado.', 409, 'EMAIL_IN_USE');
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  const user = await prisma.user.create({ data: { name, email, passwordHash } });
-  // Depois de commitar — nunca dentro da criação: um bug no audit log não
-  // pode impedir a conta de ser criada (ver auditLog.service.js).
+  let user;
+  try {
+    user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({ data: { name, email, passwordHash } });
+      await tx.savingsBucket.create({
+        data: { userId: created.id, kind: 'general', isDefault: true },
+      });
+      return created;
+    });
+  } catch (error) {
+    if (error?.code === 'P2002') {
+      throw new AppError('Este e-mail já está cadastrado.', 409, 'EMAIL_IN_USE');
+    }
+    throw error;
+  }
   await recordAuditLog(user.id, 'user', user.id, 'register', { newValue: { name, email } });
-  const session = await issueSession(user.id);
+  const session = await issueSession(user.id, { clientType: AUTH_CLIENTS.USER });
   return { user: publicUser(user), ...session };
 }
 
-async function login({ email, password }) {
+async function authenticateCredentials({ email, password }, { requireAdmin = false } = {}) {
   const foundUser = await prisma.user.findUnique({ where: { email } });
   const user = foundUser?.isSimulationProfile ? null : foundUser;
-  const err = new AppError('E-mail ou senha inválidos.', 401, 'INVALID_CREDENTIALS');
-
-  // bcrypt.compare SEMPRE roda, mesmo quando o e-mail não existe (contra o
-  // hash "morto" acima) — mantém o tempo de resposta constante e evita
-  // enumeração de e-mails cadastrados por diferença de tempo.
   const passwordMatches = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
-  if (!user || !passwordMatches) throw err;
+  if (!user || !passwordMatches || (requireAdmin && user.role !== 'admin')) {
+    throw new AppError('E-mail ou senha inválidos.', 401, 'INVALID_CREDENTIALS');
+  }
+  return user;
+}
 
+async function login(credentials) {
+  const user = await authenticateCredentials(credentials);
   await recordAuditLog(user.id, 'user', user.id, 'login');
-  const session = await issueSession(user.id);
+  const session = await issueSession(user.id, { clientType: AUTH_CLIENTS.USER });
+  return { user: publicUser(user), ...session };
+}
+
+async function loginAdmin(credentials) {
+  const user = await authenticateCredentials(credentials, { requireAdmin: true });
+  await recordAuditLog(user.id, 'admin_session', user.id, 'login');
+  const session = await issueSession(user.id, { clientType: AUTH_CLIENTS.ADMIN });
   return { user: publicUser(user), ...session };
 }
 
 /**
- * Rotação de refresh token com DETECÇÃO DE REUSO.
- *
- * Duas abas renovando quase ao mesmo tempo é legítimo e continua
- * funcionando: dentro da janela de graça, a segunda recebe uma sessão
- * válida da mesma família em vez de ser deslogada.
- *
- * O que mudou: fora dessa janela, apresentar um token JÁ ROTACIONADO
- * deixa de ser apenas "401 nessa requisição". Isso é a assinatura clássica
- * de token roubado — quem tem a cópia antiga está tentando usá-la depois
- * que o dono legítimo já girou a sessão. Agora a FAMÍLIA INTEIRA é
- * revogada: o atacante e o dono são desconectados, e o dono refaz login.
- * Antes, um refresh token vazado continuava utilizável por até 30 dias
- * sem que nada no sistema percebesse.
+ * Rotação estrita: cada refresh token só pode ser usado uma vez. O frontend
+ * já possui single-flight por aplicação; aceitar novamente um token revogado
+ * criava uma janela real para cópias roubadas emitirem sucessores válidos.
  */
-async function refresh(rawRefreshToken) {
+async function refresh(rawRefreshToken, clientType = AUTH_CLIENTS.USER) {
   if (!rawRefreshToken || rawRefreshToken.length > 256) {
     throw new AppError('Refresh token ausente.', 401, 'UNAUTHORIZED');
   }
@@ -120,104 +134,154 @@ async function refresh(rawRefreshToken) {
     'Sessão expirada ou inválida. Faça login novamente.', 401, 'UNAUTHORIZED'
   );
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const existing = await tx.refreshToken.findUnique({ where: { tokenHash } });
-    if (!existing) throw invalidSession();
+    if (!existing || existing.client !== clientType) return { invalid: true };
 
     const claimed = await tx.refreshToken.updateMany({
-      where: { id: existing.id, revokedAt: null, expiresAt: { gt: new Date() } },
+      where: {
+        id: existing.id,
+        client: clientType,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
       data: { revokedAt: new Date() },
     });
 
+    // Reuso de um token já consumido é tratado como possível roubo: a família
+    // inteira é revogada e a transação PRECISA confirmar antes do 401. Lançar
+    // a exceção aqui dentro faria o Prisma desfazer justamente a revogação.
     if (claimed.count !== 1) {
-      const current = await tx.refreshToken.findUnique({ where: { id: existing.id } });
-      const revokedRecently = current?.revokedAt
-        && Date.now() - current.revokedAt.getTime() <= REFRESH_CONCURRENCY_GRACE_MS
-        && current.expiresAt.getTime() > Date.now();
-
-      if (!revokedRecently) {
-        // Reuso fora da janela -> revoga toda a família.
-        await tx.refreshToken.updateMany({
-          where: { familyId: existing.familyId, revokedAt: null },
-          data: { revokedAt: new Date() },
-        });
-        throw invalidSession();
-      }
+      await tx.refreshToken.updateMany({
+        where: { familyId: existing.familyId, client: clientType, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      return { invalid: true };
     }
 
-    return issueSession(existing.userId, tx, existing.familyId);
+    const user = await tx.user.findUnique({ where: { id: existing.userId } });
+    if (!user || user.isSimulationProfile || (clientType === AUTH_CLIENTS.ADMIN && user.role !== 'admin')) {
+      await tx.refreshToken.updateMany({
+        where: { familyId: existing.familyId, client: clientType, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      return { invalid: true };
+    }
+
+    const session = await issueSession(existing.userId, {
+      clientType,
+      client: tx,
+      familyId: existing.familyId,
+    });
+    return { ...session, user: publicUser(user), invalid: false };
   });
+
+  if (result.invalid) throw invalidSession();
+  const { invalid, ...session } = result;
+  return session;
 }
 
-/** Encerra a sessão em TODOS os dispositivos do usuário. */
-async function logoutAllDevices(userId) {
+async function logoutAllDevices(userId, clientType = null) {
   const result = await prisma.refreshToken.updateMany({
-    where: { userId, revokedAt: null },
+    where: { userId, revokedAt: null, ...(clientType ? { client: clientType } : {}) },
     data: { revokedAt: new Date() },
   });
   await recordAuditLog(userId, 'user', userId, 'logout_all_devices');
   return { revokedSessions: result.count };
 }
 
-async function logout(rawRefreshToken) {
+async function logout(rawRefreshToken, clientType = AUTH_CLIENTS.USER) {
   if (!rawRefreshToken) return;
   const tokenHash = hashToken(rawRefreshToken);
   const token = await prisma.refreshToken.findUnique({
     where: { tokenHash },
-    select: { familyId: true },
+    select: { familyId: true, client: true },
   });
-  if (!token) return;
-  // Revoga a família inteira: sair em uma aba encerra a sessão daquele
-  // dispositivo por completo, sem deixar um token rotacionado sobrevivendo.
+  if (!token || token.client !== clientType) return;
   await prisma.refreshToken.updateMany({
-    where: { familyId: token.familyId, revokedAt: null },
+    where: { familyId: token.familyId, client: clientType, revokedAt: null },
     data: { revokedAt: new Date() },
   });
 }
 
 async function forgotPassword(email) {
+  // Em produção, falhar claramente é mais seguro do que responder “enviado”
+  // quando nenhum provedor está configurado. A checagem acontece antes da
+  // busca do usuário para não revelar se o endereço existe.
+  if (env.NODE_ENV === 'production' && !isMailConfigured()) {
+    throw new AppError(
+      'A recuperação de senha está temporariamente indisponível.',
+      503,
+      'MAIL_DELIVERY_UNAVAILABLE'
+    );
+  }
+
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) return { devToken: null };
+  if (!user || user.isSimulationProfile) return { devToken: null };
   const rawToken = generateOpaqueToken();
-  await prisma.passwordReset.create({
+  const reset = await prisma.passwordReset.create({
     data: { userId: user.id, tokenHash: hashToken(rawToken), expiresAt: passwordResetExpiryDate() },
   });
-  await recordAuditLog(user.id, 'user', user.id, 'password_reset_requested');
-
   const resetUrl = `${env.FRONTEND_URL.replace(/\/$/, '')}/reset-password?token=${rawToken}`;
-  // Não bloqueia o fluxo em caso de falha de e-mail (provedor fora do ar
-  // não deve impedir o usuário de tentar de novo) — erro só é logado.
-  await sendPasswordResetEmail(user.email, user.name, resetUrl);
-
-  // SÓ retorna token em development explícito — nunca em production/undefined
-  // (em dev, sem SMTP configurado, isso permite testar o fluxo sem e-mail real)
-  const devToken = env.NODE_ENV === 'development' ? rawToken : null;
-  return { devToken };
+  const delivery = await sendPasswordResetEmail(user.email, user.name, resetUrl);
+  if (!delivery.sent && env.NODE_ENV === 'production') {
+    await prisma.passwordReset.delete({ where: { id: reset.id } }).catch(() => {});
+    throw new AppError(
+      'A recuperação de senha está temporariamente indisponível.',
+      503,
+      'MAIL_DELIVERY_UNAVAILABLE'
+    );
+  }
+  await recordAuditLog(user.id, 'user', user.id, 'password_reset_requested');
+  return { devToken: env.NODE_ENV !== 'production' ? rawToken : null };
 }
 
 async function resetPassword({ token, password }) {
   const tokenHash = hashToken(token);
   const rec = await prisma.passwordReset.findUnique({ where: { tokenHash } });
-  if (!rec || rec.usedAt !== null || rec.expiresAt.getTime() < Date.now()) {
+  if (!rec) {
     throw new AppError('Token de redefinição inválido ou expirado.', 400, 'INVALID_RESET_TOKEN');
   }
+
+  // O hash é calculado antes da transação (bcrypt é CPU-bound), mas o token
+  // só é "consumido" atomicamente dentro dela. Duas requisições simultâneas
+  // não conseguem redefinir a senha com o mesmo link.
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  await prisma.$transaction([
-    prisma.user.update({ where: { id: rec.userId }, data: { passwordHash } }),
-    prisma.passwordReset.update({ where: { id: rec.id }, data: { usedAt: new Date() } }),
-    prisma.refreshToken.updateMany({ where: { userId: rec.userId, revokedAt: null }, data: { revokedAt: new Date() } }),
-  ]);
-  await recordAuditLog(rec.userId, 'user', rec.userId, 'password_reset_completed');
+  const now = new Date();
+  const resetUserId = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.passwordReset.updateMany({
+      where: {
+        id: rec.id,
+        usedAt: null,
+        expiresAt: { gt: now },
+      },
+      data: { usedAt: now },
+    });
+    if (claimed.count !== 1) {
+      throw new AppError('Token de redefinição inválido ou expirado.', 400, 'INVALID_RESET_TOKEN');
+    }
+
+    await tx.user.update({ where: { id: rec.userId }, data: { passwordHash } });
+    // Invalida todos os outros links pendentes e todas as sessões.
+    await tx.passwordReset.updateMany({
+      where: { userId: rec.userId, usedAt: null },
+      data: { usedAt: now },
+    });
+    await tx.refreshToken.updateMany({
+      where: { userId: rec.userId, revokedAt: null },
+      data: { revokedAt: now },
+    });
+    return rec.userId;
+  });
+  await recordAuditLog(resetUserId, 'user', resetUserId, 'password_reset_completed');
 }
 
 async function me(userId) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
+  if (!user || user.isSimulationProfile) throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
   return publicUser(user);
 }
 
-// Atualiza apenas o nome de exibição. E-mail e senha têm fluxos próprios
-// (senha via forgot/reset-password) e não são tocados aqui de propósito.
 async function updateProfile(userId, { name }) {
   const user = await prisma.user.update({ where: { id: userId }, data: { name } });
   await recordAuditLog(userId, 'user', userId, 'update', { newValue: { name } });
@@ -225,6 +289,14 @@ async function updateProfile(userId, { name }) {
 }
 
 module.exports = {
-  register, login, refresh, logout, logoutAllDevices,
-  forgotPassword, resetPassword, me, updateProfile,
+  register,
+  login,
+  loginAdmin,
+  refresh,
+  logout,
+  logoutAllDevices,
+  forgotPassword,
+  resetPassword,
+  me,
+  updateProfile,
 };

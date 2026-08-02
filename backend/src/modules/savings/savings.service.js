@@ -5,7 +5,63 @@ const { recordAuditLog } = require('../auditLog/auditLog.service');
 const { round2 } = require('../../utils/math');
 const { assertSufficientBalance, lockUserBalance } = require('../_shared/balance');
 const monthsService = require('../months/months.service');
-const latestOrder = [{ createdAt: 'desc' }, { id: 'desc' }];
+const { getRequestWorkspaceType } = require('../../utils/requestContext');
+const latestOrder = [{ transactionDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }];
+const chronologicalOrder = [{ transactionDate: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }];
+
+function isSimulation() { return getRequestWorkspaceType() === 'simulation'; }
+
+
+function assertChronologicalAppend(date, last) {
+  if (last && date.getTime() < last.transactionDate.getTime()) {
+    throw new AppError(
+      'A movimentação não pode ser anterior ao último lançamento da poupança. Reabra e reconstrua a simulação ou use a data atual do extrato.',
+      409,
+      'SAVINGS_RETROACTIVE_NOT_ALLOWED'
+    );
+  }
+}
+
+
+async function recalculateSavingsLedger(userId, client, { updateFromDate = null } = {}) {
+  const rows = await client.savingsTransaction.findMany({
+    where: { userId },
+    orderBy: chronologicalOrder,
+  });
+  let total = 0;
+  const bucketBalances = new Map();
+  for (const row of rows) {
+    const bucketKey = String(row.bucketId);
+    const bucketBefore = bucketBalances.get(bucketKey) ?? 0;
+    const value = Number(row.value);
+    const bucketAfter = row.type === 'deposit'
+      ? round2(bucketBefore + value)
+      : round2(bucketBefore - value);
+    if (bucketAfter < -0.009) {
+      throw new AppError(
+        `A alteração deixaria a caixinha negativa na data ${row.transactionDate.toISOString().slice(0, 10)}.`,
+        409,
+        'SAVINGS_TIMELINE_NEGATIVE'
+      );
+    }
+    total = row.type === 'deposit' ? round2(total + value) : round2(total - value);
+    const normalizedTotal = Math.max(total, 0);
+    const normalizedBucket = Math.max(bucketAfter, 0);
+    bucketBalances.set(bucketKey, normalizedBucket);
+    const canRewrite = !updateFromDate
+      || row.transactionDate.getTime() >= updateFromDate.getTime();
+    if (canRewrite && (
+      Math.abs(Number(row.balanceAfter) - normalizedTotal) > 0.009
+      || Math.abs(Number(row.bucketBalanceAfter ?? 0) - normalizedBucket) > 0.009
+    )) {
+      await client.savingsTransaction.update({
+        where: { id: row.id },
+        data: { balanceAfter: normalizedTotal, bucketBalanceAfter: normalizedBucket },
+      });
+    }
+  }
+  return { total: Math.max(total, 0), rows: rows.length };
+}
 
 async function ensureDefaultBucket(userId, client = prisma) {
   const existing = await client.savingsBucket.findFirst({
@@ -68,7 +124,6 @@ async function getBucketBalance(userId, bucketId, client = prisma) {
 }
 
 async function listBucketsByArchiveStatus(userId, isArchived) {
-  await ensureDefaultBucket(userId);
   const buckets = await prisma.savingsBucket.findMany({
     where: { userId, isArchived },
     include: {
@@ -178,10 +233,11 @@ async function deposit(userId, { value, date, observation, origin = 'balance', b
       tx.savingsTransaction.findFirst({ where: { userId }, orderBy: latestOrder }),
       tx.savingsTransaction.findFirst({ where: { userId, bucketId: bucket.id }, orderBy: latestOrder }),
     ]);
+    if (!isSimulation()) assertChronologicalAppend(date, last);
     const currentBalance = Number(last?.balanceAfter ?? 0);
     const currentBucketBalance = Number(lastInBucket?.bucketBalanceAfter ?? lastInBucket?.balanceAfter ?? 0);
 
-    return tx.savingsTransaction.create({
+    const created = await tx.savingsTransaction.create({
       data: {
         userId,
         bucketId: bucket.id,
@@ -195,6 +251,11 @@ async function deposit(userId, { value, date, observation, origin = 'balance', b
       },
       include: { bucket: true },
     });
+    if (isSimulation()) {
+      await recalculateSavingsLedger(userId, tx);
+      return tx.savingsTransaction.findUnique({ where: { id: created.id }, include: { bucket: true } });
+    }
+    return created;
   }).then(async (created) => {
     await recordAuditLog(userId, 'savingsTransaction', created.id, 'deposit', { newValue: created });
     return created;
@@ -210,6 +271,7 @@ async function withdraw(userId, { value, date, observation, bucketId }) {
       tx.savingsTransaction.findFirst({ where: { userId }, orderBy: latestOrder }),
       tx.savingsTransaction.findFirst({ where: { userId, bucketId: bucket.id }, orderBy: latestOrder }),
     ]);
+    if (!isSimulation()) assertChronologicalAppend(date, last);
     const currentBalance = Number(last?.balanceAfter ?? 0);
     const currentBucketBalance = Number(lastInBucket?.bucketBalanceAfter ?? lastInBucket?.balanceAfter ?? 0);
 
@@ -221,7 +283,7 @@ async function withdraw(userId, { value, date, observation, bucketId }) {
       );
     }
 
-    return tx.savingsTransaction.create({
+    const created = await tx.savingsTransaction.create({
       data: {
         userId,
         bucketId: bucket.id,
@@ -234,6 +296,11 @@ async function withdraw(userId, { value, date, observation, bucketId }) {
       },
       include: { bucket: true },
     });
+    if (isSimulation()) {
+      await recalculateSavingsLedger(userId, tx);
+      return tx.savingsTransaction.findUnique({ where: { id: created.id }, include: { bucket: true } });
+    }
+    return created;
   }).then(async (created) => {
     await recordAuditLog(userId, 'savingsTransaction', created.id, 'withdraw', { newValue: created });
     return created;
@@ -258,6 +325,7 @@ async function transfer(userId, { fromBucketId, toBucketId, value, date, observa
       tx.savingsTransaction.findFirst({ where: { userId, bucketId: destination.id }, orderBy: latestOrder }),
     ]);
 
+    if (!isSimulation()) assertChronologicalAppend(date, globalLast);
     const totalBalance = Number(globalLast?.balanceAfter ?? 0);
     const sourceBalance = Number(sourceLast?.bucketBalanceAfter ?? sourceLast?.balanceAfter ?? 0);
     const destinationBalance = Number(destinationLast?.bucketBalanceAfter ?? destinationLast?.balanceAfter ?? 0);
@@ -300,6 +368,7 @@ async function transfer(userId, { fromBucketId, toBucketId, value, date, observa
       },
       include: { bucket: true },
     });
+    if (isSimulation()) await recalculateSavingsLedger(userId, tx);
     return { outgoing, incoming, transferId };
   }).then(async (result) => {
     await recordAuditLog(userId, 'savingsTransfer', result.outgoing.id, 'transfer', {
@@ -313,17 +382,24 @@ async function updateLastTransaction(userId, transactionId, { value, date, obser
   return prisma.$transaction(async (tx) => {
     await lockUserBalance(tx, userId);
     await monthsService.assertTransactionDateIsOpen(userId, date, tx);
-    const last = await tx.savingsTransaction.findFirst({ where: { userId }, orderBy: latestOrder });
-    if (!last || String(last.id) !== String(transactionId)) {
+    const latest = await tx.savingsTransaction.findFirst({ where: { userId }, orderBy: latestOrder });
+    const last = await tx.savingsTransaction.findFirst({ where: { id: BigInt(transactionId), userId } });
+    if (!last || (!isSimulation() && String(latest?.id) !== String(transactionId))) {
       throw new AppError(
-        'Só é possível editar o lançamento mais recente do extrato de poupança.',
-        409,
-        'NOT_LAST_SAVINGS_TRANSACTION'
+        isSimulation() ? 'Lançamento de poupança não encontrado.' : 'Só é possível editar o lançamento mais recente do extrato de poupança.',
+        isSimulation() ? 404 : 409,
+        isSimulation() ? 'SAVINGS_TRANSACTION_NOT_FOUND' : 'NOT_LAST_SAVINGS_TRANSACTION'
       );
     }
     if (last.transferId) {
       throw new AppError('Transferências entre caixinhas não podem ser editadas. Faça uma transferência inversa.', 409, 'TRANSFER_IMMUTABLE');
     }
+    await monthsService.assertTransactionDateIsOpen(userId, last.transactionDate, tx);
+    const previous = await tx.savingsTransaction.findFirst({
+      where: { userId, id: { not: last.id } },
+      orderBy: latestOrder,
+    });
+    if (!isSimulation()) assertChronologicalAppend(date, previous);
 
     const balanceBeforeThis = last.type === 'deposit'
       ? round2(Number(last.balanceAfter) - Number(last.value))
@@ -350,7 +426,7 @@ async function updateLastTransaction(userId, transactionId, { value, date, obser
     const additionalConsumption = round2(newBalanceImpact - oldBalanceImpact);
     if (additionalConsumption > 0) await assertSufficientBalance(userId, additionalConsumption, tx);
 
-    const updated = await tx.savingsTransaction.update({
+    let updated = await tx.savingsTransaction.update({
       where: { id: last.id },
       data: {
         value,
@@ -366,6 +442,10 @@ async function updateLastTransaction(userId, transactionId, { value, date, obser
       },
       include: { bucket: true },
     });
+    if (isSimulation()) {
+      await recalculateSavingsLedger(userId, tx);
+      updated = await tx.savingsTransaction.findUnique({ where: { id: last.id }, include: { bucket: true } });
+    }
     return { updated, oldValue: last };
   }).then(async ({ updated, oldValue }) => {
     await recordAuditLog(userId, 'savingsTransaction', updated.id, 'update', { oldValue, newValue: updated });
@@ -376,15 +456,22 @@ async function updateLastTransaction(userId, transactionId, { value, date, obser
 async function deleteLastTransaction(userId, transactionId) {
   return prisma.$transaction(async (tx) => {
     await lockUserBalance(tx, userId);
-    const last = await tx.savingsTransaction.findFirst({ where: { userId }, orderBy: latestOrder });
-    if (!last || String(last.id) !== String(transactionId)) {
-      throw new AppError('Só é possível excluir o lançamento mais recente do extrato de poupança.', 409, 'NOT_LAST_SAVINGS_TRANSACTION');
+    const latest = await tx.savingsTransaction.findFirst({ where: { userId }, orderBy: latestOrder });
+    const last = await tx.savingsTransaction.findFirst({ where: { id: BigInt(transactionId), userId } });
+    if (!last || (!isSimulation() && String(latest?.id) !== String(transactionId))) {
+      throw new AppError(
+        isSimulation() ? 'Lançamento de poupança não encontrado.' : 'Só é possível excluir o lançamento mais recente do extrato de poupança.',
+        isSimulation() ? 404 : 409,
+        isSimulation() ? 'SAVINGS_TRANSACTION_NOT_FOUND' : 'NOT_LAST_SAVINGS_TRANSACTION'
+      );
     }
     if (last.transferId) {
       throw new AppError('Transferências entre caixinhas não podem ser excluídas. Faça uma transferência inversa.', 409, 'TRANSFER_IMMUTABLE');
     }
+    await monthsService.assertTransactionDateIsOpen(userId, last.transactionDate, tx);
     if (last.type === 'withdraw') await assertSufficientBalance(userId, Number(last.value), tx);
     await tx.savingsTransaction.delete({ where: { id: last.id } });
+    if (isSimulation()) await recalculateSavingsLedger(userId, tx);
     return last;
   }).then(async (deleted) => {
     await recordAuditLog(userId, 'savingsTransaction', deleted.id, 'delete', { oldValue: deleted });
@@ -438,4 +525,5 @@ module.exports = {
   deleteLastTransaction,
   getNetMovementInRange,
   getBalanceBreakdown,
+  recalculateSavingsLedger,
 };

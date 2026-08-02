@@ -3,16 +3,16 @@ const monthsService = require('../months/months.service');
 const cardsService = require('../cards/cards.service');
 const goalsService = require('../goals/goals.service');
 const savingsService = require('../savings/savings.service');
+const cardInvoicesService = require('../cards/cardInvoices.service');
 const financialHealthService = require('../financialHealth/financialHealth.service');
 const alertsService = require('../alerts/alerts.service');
 const recommendationsService = require('../recommendations/recommendations.service');
 const { classifyCommitment } = require('../_shared/commitment');
 const { getAverageRecentIncome } = require('../_shared/financialMetrics');
 const { getAvailableBalance, getBalanceAsOf } = require('../_shared/balance');
-const { monthDateRange, todayUtcDate } = require('../../utils/dateTime');
+const { monthDateRange } = require('../../utils/dateTime');
 const { round2 } = require('../../utils/math');
 const { getUserPlan } = require('../plans/plans.service');
-const { ensureClosedMonthSnapshot } = require('../months/monthSnapshot.service');
 const { getMonthFacts, normalizeFacts } = require('../months/monthFacts.service');
 const debtsService = require('../debts/debts.service');
 
@@ -25,8 +25,12 @@ const debtsService = require('../debts/debts.service');
  * em meta saía do saldo e não reaparecia em card nenhum, dando a
  * impressão de dinheiro perdido.
  */
-async function getWealthBreakdown(userId, facts, client = prisma) {
-  const [contributions, refunds] = await Promise.all([
+async function getWealthBreakdown(userId, facts, client = prisma, { frozen = false } = {}) {
+  let goalsBalance;
+  if (frozen) {
+    goalsBalance = round2(Number(facts.goalsBalance ?? 0));
+  } else {
+    const [contributions, refunds] = await Promise.all([
     client.goalContribution.aggregate({
       where: { goal: { userId }, type: 'contribution' },
       _sum: { value: true },
@@ -35,11 +39,11 @@ async function getWealthBreakdown(userId, facts, client = prisma) {
       where: { goal: { userId }, type: 'refund' },
       _sum: { value: true },
     }),
-  ]);
-
-  const goalsBalance = round2(
-    Number(contributions._sum.value ?? 0) - Number(refunds._sum.value ?? 0)
-  );
+    ]);
+    goalsBalance = round2(
+      Number(contributions._sum.value ?? 0) - Number(refunds._sum.value ?? 0)
+    );
+  }
   const availableBalance = round2(Number(facts.currentBalance));
   const physicalCash = round2(Number(facts.physicalCash));
   const savingsBalance = round2(Number(facts.savingsBalance));
@@ -61,27 +65,92 @@ async function getWealthBreakdown(userId, facts, client = prisma) {
   };
 }
 
+function commitmentFromSummary(summary, averageIncome) {
+  const incomeRef = averageIncome > 0
+    ? averageIncome
+    : Number(summary.incomeTotal) > 0
+      ? Number(summary.incomeTotal)
+      : 1;
+  const ratio = round2(Number(summary.expensesPlanned) / incomeRef);
+  const band = classifyCommitment(ratio);
+  return {
+    ratio,
+    band,
+    label: { saudavel: 'Saudável', atencao: 'Atenção', risco: 'Risco', critico: 'Crítico' }[band],
+  };
+}
+
+async function getClosedDashboard(userId, month, entitlements) {
+  // Um mês fechado não consulta nenhum indicador vivo: tudo vem do retrato
+  // congelado. Assim, estornos ou metas atuais não reescrevem o passado.
+  const rawFacts = await getMonthFacts(userId, month);
+  const summary = normalizeFacts(rawFacts);
+  const wealth = await getWealthBreakdown(userId, summary, prisma, { frozen: true });
+  return {
+    month,
+    wealth,
+    debtIndicators: {
+      totalRemainingBalance: Number(summary.totalActiveDebt),
+      activeDebtsCount: Number(summary.activeDebtsCount ?? 0),
+      remainingInstallments: Number(summary.remainingInstallments ?? 0),
+      nextInstallment: null,
+      historical: true,
+    },
+    historicalSnapshot: rawFacts ? {
+      version: Number(rawFacts.version ?? 1),
+      capturedAt: rawFacts.capturedAt ?? null,
+      reconstructed: Boolean(rawFacts.reconstructed),
+    } : null,
+    openingBalance: Number(summary.openingBalance),
+    incomeTotal: Number(summary.incomeTotal),
+    expensesPlanned: Number(summary.expensesPlanned),
+    expensesPaid: Number(summary.expensesPaid),
+    currentBalance: Number(summary.currentBalance),
+    projectedBalance: Number(summary.projectedBalance),
+    savingsBalance: Number(summary.savingsBalance),
+    savingsNet: Number(summary.savingsNet),
+    goalNet: Number(summary.goalNet),
+    physicalCash: Number(summary.physicalCash),
+    digitalCash: Number(summary.digitalCash),
+    totalActiveDebt: Number(summary.totalActiveDebt),
+    pendingExpensesCount: Number(summary.pendingExpensesCount),
+    upcomingDueDates: [],
+    openInvoices: [],
+    cards: [],
+    goals: [],
+    financialHealthScore: summary.financialHealthScore == null
+      ? null
+      : { score: Number(summary.financialHealthScore), historical: true },
+    alerts: [],
+    recommendations: [],
+    proAccess: {
+      recommendations: entitlements.features.advancedRecommendations,
+      projections: entitlements.features.futureProjections,
+    },
+    commitment: commitmentFromSummary(summary, Number(summary.incomeTotal)),
+  };
+}
+
 async function getDashboard(userId, monthId) {
   const [month, planInfo] = await Promise.all([
     monthsService.getMonthOrThrow(userId, monthId),
     getUserPlan(userId),
   ]);
   const { entitlements } = planInfo;
-  // Mês fechado sem snapshot (base anterior à V19) ganha o retrato agora;
-  // mês fechado COM snapshot nunca é recalculado nem sobrescrito.
-  if (month.status === 'closed') await ensureClosedMonthSnapshot(userId, month);
-  const refreshedMonth = month.status === 'closed'
-    ? await monthsService.getMonthOrThrow(userId, monthId)
-    : month;
+  if (month.status === 'closed') {
+    return getClosedDashboard(userId, month, entitlements);
+  }
+  // Consultas são puras. Um mês legado sem snapshot é sinalizado por
+  // getMonthFacts; reparos acontecem apenas por comando explícito.
+  const refreshedMonth = month;
   const { start, end } = monthDateRange(month.year, month.month);
   const dayBeforeStart = new Date(start.getTime() - 1);
-  const today = todayUtcDate();
-  const actualBalanceCutoff = end < today ? end : today;
 
   const [
     incomesAgg,
     allExpensesAgg,
     paidAgg,
+    reversedAgg,
     outstandingAgg,
     pendingExpenses,
     pendingCount,
@@ -90,18 +159,26 @@ async function getDashboard(userId, monthId) {
     savingsBalance,
     goalMovements,
     cashIncomesAgg,
+    cashIncomeReversalsAgg,
     cashExpensesPaidAgg,
+    cashExpensesReversedAgg,
     digitalIncomesAgg,
+    digitalIncomeReversalsAgg,
     digitalExpensesPaidAgg,
+    digitalExpensesReversedAgg,
     openingBalance,
     currentBalance,
     monthEndBalance,
   ] = await Promise.all([
-    prisma.income.aggregate({ where: { userId, monthId }, _sum: { value: true } }),
+    prisma.income.aggregate({ where: { userId, monthId }, _sum: { value: true, reversedAmount: true } }),
     prisma.expense.aggregate({ where: { userId, monthId, deletedAt: null }, _sum: { value: true } }),
     prisma.expense.aggregate({
       where: { userId, deletedAt: null, paidAt: { gte: start, lte: end } },
       _sum: { paidAmount: true },
+    }),
+    prisma.expense.aggregate({
+      where: { userId, deletedAt: null, reversedAt: { gte: start, lte: end } },
+      _sum: { reversedAmount: true },
     }),
     // PENDÊNCIAS DO MÊS — parcelas de CARTÃO ficam de fora.
     //
@@ -131,36 +208,59 @@ async function getDashboard(userId, monthId) {
     // das pendências. Ficam visíveis como UM item por fatura, que é como a
     // dívida realmente se apresenta e como ela é paga.
     prisma.cardInvoice.findMany({
-      where: { card: { userId }, status: { not: 'paid' } },
+      where: {
+        card: { userId },
+        expenses: { some: { deletedAt: null, status: { in: ['pending', 'partial', 'late'] } } },
+      },
       include: {
         card: { select: { id: true, name: true } },
-        expenses: { where: { deletedAt: null, status: { not: 'paid' } }, select: { value: true, paidAmount: true } },
+        expenses: { where: { deletedAt: null, status: { in: ['pending', 'partial', 'late'] } }, select: { value: true, paidAmount: true } },
       },
       orderBy: { dueDate: 'asc' },
     }),
     prisma.debt.aggregate({ where: { userId, status: 'active' }, _sum: { remainingBalance: true } }),
     savingsService.getCurrentBalance(userId),
     prisma.goalContribution.findMany({ where: { monthId, goal: { userId } } }),
-    prisma.income.aggregate({ where: { userId, monthId, origin: 'physical' }, _sum: { value: true } }),
+    prisma.income.aggregate({
+      where: { userId, origin: 'physical', effectiveDate: { gte: start, lte: end } },
+      _sum: { value: true },
+    }),
+    prisma.income.aggregate({
+      where: { userId, origin: 'physical', reversedAt: { gte: start, lte: end } },
+      _sum: { reversedAmount: true },
+    }),
     prisma.expense.aggregate({
       where: { userId, paymentMethod: 'cash', deletedAt: null, paidAt: { gte: start, lte: end } },
       _sum: { paidAmount: true },
     }),
-    prisma.income.aggregate({ where: { userId, monthId, origin: 'digital' }, _sum: { value: true } }),
+    prisma.expense.aggregate({
+      where: { userId, paymentMethod: 'cash', deletedAt: null, reversedAt: { gte: start, lte: end } },
+      _sum: { reversedAmount: true },
+    }),
+    prisma.income.aggregate({
+      where: { userId, origin: 'digital', effectiveDate: { gte: start, lte: end } },
+      _sum: { value: true },
+    }),
+    prisma.income.aggregate({
+      where: { userId, origin: 'digital', reversedAt: { gte: start, lte: end } },
+      _sum: { reversedAmount: true },
+    }),
     prisma.expense.aggregate({
       where: { userId, paymentMethod: { not: 'cash' }, deletedAt: null, paidAt: { gte: start, lte: end } },
       _sum: { paidAmount: true },
     }),
+    prisma.expense.aggregate({
+      where: { userId, paymentMethod: { not: 'cash' }, deletedAt: null, reversedAt: { gte: start, lte: end } },
+      _sum: { reversedAmount: true },
+    }),
     getBalanceAsOf(userId, dayBeforeStart),
-    month.status === 'open'
-      ? getAvailableBalance(userId)
-      : getBalanceAsOf(userId, actualBalanceCutoff),
+    getAvailableBalance(userId),
     getBalanceAsOf(userId, end),
   ]);
 
-  const incomeTotal = Number(incomesAgg._sum.value ?? 0);
+  const incomeTotal = round2(Number(incomesAgg._sum.value ?? 0) - Number(incomesAgg._sum.reversedAmount ?? 0));
   const expensesPlanned = Number(allExpensesAgg._sum.value ?? 0);
-  const expensesPaid = Number(paidAgg._sum.paidAmount ?? 0);
+  const expensesPaid = round2(Number(paidAgg._sum.paidAmount ?? 0) - Number(reversedAgg._sum.reversedAmount ?? 0));
   const outstanding = round2(
     Number(outstandingAgg._sum.value ?? 0) - Number(outstandingAgg._sum.paidAmount ?? 0)
   );
@@ -170,18 +270,22 @@ async function getDashboard(userId, monthId) {
   ));
   const savingsNet = await savingsService.getNetMovementInRange(userId, start, end);
   const physicalCash = round2(
-    Number(cashIncomesAgg._sum.value ?? 0) - Number(cashExpensesPaidAgg._sum.paidAmount ?? 0)
+    Number(cashIncomesAgg._sum.value ?? 0)
+    - Number(cashIncomeReversalsAgg._sum.reversedAmount ?? 0)
+    - Number(cashExpensesPaidAgg._sum.paidAmount ?? 0)
+    + Number(cashExpensesReversedAgg._sum.reversedAmount ?? 0)
   );
   const digitalCash = round2(
-    Number(digitalIncomesAgg._sum.value ?? 0) - Number(digitalExpensesPaidAgg._sum.paidAmount ?? 0)
+    Number(digitalIncomesAgg._sum.value ?? 0)
+    - Number(digitalIncomeReversalsAgg._sum.reversedAmount ?? 0)
+    - Number(digitalExpensesPaidAgg._sum.paidAmount ?? 0)
+    + Number(digitalExpensesReversedAgg._sum.reversedAmount ?? 0)
   );
 
   const [cards, goals, financialHealthScore, alerts, recommendations, avgIncome] = await Promise.all([
     cardsService.listCards(userId),
     goalsService.listGoals(userId),
     financialHealthService.getOrComputeHealthScore(userId, monthId),
-    // Antes: `refreshAlerts` gravava no banco a CADA carregamento do
-    // Dashboard. Agora recomputa no máximo uma vez por minuto por mês.
     alertsService.getAlerts(userId, monthId),
     entitlements.isPro
       ? recommendationsService.generateRecommendations(userId, monthId)
@@ -204,24 +308,11 @@ async function getDashboard(userId, monthId) {
     totalActiveDebt: round2(Number(debtsAgg._sum.remainingBalance ?? 0)),
     pendingExpensesCount: pendingCount,
   };
-  // Fonte única de verdade: mês fechado usa o snapshot congelado; mês
-  // aberto usa os números vivos calculados acima.
-  const closedSnapshot = refreshedMonth.status === 'closed'
-    ? await getMonthFacts(userId, refreshedMonth)
-    : null;
-  const summary = normalizeFacts(closedSnapshot ?? liveSummary);
+  const summary = normalizeFacts(liveSummary);
   const [wealth, debtIndicators] = await Promise.all([
     getWealthBreakdown(userId, summary),
     debtsService.getDebtIndicators(userId),
   ]);
-
-  const incomeRef = avgIncome > 0
-    ? avgIncome
-    : Number(summary.incomeTotal) > 0
-      ? Number(summary.incomeTotal)
-      : 1;
-  const commitmentRatio = round2(Number(summary.expensesPlanned) / incomeRef);
-  const commitmentBand = classifyCommitment(commitmentRatio);
 
   return {
     month: refreshedMonth,
@@ -229,11 +320,7 @@ async function getDashboard(userId, monthId) {
     // Números REAIS de dívida. O Dashboard não deve mais derivar
     // "parcelas restantes" da lista truncada de próximos vencimentos.
     debtIndicators,
-    historicalSnapshot: closedSnapshot ? {
-      version: Number(closedSnapshot.version ?? 1),
-      capturedAt: closedSnapshot.capturedAt ?? null,
-      reconstructed: Boolean(closedSnapshot.reconstructed),
-    } : null,
+    historicalSnapshot: null,
     openingBalance: Number(summary.openingBalance),
     incomeTotal: Number(summary.incomeTotal),
     expensesPlanned: Number(summary.expensesPlanned),
@@ -248,14 +335,15 @@ async function getDashboard(userId, monthId) {
     totalActiveDebt: Number(summary.totalActiveDebt),
     pendingExpensesCount: Number(summary.pendingExpensesCount),
     upcomingDueDates: pendingExpenses,
-    // Faturas em aberto, cada uma como um item só, com o saldo devedor real.
+    // Mês fechado não recebe estado vivo de faturas; snapshots antigos não
+    // tinham esse detalhe, então preferimos omitir a inventar histórico.
     openInvoices: (openInvoiceRows ?? []).map((invoice) => ({
       id: String(invoice.id),
       cardName: invoice.card?.name ?? null,
       referenceMonth: invoice.referenceMonth,
       referenceYear: invoice.referenceYear,
       dueDate: invoice.dueDate,
-      status: invoice.status,
+      status: cardInvoicesService.invoiceStatusWithOutstanding(invoice.closingDate),
       amount: round2(invoice.expenses.reduce(
         (sum, e) => sum + (Number(e.value) - Number(e.paidAmount ?? 0)), 0
       )),
@@ -269,11 +357,7 @@ async function getDashboard(userId, monthId) {
       recommendations: entitlements.features.advancedRecommendations,
       projections: entitlements.features.futureProjections,
     },
-    commitment: {
-      ratio: commitmentRatio,
-      band: commitmentBand,
-      label: { saudavel: 'Saudável', atencao: 'Atenção', risco: 'Risco', critico: 'Crítico' }[commitmentBand],
-    },
+    commitment: commitmentFromSummary(summary, avgIncome),
   };
 }
 

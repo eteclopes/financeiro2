@@ -34,6 +34,7 @@ async function checkWorkspaceIdentity() {
           id: 9n,
           name: 'Plano 2027',
           profileUserId: 99n,
+          currentDate: new Date('2027-01-01T00:00:00.000Z'),
           owner: { plan: 'pro', planSource: 'manual_admin', planGrantedAt: null, planExpiresAt: null },
           profile: {
             id: 99n,
@@ -65,8 +66,11 @@ async function checkWorkspaceIdentity() {
   await resolveWorkspaceIdentity(req, 1n);
   assert.equal(req.ownerUserId, 1n);
   assert.equal(req.userId, 99n);
-  assert.deepEqual(req.workspace, { id: '9', type: 'simulation', name: 'Plano 2027' });
-  assert.equal(updates.length, 1, 'O plano interno deve acompanhar o plano real.');
+  assert.equal(req.workspace.id, '9');
+  assert.equal(req.workspace.type, 'simulation');
+  assert.equal(req.workspace.name, 'Plano 2027');
+  assert.equal(req.workspace.currentDate.toISOString().slice(0, 10), '2027-01-01');
+  assert.equal(updates.length, 0, 'Resolver o ambiente não deve escrever no banco.');
 
   const adminReq = {
     originalUrl: '/api/admin/users',
@@ -80,18 +84,25 @@ async function checkWorkspaceIdentity() {
 async function checkSimulationCalendarIsolation() {
   const future = { id: 77n, userId: 99n, month: 1, year: 2027, status: 'open' };
   const prisma = {
+    savingsBucket: { create: async () => ({ id: 1n }) },
     month: {
       findFirst: async ({ where, orderBy }) => {
         if (where.status === 'open' && orderBy?.[0]?.year === 'asc') return future;
         return future;
       },
       findMany: async () => [future],
-      findUnique: async () => null,
-      create: async () => { throw new Error('Não deve criar o mês do calendário real dentro da simulação.'); },
+      findUnique: async ({ where }) => {
+        const key = where?.userId_month_year;
+        return key && key.userId === 99n && key.month === 1 && key.year === 2027 ? future : null;
+      },
+      create: async () => { throw new Error('Não deve criar outro mês dentro da simulação.'); },
     },
   };
   Module._load = function patched(request, parent, isMain) {
-    if (parent?.filename?.endsWith(path.join('months', 'months.service.js')) && request === '../../config/prisma') return prisma;
+    if (parent?.filename?.endsWith(path.join('months', 'months.service.js'))) {
+      if (request === '../../config/prisma') return prisma;
+      if (request === '../../utils/dateTime') return { getCalendarDateParts: () => ({ month: 1, year: 2027, day: 1 }) };
+    }
     return originalLoad.call(this, request, parent, isMain);
   };
   const file = path.join(root, 'backend/src/modules/months/months.service.js');
@@ -115,6 +126,7 @@ async function checkWorkspaceCreationIsolation() {
     planGrantedAt: null, planExpiresAt: null,
   };
   const tx = {
+    $executeRaw: async () => 1,
     user: {
       create: async ({ data }) => {
         calls.user.push(data);
@@ -122,11 +134,13 @@ async function checkWorkspaceCreationIsolation() {
       },
     },
     simulationWorkspace: {
+      count: async () => 0,
       create: async ({ data }) => {
         calls.workspace.push(data);
         return { id: 9n, status: 'active', createdAt: new Date(), updatedAt: new Date(), ...data };
       },
     },
+    savingsBucket: { create: async () => ({ id: 1n }) },
     month: {
       create: async ({ data }) => {
         calls.month.push(data);
@@ -136,7 +150,6 @@ async function checkWorkspaceCreationIsolation() {
   };
   const prisma = {
     user: { findFirst: async () => owner },
-    simulationWorkspace: { count: async () => 0 },
     $transaction: async (callback) => callback(tx),
   };
 
@@ -164,9 +177,13 @@ async function checkWorkspaceCreationIsolation() {
   assert.equal(calls.user[0].isSimulationProfile, true);
   assert.equal(calls.user[0].role, 'user');
   assert.match(calls.user[0].email, /@internal\.financehub\.invalid$/);
-  assert.deepEqual(calls.workspace[0], {
-    ownerUserId: 1n, profileUserId: 99n, name: 'Ano de teste', startMonth: 1, startYear: 2027,
-  });
+  assert.equal(calls.workspace[0].ownerUserId, 1n);
+  assert.equal(calls.workspace[0].profileUserId, 99n);
+  assert.equal(calls.workspace[0].name, 'Ano de teste');
+  assert.equal(calls.workspace[0].startMonth, 1);
+  assert.equal(calls.workspace[0].startYear, 2027);
+  assert.equal(calls.workspace[0].currentDate.toISOString().slice(0, 10), '2027-01-01');
+  assert.equal(Number(calls.workspace[0].initialBalance), 0);
   assert.deepEqual(calls.month[0], { userId: 99n, month: 1, year: 2027, status: 'open' });
   assert.equal(calls.audit, 1);
 }
@@ -185,6 +202,7 @@ async function checkSequentialAutomaticClosing() {
   }
 
   const prisma = {
+    savingsBucket: { create: async () => ({ id: 1n }) },
     month: {
       findFirst: async () => chronologicalOpen(),
     },
@@ -235,7 +253,7 @@ async function checkSequentialAutomaticClosing() {
   const result = await service.ensureCalendarMonthsClosed(1n);
   assert.deepEqual(closedOrder, ['1/2027', '2/2027', '3/2027']);
   assert.equal(result.closed.length, 3);
-  assert.equal(automations, 3);
+  assert.equal(automations, 1, 'catch-up histórico não deve pagar automaticamente meses passados');
   assert.equal(months.find((item) => item.month === 4 && item.year === 2027).status, 'open');
 }
 
@@ -255,7 +273,8 @@ function checkStaticIntegration() {
   assert(migration.includes('CREATE TABLE "simulation_workspaces"'));
   assert(/router\.use\('\/workspaces',\s*workspacesRoutes\)/.test(appRoutes));
   assert(routes.includes("includeFuture: req.workspace?.type === 'simulation'"));
-  assert(routes.includes('getSimulationCurrentMonth'));
+  assert(routes.includes("'/sync-calendar'"));
+  assert(routes.includes('findCurrentMonthOrThrow'));
   assert(routes.includes('REAL_MONTH_AUTO_CLOSE'));
   assert(routes.includes("req.workspace?.type !== 'simulation'"));
   assert(api.includes("config.headers['X-Workspace-ID']"));

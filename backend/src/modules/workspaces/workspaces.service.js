@@ -19,6 +19,8 @@ function publicWorkspace(workspace) {
     status: workspace.status,
     startMonth: workspace.startMonth,
     startYear: workspace.startYear,
+    currentDate: workspace.currentDate,
+    initialBalance: Number(workspace.initialBalance ?? 0),
     createdAt: workspace.createdAt,
     updatedAt: workspace.updatedAt,
   };
@@ -36,29 +38,62 @@ async function listWorkspaces(ownerUserId) {
 }
 
 async function cloneSetup(tx, ownerUserId, profileUserId) {
-  const [categories, cards, incomeTemplates, fixedTemplates, debts] = await Promise.all([
+  const [categories, cards, incomeTemplates, fixedTemplates, debts, ownerBudgets] = await Promise.all([
     tx.category.findMany({ where: { userId: ownerUserId } }),
     tx.card.findMany({ where: { userId: ownerUserId } }),
     tx.incomeTemplate.findMany({ where: { userId: ownerUserId, active: true } }),
     tx.fixedExpenseTemplate.findMany({ where: { userId: ownerUserId, active: true } }),
     tx.debt.findMany({ where: { userId: ownerUserId, status: 'active' } }),
+    tx.categoryBudget.findMany({ where: { userId: ownerUserId } }),
   ]);
 
-  const categoryMap = new Map();
-  for (const category of categories) {
-    const cloned = await tx.category.create({
-      data: {
+  // Categorias, templates e dívidas não precisam de uma query por item. Em
+  // contas antigas com muitos cadastros, os loops anteriores mantinham uma
+  // transação aberta por tempo suficiente para provocar P2028.
+  if (categories.length > 0) {
+    await tx.category.createMany({
+      data: categories.map((category) => ({
         userId: profileUserId,
         name: category.name,
         type: category.type,
         isDefault: false,
-        monthlyLimit: category.monthlyLimit,
-      },
+      })),
     });
-    categoryMap.set(String(category.id), cloned.id);
+  }
+  const clonedCategories = categories.length > 0
+    ? await tx.category.findMany({
+        where: {
+          userId: profileUserId,
+          OR: categories.map((category) => ({ name: category.name, type: category.type })),
+        },
+      })
+    : [];
+  const clonedByKey = new Map(clonedCategories.map((category) => [
+    `${category.type}:${category.name}`,
+    category.id,
+  ]));
+  const originalCategoryById = new Map(categories.map((category) => [String(category.id), category]));
+  const mapCategory = (id) => {
+    const original = originalCategoryById.get(String(id));
+    if (!original) return id; // categoria global continua compartilhada
+    return clonedByKey.get(`${original.type}:${original.name}`);
+  };
+
+  if (ownerBudgets.length > 0) {
+    await tx.categoryBudget.createMany({
+      data: ownerBudgets
+        .map((budget) => ({
+          userId: profileUserId,
+          categoryId: mapCategory(budget.categoryId),
+          monthlyLimit: budget.monthlyLimit,
+        }))
+        .filter((budget) => budget.categoryId),
+      skipDuplicates: true,
+    });
   }
 
-  const mapCategory = (id) => categoryMap.get(String(id)) || id;
+  // Cartões são poucos por regra de plano e precisam de mapa origem→clone
+  // para os templates de crédito. Mantemos este loop curto e explícito.
   const cardMap = new Map();
   for (const card of cards) {
     const cloned = await tx.card.create({
@@ -75,9 +110,9 @@ async function cloneSetup(tx, ownerUserId, profileUserId) {
     cardMap.set(String(card.id), cloned.id);
   }
 
-  for (const template of incomeTemplates) {
-    await tx.incomeTemplate.create({
-      data: {
+  if (incomeTemplates.length > 0) {
+    await tx.incomeTemplate.createMany({
+      data: incomeTemplates.map((template) => ({
         userId: profileUserId,
         description: template.description,
         value: template.value,
@@ -85,13 +120,13 @@ async function cloneSetup(tx, ownerUserId, profileUserId) {
         paymentMethod: template.paymentMethod,
         incomeDay: template.incomeDay,
         active: template.active,
-      },
+      })),
     });
   }
 
-  for (const template of fixedTemplates) {
-    await tx.fixedExpenseTemplate.create({
-      data: {
+  if (fixedTemplates.length > 0) {
+    await tx.fixedExpenseTemplate.createMany({
+      data: fixedTemplates.map((template) => ({
         userId: profileUserId,
         description: template.description,
         categoryId: mapCategory(template.categoryId),
@@ -100,18 +135,18 @@ async function cloneSetup(tx, ownerUserId, profileUserId) {
         paymentMethod: template.paymentMethod,
         cardId: template.cardId ? cardMap.get(String(template.cardId)) || null : null,
         active: template.active,
-      },
+      })),
     });
   }
 
-  for (const debt of debts) {
-    await tx.debt.create({
-      data: {
+  if (debts.length > 0) {
+    await tx.debt.createMany({
+      data: debts.map((debt) => ({
         userId: profileUserId,
         description: debt.description,
         categoryId: mapCategory(debt.categoryId),
-        // A simulação começa no saldo devedor atual, sem fingir que as
-        // parcelas já pagas no financeiro real aconteceram dentro do cenário.
+        // A simulação começa no saldo devedor atual, sem fingir que parcelas
+        // já pagas no financeiro real aconteceram dentro do cenário.
         totalValue: debt.remainingBalance,
         installmentsCount: Math.max(1, remainingInstallmentsFor(debt)),
         installmentValue: debt.installmentValue,
@@ -120,7 +155,7 @@ async function cloneSetup(tx, ownerUserId, profileUserId) {
         status: debt.status,
         remainingBalance: debt.remainingBalance,
         pendingCarryOver: debt.pendingCarryOver,
-      },
+      })),
     });
   }
 }
@@ -141,24 +176,26 @@ async function createWorkspace(ownerUserId, input) {
 
   const entitlements = buildEntitlements(owner);
   const limit = entitlements.isPro ? PRO_SIMULATION_LIMIT : BASIC_SIMULATION_LIMIT;
-  const count = await prisma.simulationWorkspace.count({
-    where: { ownerUserId, status: 'active' },
-  });
-  if (count >= limit) {
-    throw new AppError(
-      entitlements.isPro
-        ? `O limite de ${PRO_SIMULATION_LIMIT} simulações foi atingido.`
-        : 'O Plano Básico permite uma simulação ativa. O Plano Pro permite até 10.',
-      409,
-      'SIMULATION_LIMIT_REACHED',
-      { limit }
-    );
-  }
 
   const passwordHash = await bcrypt.hash(randomBytes(48).toString('hex'), 10);
   let created;
   try {
     created = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ownerUserId})`;
+      const count = await tx.simulationWorkspace.count({
+        where: { ownerUserId, status: 'active' },
+      });
+      if (count >= limit) {
+        throw new AppError(
+          entitlements.isPro
+            ? `O limite de ${PRO_SIMULATION_LIMIT} simulações foi atingido.`
+            : 'O Plano Básico permite uma simulação ativa. O Plano Pro permite até 10.',
+          409,
+          'SIMULATION_LIMIT_REACHED',
+          { limit }
+        );
+      }
+
       const profile = await tx.user.create({
         data: {
           name: `Simulação · ${input.name}`,
@@ -173,6 +210,10 @@ async function createWorkspace(ownerUserId, input) {
         },
       });
 
+      await tx.savingsBucket.create({
+        data: { userId: profile.id, kind: 'general', isDefault: true },
+      });
+
       const workspace = await tx.simulationWorkspace.create({
         data: {
           ownerUserId,
@@ -180,6 +221,8 @@ async function createWorkspace(ownerUserId, input) {
           name: input.name,
           startMonth: input.startMonth,
           startYear: input.startYear,
+          currentDate: new Date(Date.UTC(input.startYear, input.startMonth - 1, 1)),
+          initialBalance: input.initialBalance ?? 0,
         },
       });
 
@@ -199,12 +242,16 @@ async function createWorkspace(ownerUserId, input) {
           profile.id,
           null,
           month,
-          { month: input.startMonth, year: input.startYear }
+          { month: input.startMonth, year: input.startYear },
+          {
+            effectiveDate: new Date(Date.UTC(input.startYear, input.startMonth - 1, 1)),
+            financialDate: new Date(Date.UTC(input.startYear, input.startMonth - 1, 1)),
+          }
         );
       }
 
       return workspace;
-    }, { maxWait: 10_000, timeout: 25_000 });
+    }, { maxWait: 10_000, timeout: 45_000 });
   } catch (error) {
     if (error?.code === 'P2002') {
       throw new AppError('Já existe uma simulação com esse nome.', 409, 'WORKSPACE_NAME_IN_USE');
@@ -258,7 +305,7 @@ async function deleteWorkspace(ownerUserId, workspaceId) {
   await prisma.$transaction(async (tx) => {
     await tx.simulationWorkspace.delete({ where: { id: workspace.id } });
     await deleteFinancialProfile(workspace.profileUserId, tx);
-  }, { maxWait: 10_000, timeout: 25_000 });
+  }, { maxWait: 10_000, timeout: 45_000 });
 
   await recordAuditLog(ownerUserId, 'simulation_workspace', workspaceId, 'delete', {
     oldValue: { name: workspace.name },

@@ -2,6 +2,7 @@ const prisma = require('../../config/prisma');
 const AppError = require('../../utils/AppError');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
 const { getUserPlan } = require('../plans/plans.service');
+const { getRequestWorkspaceType } = require('../../utils/requestContext');
 
 // Status que ainda "consomem" limite — uma vez paga, a parcela libera limite,
 // mesmo que o cartão físico real só libere no ciclo seguinte (simplificação
@@ -208,64 +209,88 @@ async function activateCard(userId, cardId) {
  *    apagamento em cascata dentro de uma transação (tudo ou nada).
  */
 async function deleteCard(userId, cardId) {
-  const card = await getOwnedCardOrThrow(userId, cardId);
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${cardId})`;
+    const card = await getOwnedCardOrThrow(userId, cardId, tx);
 
-  const linkedFixedTemplates = await prisma.fixedExpenseTemplate.count({
-    where: { userId, cardId, active: true },
-  });
-  if (linkedFixedTemplates > 0) {
-    throw new AppError(
-      `Este cartão está vinculado a ${linkedFixedTemplates} despesa(s) fixa(s) recorrente(s). Edite a forma de pagamento dessas despesas antes de excluir o cartão.`,
-      409,
-      'CARD_HAS_LINKED_FIXED_EXPENSES'
+    const linkedFixedTemplates = await tx.fixedExpenseTemplate.count({
+      where: { userId, cardId, active: true },
+    });
+    if (linkedFixedTemplates > 0) {
+      throw new AppError(
+        `Este cartão está vinculado a ${linkedFixedTemplates} despesa(s) fixa(s) recorrente(s). Edite a forma de pagamento dessas despesas antes de excluir o cartão.`,
+        409,
+        'CARD_HAS_LINKED_FIXED_EXPENSES'
+      );
+    }
+
+    const [purchases, invoices] = await Promise.all([
+      tx.cardPurchase.findMany({ where: { cardId }, select: { id: true } }),
+      tx.cardInvoice.findMany({ where: { cardId }, select: { id: true } }),
+    ]);
+    const purchaseIds = purchases.map((item) => item.id);
+    const invoiceIds = invoices.map((item) => item.id);
+
+    const linkedExpenses = await tx.expense.findMany({
+      where: {
+        OR: [
+          ...(purchaseIds.length ? [{ cardPurchaseId: { in: purchaseIds } }] : []),
+          ...(invoiceIds.length ? [{ cardInvoiceId: { in: invoiceIds } }] : []),
+        ],
+      },
+      select: {
+        id: true,
+        paidAt: true,
+        paidAmount: true,
+        reversedAmount: true,
+        month: { select: { status: true } },
+      },
+    });
+    if (linkedExpenses.some((expense) => expense.month.status === 'closed')) {
+      throw new AppError(
+        'Este cartão tem despesas em meses já encerrados e não pode ser excluído. Use “Desativar” para preservar o histórico.',
+        409,
+        'CARD_HAS_CLOSED_HISTORY'
+      );
+    }
+    const hasSettledCashFact = linkedExpenses.some((expense) =>
+      expense.paidAt || Number(expense.paidAmount ?? 0) > 0.009 || Number(expense.reversedAmount ?? 0) > 0.009
     );
-  }
+    if (getRequestWorkspaceType() !== 'simulation' && hasSettledCashFact) {
+      throw new AppError(
+        'Este cartão já possui pagamentos ou estornos registrados e não pode ser apagado do financeiro real. Use “Desativar” para preservar o caixa e a auditoria.',
+        409,
+        'CARD_HAS_SETTLED_HISTORY'
+      );
+    }
 
-  // Templates já desativados não devem manter uma FK invisível que impeça a exclusão.
-  await prisma.fixedExpenseTemplate.updateMany({
-    where: { userId, cardId, active: false },
-    data: { cardId: null },
+    // Só depois de TODAS as validações desvincula templates inativos. Se
+    // qualquer etapa falhar, a transação desfaz inclusive essa mudança.
+    await tx.fixedExpenseTemplate.updateMany({
+      where: { userId, cardId, active: false },
+      data: { cardId: null },
+    });
+
+    const expenseIds = linkedExpenses.map((expense) => expense.id);
+    if (expenseIds.length) await tx.expense.deleteMany({ where: { id: { in: expenseIds } } });
+    if (purchaseIds.length) await tx.cardPurchase.deleteMany({ where: { cardId } });
+    if (invoiceIds.length) await tx.cardInvoice.deleteMany({ where: { cardId } });
+    await tx.card.delete({ where: { id: cardId } });
+
+    return {
+      card,
+      deletedCounts: {
+        purchases: purchaseIds.length,
+        invoices: invoiceIds.length,
+        expenses: expenseIds.length,
+      },
+    };
   });
 
-  const [purchases, invoices] = await Promise.all([
-    prisma.cardPurchase.findMany({ where: { cardId }, select: { id: true } }),
-    prisma.cardInvoice.findMany({ where: { cardId }, select: { id: true } }),
-  ]);
-  const purchaseIds = purchases.map((p) => p.id);
-  const invoiceIds = invoices.map((i) => i.id);
-
-  if (purchaseIds.length === 0 && invoiceIds.length === 0) {
-    await prisma.card.delete({ where: { id: cardId } });
-    await recordAuditLog(userId, 'card', cardId, 'delete', { oldValue: card });
-    return { card, deletedCounts: { purchases: 0, invoices: 0, expenses: 0 } };
-  }
-
-  const linkedExpenses = await prisma.expense.findMany({
-    where: { OR: [{ cardPurchaseId: { in: purchaseIds } }, { cardInvoiceId: { in: invoiceIds } }] },
-    select: { id: true, month: { select: { status: true } } },
+  await recordAuditLog(userId, 'card', cardId, 'delete', {
+    oldValue: { ...result.card, ...result.deletedCounts },
   });
-
-  const touchesClosedMonth = linkedExpenses.some((e) => e.month.status === 'closed');
-  if (touchesClosedMonth) {
-    throw new AppError(
-      'Este cartão tem despesas em meses já encerrados (histórico imutável) e não pode ser excluído por completo. Use "Desativar" para parar de usá-lo sem apagar o histórico.',
-      409,
-      'CARD_HAS_CLOSED_HISTORY'
-    );
-  }
-
-  const expenseIds = linkedExpenses.map((e) => e.id);
-
-  await prisma.$transaction([
-    prisma.expense.deleteMany({ where: { id: { in: expenseIds } } }),
-    prisma.cardPurchase.deleteMany({ where: { cardId } }),
-    prisma.cardInvoice.deleteMany({ where: { cardId } }),
-    prisma.card.delete({ where: { id: cardId } }),
-  ]);
-
-  const deletedCounts = { purchases: purchaseIds.length, invoices: invoiceIds.length, expenses: expenseIds.length };
-  await recordAuditLog(userId, 'card', cardId, 'delete', { oldValue: { ...card, ...deletedCounts } });
-  return { card, deletedCounts };
+  return result;
 }
 
 module.exports = {

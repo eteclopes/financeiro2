@@ -42,11 +42,22 @@ function matchesWhere(row, where = {}) {
 
 const prisma = {
   user: {},
+  simulationWorkspace: { findUnique: async () => null },
   income: {
-    aggregate: async () => ({ _sum: { value: 1000 } }),
+    aggregate: async ({ where = {}, _sum = {} }) => ({
+      _sum: {
+        value: where.reversedAmount ? null : 1000,
+        reversedAmount: where.reversedAmount ? 0 : null,
+      },
+    }),
   },
   expense: {
-    aggregate: async () => ({ _sum: { paidAmount: 0 } }),
+    aggregate: async ({ where = {} }) => ({
+      _sum: {
+        paidAmount: where.reversedAmount ? null : 0,
+        reversedAmount: where.reversedAmount ? 0 : null,
+      },
+    }),
   },
   goalContribution: {
     aggregate: async () => ({ _sum: { value: 0 } }),

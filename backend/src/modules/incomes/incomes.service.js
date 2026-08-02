@@ -1,10 +1,12 @@
 const prisma = require('../../config/prisma');
+const { Prisma } = require('@prisma/client');
 const AppError = require('../../utils/AppError');
 const monthsService = require('../months/months.service');
 const { assertSufficientBalance, lockUserBalance, getAvailableBalance } = require('../_shared/balance');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
 const { round2 } = require('../../utils/math');
 const { normalizePaymentMethod, incomeOriginFor } = require('../../utils/paymentMethods');
+const { todayUtcDate, getCalendarDateParts } = require('../../utils/dateTime');
 
 /**
  * Garante que a data informada pertence ao mesmo mês/ano do registro de
@@ -20,6 +22,20 @@ function assertDateMatchesMonth(date, month) {
       422,
       'DATE_OUTSIDE_MONTH'
     );
+  }
+}
+
+
+function cashEffectIsImmutable(date) {
+  const current = getCalendarDateParts();
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + 1;
+  return year < current.year || (year === current.year && month < current.month);
+}
+
+function assertIncomeNotAlreadyReversed(income) {
+  if (Number(income.reversedAmount ?? 0) > 0 || income.reversedAt) {
+    throw new AppError('Esta receita já foi estornada e não pode ser alterada novamente.', 409, 'INCOME_ALREADY_REVERSED');
   }
 }
 
@@ -58,6 +74,7 @@ async function createIncome(userId, payload) {
     paymentMethod,
     origin: payload.origin ?? incomeOriginFor(paymentMethod),
     incomeDate: payload.date,
+    effectiveDate: todayUtcDate(),
     observation: payload.observation,
   };
 
@@ -138,16 +155,54 @@ async function updateIncome(userId, incomeId, payload, { scope = 'single' } = {}
     await lockUserBalance(tx, userId);
     const income = await getOwnedIncomeOrThrow(userId, incomeId, tx);
     monthsService.assertMonthIsOpen(income.month);
+    assertIncomeNotAlreadyReversed(income);
 
     const effectiveDate = payload.date ?? income.incomeDate;
     const effectiveValue = payload.value !== undefined ? Number(payload.value) : Number(income.value);
     assertDateMatchesMonth(effectiveDate, income.month);
 
-    // Toda receita salva impacta o saldo imediatamente (decisão de produto).
-    // A data é referência de competência, não de liberação do dinheiro.
-    // Reduzir uma receita não pode deixar o caixa negativo por acidente —
-    // para correções que exigem isso, ver `deleteIncome`/`allowNegativeBalance`.
-    const reduction = round2(Number(income.value) - effectiveValue);
+    const futureInstances = scope === 'future'
+      ? await tx.income.findMany({
+          where: {
+            userId,
+            templateId: income.templateId,
+            id: { not: incomeId },
+            reversedAt: null,
+            reversedAmount: 0,
+            month: {
+              status: 'open',
+              OR: [
+                { year: { gt: income.month.year } },
+                { year: income.month.year, month: { gt: income.month.month } },
+              ],
+            },
+          },
+          select: { id: true, value: true, effectiveDate: true, reversedAmount: true },
+        })
+      : [];
+
+    const changesCashFact = payload.value !== undefined || paymentMethod !== undefined || payload.origin !== undefined;
+    const affectedWithHistoricalCash = [income, ...futureInstances].some((row) => cashEffectIsImmutable(row.effectiveDate));
+    if (changesCashFact && affectedWithHistoricalCash) {
+      throw new AppError(
+        'Esta receita já afetou um período de caixa encerrado. Estorne o lançamento e crie outro para corrigir valor ou origem.',
+        409,
+        'INCOME_CASH_EFFECT_IMMUTABLE'
+      );
+    }
+
+    // Toda receita persistida impacta o saldo imediatamente. Portanto, uma
+    // redução com escopo futuro precisa considerar TODAS as ocorrências já
+    // geradas, e não apenas o lançamento aberto na tela.
+    const oldAffectedTotal = Number(income.value) - Number(income.reversedAmount ?? 0)
+      + futureInstances.reduce(
+        (sum, row) => sum + Number(row.value) - Number(row.reversedAmount ?? 0),
+        0
+      );
+    const newAffectedTotal = payload.value !== undefined
+      ? effectiveValue * (1 + futureInstances.length)
+      : oldAffectedTotal;
+    const reduction = round2(oldAffectedTotal - newAffectedTotal);
     if (reduction > 0) await assertSufficientBalance(userId, reduction, tx);
 
     const updated = await tx.income.update({
@@ -179,17 +234,22 @@ async function updateIncome(userId, incomeId, payload, { scope = 'single' } = {}
 
       // Ocorrências JÁ GERADAS em meses futuros ainda abertos também
       // acompanham a nova regra; meses fechados ficam intactos.
-      await tx.income.updateMany({
-        where: {
-          userId,
-          templateId: income.templateId,
-          id: { not: incomeId },
-          month: { status: 'open' },
+      const futureWhere = {
+        userId,
+        templateId: income.templateId,
+        id: { not: incomeId },
+        reversedAt: null,
+        reversedAmount: 0,
+        month: {
+          status: 'open',
           OR: [
-            { month: { year: { gt: income.month.year } } },
-            { month: { year: income.month.year, month: { gt: income.month.month } } },
+            { year: { gt: income.month.year } },
+            { year: income.month.year, month: { gt: income.month.month } },
           ],
         },
+      };
+      await tx.income.updateMany({
+        where: futureWhere,
         data: {
           ...(payload.description && { description: payload.description }),
           ...(payload.value !== undefined && { value: payload.value }),
@@ -197,6 +257,34 @@ async function updateIncome(userId, incomeId, payload, { scope = 'single' } = {}
           ...(paymentMethod && { paymentMethod, origin: incomeOriginFor(paymentMethod) }),
         },
       });
+
+      if (payload.date) {
+        const incomeDay = payload.date.getUTCDate();
+        // Prisma updateMany não consegue calcular o último dia de cada mês.
+        // Esta atualização em lote preserva o dia recorrente e faz clamp em
+        // fevereiro/meses curtos, sem dezenas de queries dentro da transação.
+        await tx.$executeRaw(Prisma.sql`
+          UPDATE "incomes" AS i
+          SET "income_date" = make_date(
+                m."year",
+                m."month",
+                LEAST(
+                  ${incomeDay}::integer,
+                  EXTRACT(DAY FROM (date_trunc('month', make_date(m."year", m."month", 1))
+                    + interval '1 month - 1 day'))::integer
+                )
+              ),
+              "updated_at" = CURRENT_TIMESTAMP
+          FROM "months" AS m
+          WHERE i."month_id" = m."id"
+            AND i."user_id" = ${userId}
+            AND i."template_id" = ${income.templateId}
+            AND i."id" <> ${incomeId}
+            AND m."status" = 'open'
+            AND (m."year" > ${income.month.year}
+              OR (m."year" = ${income.month.year} AND m."month" > ${income.month.month}))
+        `);
+      }
     }
 
     return { income: updated, template, scope };
@@ -243,9 +331,10 @@ async function deleteIncome(userId, incomeId, { allowNegativeBalance = false } =
     await lockUserBalance(tx, userId);
     const income = await getOwnedIncomeOrThrow(userId, incomeId, tx);
     monthsService.assertMonthIsOpen(income.month);
+    assertIncomeNotAlreadyReversed(income);
 
     const available = await getAvailableBalance(userId, tx);
-    const value = Number(income.value);
+    const value = round2(Number(income.value) - Number(income.reversedAmount ?? 0));
     const resultingBalance = round2(available - value);
 
     if (resultingBalance < 0 && !allowNegativeBalance) {
@@ -262,12 +351,21 @@ async function deleteIncome(userId, incomeId, { allowNegativeBalance = false } =
       );
     }
 
+    const mustReverse = cashEffectIsImmutable(income.effectiveDate);
+    if (mustReverse) {
+      const reversed = await tx.income.update({
+        where: { id: incomeId },
+        data: { reversedAt: todayUtcDate(), reversedAmount: value },
+      });
+      return { deleted: null, reversed, resultingBalance, wentNegative: resultingBalance < 0, action: 'reversed' };
+    }
+
     const deleted = await tx.income.delete({ where: { id: incomeId } });
-    return { deleted, resultingBalance, wentNegative: resultingBalance < 0 };
+    return { deleted, reversed: null, resultingBalance, wentNegative: resultingBalance < 0, action: 'deleted' };
   });
 
-  await recordAuditLog(userId, 'income', incomeId, 'delete', {
-    newValue: { status: result.wentNegative ? 'negative_balance_correction' : 'deleted' },
+  await recordAuditLog(userId, 'income', incomeId, result.action === 'reversed' ? 'reverse' : 'delete', {
+    newValue: { status: result.action, negativeBalance: result.wentNegative },
   });
   return result;
 }

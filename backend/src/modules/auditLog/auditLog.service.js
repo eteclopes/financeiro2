@@ -13,8 +13,12 @@ const { buildAuditSnapshot, sanitizeLogText } = require('../../utils/privacy');
  * payloads de simulação nunca são copiados para o log. Isso reduz a superfície
  * de exposição caso alguém acesse a tabela de auditoria.
  *
- * A chamada continua ocorrendo depois do commit da operação principal. Falhas
- * de auditoria nunca revertem uma operação financeira já concluída.
+ * Para o núcleo do ledger (receitas, despesas, reservas, metas, faturas,
+ * compras, dívidas e meses), a migration V30 também grava um evento mínimo
+ * por trigger PostgreSQL DENTRO da mesma transação. Esta função é a trilha
+ * complementar, mais semântica, usada por ações de produto/administração.
+ * Como ela pode ocorrer depois do commit, nunca deve ser a única evidência de
+ * uma mutação financeira crítica.
  */
 async function recordAuditLog(userId, entity, entityId, action, { oldValue, newValue } = {}) {
   try {

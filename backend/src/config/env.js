@@ -17,8 +17,8 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().min(1, 'CORS_ORIGIN é obrigatória'),
   // Opcionais: permitem os URLs automáticos de Preview da Vercel apenas para
   // este projeto/equipe, sem abrir a API para qualquer domínio vercel.app.
-  CORS_VERCEL_PROJECT: z.string().default('financeiro2'),
-  CORS_VERCEL_TEAM: z.string().default('eteclopes-projects'),
+  CORS_VERCEL_PROJECT: z.string().optional(),
+  CORS_VERCEL_TEAM: z.string().optional(),
   // Em produção, previews automáticos da Vercel ficam BLOQUEADOS por
   // padrão. Só um ambiente de staging deve ligar isto.
   CORS_ALLOW_PREVIEWS: z
@@ -32,22 +32,22 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_ISSUER: z.string().min(3).default('financehub-api'),
   JWT_AUDIENCE: z.string().min(3).default('financehub-web'),
+  JWT_ADMIN_AUDIENCE: z.string().min(3).default('financehub-admin'),
   JWT_REFRESH_EXPIRES_IN_DAYS: z.coerce.number().default(30),
   PASSWORD_RESET_EXPIRES_IN_HOURS: z.coerce.number().default(1),
 
   // ── E-mail transacional (recuperação de senha) ──────────────────────
-  // Todas opcionais: se SMTP_HOST não estiver definido, o mailer apenas
-  // loga um aviso e não envia e-mail de verdade (comportamento de dev),
-  // em vez de derrubar o servidor. Em produção, configure um provedor
-  // como Resend, SendGrid, Amazon SES ou qualquer SMTP compatível.
+  // O servidor pode subir sem SMTP para ambientes que não oferecem
+  // recuperação de senha. Em produção, o endpoint falha com 503 se a entrega
+  // não estiver disponível; nunca responde sucesso fictício.
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().default(587),
   SMTP_SECURE: z.coerce.boolean().default(false),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   MAIL_FROM: z.string().default('FinançasPro <no-reply@financaspro.app>'),
-  FRONTEND_URL: z.string().default('http://localhost:5173'),
-  ADMIN_FRONTEND_URL: z.string().optional(),
+  FRONTEND_URL: z.string().url().default('http://localhost:5173'),
+  ADMIN_FRONTEND_URL: z.string().url().optional(),
 
   // ── Plano Pro vitalício / Stripe Checkout ───────────────────────────
   // Permanecem opcionais para o app continuar subindo enquanto a conta
@@ -61,7 +61,22 @@ const envSchema = z.object({
   PRO_LIFETIME_PRICE_LABEL: z.string().default('Oferta vitalícia'),
 });
 
-const parsed = envSchema.safeParse(process.env);
+const parsed = envSchema.superRefine((value, ctx) => {
+  if (value.NODE_ENV === 'production' && !value.ADMIN_FRONTEND_URL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['ADMIN_FRONTEND_URL'],
+      message: 'ADMIN_FRONTEND_URL é obrigatória em produção',
+    });
+  }
+  if (value.NODE_ENV === 'production' && value.FRONTEND_URL.includes('localhost')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['FRONTEND_URL'],
+      message: 'FRONTEND_URL deve apontar para o domínio de produção',
+    });
+  }
+}).safeParse(process.env);
 
 if (!parsed.success) {
   console.error('Variáveis de ambiente inválidas:');
