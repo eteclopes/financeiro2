@@ -67,7 +67,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: [
     'Content-Type', 'Authorization', 'Accept-Language', 'X-Time-Zone',
-    'X-Currency', 'X-Request-ID',
+    'X-Currency', 'X-Request-ID', 'X-Workspace-ID', 'X-Client-Date',
   ],
   exposedHeaders: ['X-Request-ID', 'RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset'],
   optionsSuccessStatus: 204,

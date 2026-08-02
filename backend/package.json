@@ -21,7 +21,9 @@
     "check:v20-invoices": "node scripts/check-v20-invoices-automation.js",
     "seed:admin": "node prisma/seed-admin.js",
     "check:admin": "node scripts/check-admin-panel.js && node scripts/check-admin-behavior.js",
-    "check:cors": "node scripts/check-cors-production.js"
+    "check:cors": "node scripts/check-cors-production.js",
+    "check:v28-invoices": "node scripts/check-v28-open-invoice-prepayment.js",
+    "check:v29-modes": "node scripts/check-v29-real-simulation-modes.js"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",

@@ -13,6 +13,27 @@ render.yaml   configuração de deploy do backend no Render
 
 O módulo separado de Assinaturas não faz parte do sistema. Cobranças recorrentes, mensalidades e anuidades devem ser cadastradas em **Despesas Fixas**.
 
+## Modos financeiros
+
+### Financeiro real
+
+- É o histórico oficial da conta.
+- Não possui botão manual para encerrar um mês aberto.
+- Na primeira consulta após a virada do calendário local, todos os meses anteriores ainda abertos são encerrados em ordem.
+- Se o aplicativo permanecer aberto durante a virada, ele detecta a mudança de data e sincroniza a lista de meses.
+- Meses encerrados continuam imutáveis; a ação **Reparar mês** permanece disponível apenas para regenerar lançamentos faltantes com segurança.
+
+### Simulações
+
+- Cada cenário possui perfil financeiro, meses, cartões, faturas, receitas, despesas, dívidas, metas e reservas totalmente isolados do ambiente real.
+- O usuário escolhe o mês e o ano inicial da linha do tempo.
+- O fechamento permanece manual e cria o mês seguinte como no fluxo tradicional.
+- Um mês simulado encerrado pode ser reaberto; os meses posteriores também são reabertos para permitir correções no cenário.
+- Ao criar o cenário, é possível copiar cartões, categorias, receitas recorrentes, despesas fixas e o saldo devedor atual das dívidas, sem copiar movimentações reais já realizadas.
+- Plano Básico: até 1 simulação ativa. Plano Pro: até 10 simulações ativas.
+
+O seletor **Financeiro real / Simulações** fica no topo do frontend. Toda requisição financeira envia `X-Workspace-ID`, e o backend confirma a propriedade do cenário antes de trocar a identidade financeira interna.
+
 ## Regras principais
 
 - Toda receita cadastrada aumenta o saldo imediatamente, inclusive quando possui data futura.
@@ -127,6 +148,8 @@ npm run check:v16-flows
 npm run check:v18-critical
 npm run check:v19-history
 npm run check:v20-invoices
+npm run check:v28-invoices
+npm run check:v29-modes
 npm run check:admin
 ```
 
@@ -144,6 +167,13 @@ npm run check:responsive-v18
 ```
 
 ## Produção
+
+Antes de publicar esta versão, aplique a migration que cria os ambientes de simulação:
+
+```bash
+cd backend
+npx prisma migrate deploy
+```
 
 Configure no backend:
 

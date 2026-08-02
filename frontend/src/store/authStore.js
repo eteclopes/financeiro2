@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { api, extractErrorMessage, extractFieldErrors, refreshAccessToken } from '../lib/api';
 import { setAccessToken } from '../lib/tokenStore';
+import { writeActiveWorkspaceId } from '../lib/workspaceStorage';
 
 // Pista NÃO sensível de que havia uma sessão. Não é o token — é só um
 // booleano. Serve para, ao recarregar a aba (o navegador descarta abas em
@@ -54,6 +55,7 @@ export const useAuthStore = create((set) => ({
     try {
       const { data } = await api.post('/auth/login', { email, password });
       setAccessToken(data.accessToken);
+      writeActiveWorkspaceId('real');
       writeSessionHint(true);
       set({ user: data.user, status: 'authenticated', bootstrapping: false, error: null });
       return true;
@@ -72,6 +74,7 @@ export const useAuthStore = create((set) => ({
     try {
       const { data } = await api.post('/auth/register', { name, email, password });
       setAccessToken(data.accessToken);
+      writeActiveWorkspaceId('real');
       writeSessionHint(true);
       set({ user: data.user, status: 'authenticated', bootstrapping: false, error: null });
       return true;
@@ -100,6 +103,7 @@ export const useAuthStore = create((set) => ({
   async logout() {
     try { await api.post('/auth/logout'); } catch {}
     setAccessToken(null);
+    writeActiveWorkspaceId('real');
     writeSessionHint(false);
     set({ user: null, status: 'unauthenticated', bootstrapping: false, error: null });
   },
@@ -109,12 +113,14 @@ export const useAuthStore = create((set) => ({
   async logoutAllDevices() {
     try { await api.post('/auth/logout-all'); } catch {}
     setAccessToken(null);
+    writeActiveWorkspaceId('real');
     writeSessionHint(false);
     set({ user: null, status: 'unauthenticated', bootstrapping: false, error: null });
   },
 
   forceSignOut() {
     setAccessToken(null);
+    writeActiveWorkspaceId('real');
     writeSessionHint(false);
     set({ user: null, status: 'unauthenticated', bootstrapping: false });
   },

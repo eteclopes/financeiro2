@@ -289,20 +289,23 @@ async function payBillsBatch(userId, { expenseIds = [], invoiceIds = [], payment
     const invoicesToPay = [];
     for (const invoiceId of uniqueInvoiceIds) {
       const rows = await tx.$queryRaw`
-        SELECT id, status FROM card_invoices
+        SELECT id, status, closing_date FROM card_invoices
         WHERE id = ${invoiceId} AND card_id IN (SELECT id FROM cards WHERE user_id = ${userId})
         FOR UPDATE
       `;
       if (rows.length === 0) throw new AppError('Uma ou mais faturas não foram encontradas.', 404, 'INVOICE_NOT_FOUND');
-      if (rows[0].status === 'paid') continue; // idempotente
-
       const pending = await tx.expense.findMany({
         where: { cardInvoiceId: invoiceId, deletedAt: null, status: { not: 'paid' } },
         select: { id: true, value: true, paidAmount: true },
       });
       const amount = round2(pending.reduce((sum, item) => sum + (Number(item.value) - Number(item.paidAmount ?? 0)), 0));
       if (pending.length === 0 || amount <= 0) continue;
-      invoicesToPay.push({ invoiceId, pendingIds: pending.map((item) => item.id), amount });
+      invoicesToPay.push({
+        invoiceId,
+        pendingIds: pending.map((item) => item.id),
+        amount,
+        finalStatus: cardInvoicesService.invoiceStatusAfterSettlement(rows[0].closing_date, paidAt),
+      });
     }
 
     // ---------- Total e checagem única de saldo ----------
@@ -389,7 +392,10 @@ async function payBillsBatch(userId, { expenseIds = [], invoiceIds = [], payment
         data: { status: 'paid', paymentMethod: method, paidAt },
       });
       await tx.$executeRaw`UPDATE expenses SET paid_amount = value WHERE id = ANY(${invoice.pendingIds}::bigint[])`;
-      await tx.cardInvoice.update({ where: { id: invoice.invoiceId }, data: { status: 'paid', paidAt } });
+      await tx.cardInvoice.update({
+        where: { id: invoice.invoiceId },
+        data: { status: invoice.finalStatus, paidAt },
+      });
     }
 
     return {

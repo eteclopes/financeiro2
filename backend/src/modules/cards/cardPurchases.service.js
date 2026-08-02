@@ -6,10 +6,11 @@ const cardsService = require('./cards.service');
 const { addMonths } = require('../../utils/monthMath');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
 const { round2 } = require('../../utils/math');
+const { todayUtcDate } = require('../../utils/dateTime');
 
 const { clampDay, firstInvoiceReference, invoiceDates } = require('../../utils/cardCycle');
 
-async function getOrCreateInvoice(card, refMonth, refYear, client = prisma, depth = 0) {
+async function getOrCreateInvoice(card, refMonth, refYear, client = prisma) {
   const where = {
     cardId_referenceMonth_referenceYear: {
       cardId: card.id,
@@ -19,16 +20,10 @@ async function getOrCreateInvoice(card, refMonth, refYear, client = prisma, dept
   };
   const existing = await client.cardInvoice.findUnique({ where });
   if (existing) {
-    // Uma fatura JÁ PAGA não pode receber novas cobranças. Antes, a compra
-    // era anexada a ela e ficava impagável: a fatura não reaparecia na lista
-    // de contas a pagar (por já estar 'paid') e `payInvoice` recusava com
-    // INVOICE_ALREADY_PAID — ou seja, uma cobrança real que ninguém
-    // conseguia quitar. Agora a cobrança rola para a fatura seguinte, que é
-    // exatamente o que o cartão faz na vida real.
-    if (existing.status === 'paid' && depth < 24) {
-      const next = addMonths(refMonth, refYear, 1);
-      return getOrCreateInvoice(card, next.month, next.year, client, depth + 1);
-    }
+    // Pagamento antecipado não muda a referência do ciclo. A fatura pode
+    // estar sem saldo no momento, mas continua sendo a dona das compras cuja
+    // data pertence a este fechamento. Se uma nova cobrança entrar, ela será
+    // reaberta abaixo sem saltar para o mês seguinte.
     return existing;
   }
 
@@ -60,6 +55,30 @@ async function getOrCreateInvoice(card, refMonth, refYear, client = prisma, dept
     }
     throw error;
   }
+}
+
+function lifecycleStatusForNewCharge(invoice, card) {
+  const closingDate = invoice.closingDate ?? invoiceDates(
+    Number(invoice.referenceMonth),
+    Number(invoice.referenceYear),
+    Number(card.closingDay),
+    Number(card.dueDay)
+  ).closingDate;
+  return new Date(closingDate).getTime() < todayUtcDate().getTime() ? 'closed' : 'open';
+}
+
+async function registerChargeOnInvoice(invoice, card, amount, client = prisma) {
+  // Uma cobrança nova torna a fatura devedora novamente. Antes do fechamento
+  // ela volta a `open`; depois do fechamento, a `closed`. Nunca é empurrada
+  // para outro mês apenas porque houve um pagamento antecipado.
+  return client.cardInvoice.update({
+    where: { id: invoice.id },
+    data: {
+      totalValue: { increment: Number(amount) },
+      status: lifecycleStatusForNewCharge(invoice, card),
+      paidAt: null,
+    },
+  });
 }
 
 async function assertCardLimit(card, amount, client = prisma) {
@@ -120,10 +139,7 @@ async function createFixedCardCharge({ userId, card, template, month, dueDate, o
     include: { category: true, fixedTemplate: true, cardInvoice: { include: { card: true } } },
   });
 
-  await client.cardInvoice.update({
-    where: { id: invoice.id },
-    data: { totalValue: { increment: Number(template.value) } },
-  });
+  await registerChargeOnInvoice(invoice, lockedCard, Number(template.value), client);
 
   return { expense, invoice };
 }
@@ -191,10 +207,7 @@ async function createCardPurchase(userId, payload) {
         },
       });
 
-      await tx.cardInvoice.update({
-        where: { id: invoice.id },
-        data: { totalValue: { increment: value } },
-      });
+      await registerChargeOnInvoice(invoice, lockedCard, value, tx);
       expenses.push(expense);
     }
 
@@ -214,6 +227,80 @@ async function createCardPurchase(userId, payload) {
   });
 }
 
+async function repairPendingFixedChargeAssignments(userId, cardId = null) {
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.expense.findMany({
+      where: {
+        userId,
+        type: 'card',
+        deletedAt: null,
+        status: { not: 'paid' },
+        fixedTemplateId: { not: null },
+        cardInvoice: { card: { userId, ...(cardId ? { id: cardId } : {}) } },
+      },
+      include: {
+        cardInvoice: { include: { card: true } },
+      },
+    });
+    if (rows.length === 0) return { moved: 0 };
+
+    const cardIds = [...new Set(rows.map((row) => String(row.cardInvoice.card.id)))].sort();
+    for (const id of cardIds) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${BigInt(id)})`;
+    }
+
+    const touchedInvoices = new Set();
+    let moved = 0;
+    for (const expense of rows) {
+      const currentInvoice = expense.cardInvoice;
+      const card = currentInvoice.card;
+      const expected = firstInvoiceReference(expense.dueDate, Number(card.closingDay));
+      if (
+        Number(currentInvoice.referenceMonth) === Number(expected.month)
+        && Number(currentInvoice.referenceYear) === Number(expected.year)
+      ) {
+        continue;
+      }
+
+      // O bug antigo sempre empurrava exatamente UM ciclo para frente porque
+      // a fatura correta já estava paga antecipadamente. Para não reinterpretar
+      // cobranças legítimas depois de uma edição do dia de fechamento, só
+      // reparamos quando essas duas evidências existem.
+      const next = addMonths(expected.month, expected.year, 1);
+      const isExactlyOneCycleAhead =
+        Number(currentInvoice.referenceMonth) === Number(next.month)
+        && Number(currentInvoice.referenceYear) === Number(next.year);
+      if (!isExactlyOneCycleAhead) continue;
+
+      const targetInvoice = await tx.cardInvoice.findUnique({
+        where: {
+          cardId_referenceMonth_referenceYear: {
+            cardId: card.id,
+            referenceMonth: expected.month,
+            referenceYear: expected.year,
+          },
+        },
+      });
+      const wasPrepaidBeforeCharge = targetInvoice?.paidAt
+        && (!expense.createdAt || new Date(expense.createdAt).getTime() >= new Date(targetInvoice.paidAt).getTime());
+      if (!targetInvoice || !wasPrepaidBeforeCharge) continue;
+
+      await tx.expense.update({
+        where: { id: expense.id },
+        data: { cardInvoiceId: targetInvoice.id },
+      });
+      touchedInvoices.add(String(currentInvoice.id));
+      touchedInvoices.add(String(targetInvoice.id));
+      moved += 1;
+    }
+
+    for (const id of touchedInvoices) {
+      await recalculateInvoiceTotal(BigInt(id), tx);
+    }
+    return { moved };
+  });
+}
+
 module.exports = {
   createCardPurchase,
   createFixedCardCharge,
@@ -223,4 +310,7 @@ module.exports = {
   getOrCreateInvoice,
   assertCardLimit,
   recalculateInvoiceTotal,
+  lifecycleStatusForNewCharge,
+  registerChargeOnInvoice,
+  repairPendingFixedChargeAssignments,
 };

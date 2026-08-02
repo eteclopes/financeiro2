@@ -11,7 +11,7 @@ const checks = [
   ['admin users', 'backend/src/modules/admin/admin.service.js', /async function listUsers/],
   ['admin delete user', 'backend/src/modules/admin/admin.service.js', /async function deleteUser/],
   ['admin delete route', 'backend/src/modules/admin/admin.routes.js', /router\.delete\('\/users\/:id'/],
-  ['admin delete without legacy subscriptions SQL', 'backend/src/modules/admin/admin.service.js', /async function deleteUser[\s\S]*prisma\.user\.delete/],
+  ['admin delete uses ordered cleanup', 'backend/src/modules/admin/admin.service.js', /async function deleteUser[\s\S]*deleteFinancialProfile/],
   ['admin grant Pro', 'admin-frontend/src/pages/UserDetailPage.jsx', /Conceder Plano Pro/],
   ['admin delete UI', 'admin-frontend/src/pages/UserDetailPage.jsx', /Excluir usuário/],
   ['admin delete confirmation without typing email', 'admin-frontend/src/pages/UserDetailPage.jsx', /window\.confirm\([\s\S]*não poderá ser desfeita/],

@@ -2,6 +2,7 @@ const prisma = require('../../config/prisma');
 const env = require('../../config/env');
 const AppError = require('../../utils/AppError');
 const { recordAuditLog } = require('../auditLog/auditLog.service');
+const { deleteFinancialProfile } = require('../_shared/deleteFinancialProfile');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -16,6 +17,7 @@ function pageMeta(total, page, pageSize) {
 
 function activeProWhere(now = new Date()) {
   return {
+    isSimulationProfile: false,
     plan: 'pro',
     OR: [{ planExpiresAt: null }, { planExpiresAt: { gt: now } }],
   };
@@ -57,24 +59,25 @@ async function overview() {
     recentUsers,
     signupRows,
   ] = await Promise.all([
-    prisma.user.count(),
+    prisma.user.count({ where: { isSimulationProfile: false } }),
     prisma.user.count({ where: activeProWhere(now) }),
-    prisma.user.count({ where: { role: 'admin' } }),
-    prisma.user.count({ where: { createdAt: { gte: since30Days } } }),
+    prisma.user.count({ where: { role: 'admin', isSimulationProfile: false } }),
+    prisma.user.count({ where: { createdAt: { gte: since30Days }, isSimulationProfile: false } }),
     prisma.billingPurchase.aggregate({
       where: { status: 'paid' },
       _sum: { amountTotal: true },
     }),
     prisma.billingPurchase.count({ where: { status: 'paid' } }),
     prisma.billingPurchase.count({ where: { status: 'pending' } }),
-    prisma.month.count({ where: { status: 'open' } }),
+    prisma.month.count({ where: { status: 'open', user: { isSimulationProfile: false } } }),
     prisma.user.findMany({
+      where: { isSimulationProfile: false },
       orderBy: { createdAt: 'desc' },
       take: 8,
       select: { id: true, name: true, email: true, role: true, plan: true, createdAt: true },
     }),
     prisma.user.findMany({
-      where: { createdAt: { gte: since30Days } },
+      where: { createdAt: { gte: since30Days }, isSimulationProfile: false },
       select: { createdAt: true },
     }),
   ]);
@@ -98,6 +101,7 @@ async function overview() {
 
 async function listUsers({ page, pageSize, search, plan, role }) {
   const where = {
+    isSimulationProfile: false,
     ...(plan ? { plan } : {}),
     ...(role ? { role } : {}),
     ...(search ? {
@@ -147,6 +151,7 @@ async function getUser(userId) {
     where: { id: userId },
     select: {
       id: true,
+      isSimulationProfile: true,
       name: true,
       email: true,
       role: true,
@@ -191,13 +196,13 @@ async function getUser(userId) {
       },
     },
   });
-  if (!user) throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
+  if (!user || user.isSimulationProfile) throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
   return user;
 }
 
 async function updateUserPlan(adminId, userId, plan) {
   const current = await prisma.user.findUnique({ where: { id: userId } });
-  if (!current) throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
+  if (!current || current.isSimulationProfile) throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
   if (plan === 'basic' && current.planSource === 'stripe_lifetime') {
     throw new AppError(
       'Uma compra vitalícia paga não pode ser removida manualmente. Registre o reembolso no Stripe.',
@@ -227,12 +232,12 @@ async function updateUserPlan(adminId, userId, plan) {
 
 async function updateUserRole(adminId, userId, role) {
   const current = await prisma.user.findUnique({ where: { id: userId } });
-  if (!current) throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
+  if (!current || current.isSimulationProfile) throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
   if (adminId === userId && role !== 'admin') {
     throw new AppError('Você não pode remover seu próprio acesso administrativo.', 409, 'SELF_DEMOTION_BLOCKED');
   }
   if (current.role === 'admin' && role === 'user') {
-    const adminCount = await prisma.user.count({ where: { role: 'admin' } });
+    const adminCount = await prisma.user.count({ where: { role: 'admin', isSimulationProfile: false } });
     if (adminCount <= 1) {
       throw new AppError('O sistema precisa manter pelo menos um administrador.', 409, 'LAST_ADMIN_BLOCKED');
     }
@@ -251,8 +256,8 @@ async function updateUserRole(adminId, userId, role) {
 }
 
 async function revokeUserSessions(adminId, userId) {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
-  if (!user) throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, isSimulationProfile: true } });
+  if (!user || user.isSimulationProfile) throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
   const result = await prisma.refreshToken.updateMany({
     where: { userId, revokedAt: null },
     data: { revokedAt: new Date() },
@@ -274,12 +279,12 @@ async function deleteUser(adminId, userId) {
 
   const current = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, role: true, plan: true, planSource: true },
+    select: { id: true, role: true, plan: true, planSource: true, isSimulationProfile: true },
   });
-  if (!current) throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
+  if (!current || current.isSimulationProfile) throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');
 
   if (current.role === 'admin') {
-    const adminCount = await prisma.user.count({ where: { role: 'admin' } });
+    const adminCount = await prisma.user.count({ where: { role: 'admin', isSimulationProfile: false } });
     if (adminCount <= 1) {
       throw new AppError(
         'O sistema precisa manter pelo menos um administrador.',
@@ -290,31 +295,23 @@ async function deleteUser(adminId, userId) {
   }
 
   try {
-    // Algumas relações internas usam ON DELETE RESTRICT de propósito para
-    // impedir que cartões, meses, categorias ou caixinhas sejam removidos
-    // isoladamente com histórico vinculado. Ao excluir a CONTA inteira,
-    // removemos primeiro os registros-folha e só então o usuário. Todas as
-    // operações abaixo ficam na mesma transação para evitar exclusão parcial.
-    await prisma.$transaction([
-      prisma.expense.deleteMany({ where: { userId } }),
-      prisma.income.deleteMany({ where: { userId } }),
-      prisma.goalContribution.deleteMany({
-        where: { OR: [{ goal: { userId } }, { month: { userId } }] },
-      }),
-      prisma.savingsTransaction.deleteMany({ where: { userId } }),
-      prisma.cardInvoice.deleteMany({
-        where: { OR: [{ card: { userId } }, { month: { userId } }] },
-      }),
-      // O antigo módulo de Assinaturas foi convertido em despesas fixas e a
-      // migration 20260721030000 removeu a tabela `subscriptions`. Não execute
-      // SQL bruto contra essa tabela: em bancos atualizados ela não existe e o
-      // Prisma retorna P2010 (relação inexistente), abortando toda a exclusão.
-      prisma.cardPurchase.deleteMany({ where: { userId } }),
-      prisma.fixedExpenseTemplate.deleteMany({ where: { userId } }),
-      prisma.debt.deleteMany({ where: { userId } }),
-      prisma.incomeTemplate.deleteMany({ where: { userId } }),
-      prisma.user.delete({ where: { id: userId } }),
-    ]);
+    await prisma.$transaction(async (tx) => {
+      const simulations = await tx.simulationWorkspace.findMany({
+        where: { ownerUserId: userId },
+        select: { id: true, profileUserId: true },
+      });
+
+      // Remove primeiro os vínculos de ambiente; em seguida apaga cada perfil
+      // financeiro interno e, por último, a conta real do proprietário.
+      if (simulations.length > 0) {
+        await tx.simulationWorkspace.deleteMany({ where: { ownerUserId: userId } });
+        for (const simulation of simulations) {
+          await deleteFinancialProfile(simulation.profileUserId, tx);
+        }
+      }
+
+      await deleteFinancialProfile(userId, tx);
+    }, { maxWait: 10_000, timeout: 30_000 });
   } catch (error) {
     if (error?.code === 'P2025') {
       throw new AppError('Usuário não encontrado.', 404, 'USER_NOT_FOUND');

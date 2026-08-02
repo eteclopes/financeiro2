@@ -10,6 +10,7 @@ import {
 
 const NAV = [
   { to: '/dashboard', Icon: IconDashboard, label: 'Visão geral', group: 'main', tutorial: 'nav-dashboard' },
+  { to: '/workspaces', Icon: IconSimulator, label: 'Real e Simulações', group: 'main' },
   { to: '/incomes', Icon: IconIncome, label: 'Receitas', group: 'main', tutorial: 'nav-incomes' },
   { to: '/expenses', Icon: IconExpense, label: 'Despesas', group: 'main', tutorial: 'nav-expenses' },
   { to: '/cards', Icon: IconCard, label: 'Cartões', group: 'main', tutorial: 'nav-cards' },

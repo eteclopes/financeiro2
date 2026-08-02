@@ -133,6 +133,11 @@ enum UserRole {
   admin
 }
 
+enum SimulationWorkspaceStatus {
+  active
+  archived
+}
+
 enum BillingPurchaseStatus {
   pending
   paid
@@ -156,7 +161,10 @@ model User {
   stripeCustomerId String? @unique @map("stripe_customer_id") @db.VarChar(255)
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
+  isSimulationProfile Boolean @default(false) @map("is_simulation_profile")
 
+  ownedSimulationWorkspaces SimulationWorkspace[] @relation("SimulationWorkspaceOwner")
+  simulationWorkspaceProfile SimulationWorkspace? @relation("SimulationWorkspaceProfile")
   categories         Category[]
   refreshTokens      RefreshToken[]
   passwordResets     PasswordReset[]
@@ -180,7 +188,28 @@ model User {
   automationSetting  AutomationSetting?
 
   @@index([role])
+  @@index([isSimulationProfile])
   @@map("users")
+}
+
+
+model SimulationWorkspace {
+  id            BigInt                    @id @default(autoincrement())
+  ownerUserId   BigInt                    @map("owner_user_id")
+  profileUserId BigInt                    @unique @map("profile_user_id")
+  name          String                    @db.VarChar(100)
+  status        SimulationWorkspaceStatus @default(active)
+  startMonth    Int                       @map("start_month") @db.SmallInt
+  startYear     Int                       @map("start_year") @db.SmallInt
+  createdAt     DateTime                  @default(now()) @map("created_at")
+  updatedAt     DateTime                  @updatedAt @map("updated_at")
+
+  owner   User @relation("SimulationWorkspaceOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  profile User @relation("SimulationWorkspaceProfile", fields: [profileUserId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerUserId, name])
+  @@index([ownerUserId, status])
+  @@map("simulation_workspaces")
 }
 
 model RefreshToken {

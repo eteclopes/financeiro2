@@ -1,7 +1,7 @@
 jest.mock('../../src/config/prisma', () => require('../helpers/prismaMock').createPrismaMock());
 // Controla "hoje" para o filtro de fronteira ser determinístico.
 jest.mock('../../src/utils/dateTime', () => ({
-  getDateParts: () => ({ month: 7, year: 2026 }), // julho/2026 fixo
+  getCalendarDateParts: () => ({ month: 7, year: 2026 }), // julho/2026 fixo
 }));
 
 const prismaMock = require('../../src/config/prisma');

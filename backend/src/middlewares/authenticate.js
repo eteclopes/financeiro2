@@ -1,7 +1,9 @@
 const AppError = require('../utils/AppError');
+const asyncHandler = require('../utils/asyncHandler');
 const { verifyAccessToken } = require('../utils/tokens');
+const { resolveWorkspaceIdentity } = require('../utils/workspaceContext');
 
-function authenticate(req, res, next) {
+module.exports = asyncHandler(async (req, _res, next) => {
   const header = req.headers.authorization;
 
   if (!header || !header.startsWith('Bearer ')) {
@@ -18,11 +20,10 @@ function authenticate(req, res, next) {
     if (payload.typ !== 'access' || typeof payload.sub !== 'string' || !/^[1-9]\d*$/.test(payload.sub)) {
       throw new Error('invalid token subject');
     }
-    req.userId = BigInt(payload.sub);
+    await resolveWorkspaceIdentity(req, BigInt(payload.sub));
     next();
-  } catch {
+  } catch (error) {
+    if (error instanceof AppError) throw error;
     throw new AppError('Token de acesso inválido ou expirado.', 401, 'UNAUTHORIZED');
   }
-}
-
-module.exports = authenticate;
+});

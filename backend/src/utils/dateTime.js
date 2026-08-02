@@ -1,4 +1,4 @@
-const { getRequestTimeZone } = require('./requestContext');
+const { getRequestTimeZone, getRequestClientDate } = require('./requestContext');
 
 const DEFAULT_TIME_ZONE = process.env.APP_TIME_ZONE || 'America/Sao_Paulo';
 
@@ -19,6 +19,11 @@ function getDateParts(date = new Date(), timeZone) {
       .map((part) => [part.type, Number(part.value)])
   );
   return { year: parts.year, month: parts.month, day: parts.day };
+}
+
+function getCalendarDateParts(timeZone) {
+  const client = getRequestClientDate();
+  return client || getDateParts(new Date(), resolvedTimeZone(timeZone));
 }
 
 function utcDateFromParts(year, month, day) {
@@ -53,6 +58,7 @@ function monthDateRange(year, month) {
 module.exports = {
   DEFAULT_TIME_ZONE,
   getDateParts,
+  getCalendarDateParts,
   utcDateFromParts,
   todayUtcDate,
   endOfUtcDate,

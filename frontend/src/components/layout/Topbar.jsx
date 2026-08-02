@@ -4,11 +4,12 @@ import { useUIStore } from '../../store/uiStore';
 import { useMonthStore } from '../../store/monthStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useAuthStore } from '../../store/authStore';
+import { useWorkspaceStore } from '../../store/workspaceStore';
 import { formatMonthLabel } from '../../lib/format';
 import { useLocaleStore } from '../../store/localeStore';
 import { alertsApi } from '../../lib/services';
 import { Dropdown } from '../ui/Dropdown';
-import { IconMenu, IconBell, IconSun, IconMoon, IconChevronL, IconChevronR } from '../icons';
+import { IconMenu, IconBell, IconSun, IconMoon, IconChevronL, IconChevronR, IconSettings } from '../icons';
 
 const SEVERITY_DOT = { critical: 'bg-danger', warning: 'bg-warning', info: 'bg-info' };
 
@@ -45,6 +46,13 @@ export function Topbar({ title }) {
   const bootstrapping = useAuthStore((s) => s.bootstrapping);
   const timeZone = useLocaleStore((s) => s.timeZone);
   const isPro = Boolean(user?.isPro);
+  const simulations = useWorkspaceStore((s) => s.simulations);
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeId);
+  const switchWorkspace = useWorkspaceStore((s) => s.switchWorkspace);
+  const activeWorkspace = activeWorkspaceId === 'real'
+    ? { id: 'real', type: 'real', name: 'Financeiro real' }
+    : simulations.find((item) => String(item.id) === String(activeWorkspaceId))
+      ?? { id: 'real', type: 'real', name: 'Financeiro real' };
   const navigate = useNavigate();
 
   const month = getSelected();
@@ -114,6 +122,34 @@ export function Topbar({ title }) {
       </div>
 
       <div className="hidden flex-1 sm:block" />
+
+      <div className="hidden items-center gap-1 rounded-xl border border-slate-200 bg-white/85 p-1 shadow-sm dark:border-white/[0.07] dark:bg-white/[0.035] md:flex">
+        <Dropdown
+          variant="ghost"
+          value={activeWorkspaceId}
+          onChange={(event) => switchWorkspace(event.target.value)}
+          className="min-w-[155px] max-w-[210px]"
+          aria-label="Ambiente financeiro"
+        >
+          <option value="real">Financeiro real</option>
+          {simulations.length > 0 && (
+            <optgroup label="Simulações">
+              {simulations.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>{workspace.name}</option>
+              ))}
+            </optgroup>
+          )}
+        </Dropdown>
+        <button
+          type="button"
+          onClick={() => navigate('/workspaces')}
+          className="grid h-8 w-8 place-items-center rounded-lg text-primary transition-colors hover:bg-primary-subtle dark:text-primary-hover dark:hover:bg-primary/10"
+          aria-label="Gerenciar simulações"
+          title="Gerenciar simulações"
+        >
+          <IconSettings size={15} />
+        </button>
+      </div>
 
       {month && (
         <div data-tutorial="month-selector" className="hidden items-center gap-1 rounded-xl border border-slate-200 bg-white/85 p-1 shadow-sm dark:border-white/[0.07] dark:bg-white/[0.035] sm:flex">
@@ -226,7 +262,7 @@ export function Topbar({ title }) {
         </div>
         <div className="max-w-[130px]">
           <p className="truncate text-xs font-bold text-slate-700 dark:text-zinc-200">{user?.name}</p>
-          <p className="truncate text-[10px] text-slate-400 dark:text-zinc-500">Conta pessoal</p>
+          <p className="truncate text-[10px] text-slate-400 dark:text-zinc-500">{activeWorkspace.type === 'simulation' ? `Simulação · ${activeWorkspace.name}` : 'Conta pessoal'}</p>
         </div>
       </div>
     </header>

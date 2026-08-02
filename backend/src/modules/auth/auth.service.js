@@ -81,7 +81,8 @@ async function register({ name, email, password }) {
 }
 
 async function login({ email, password }) {
-  const user = await prisma.user.findUnique({ where: { email } });
+  const foundUser = await prisma.user.findUnique({ where: { email } });
+  const user = foundUser?.isSimulationProfile ? null : foundUser;
   const err = new AppError('E-mail ou senha inválidos.', 401, 'INVALID_CREDENTIALS');
 
   // bcrypt.compare SEMPRE roda, mesmo quando o e-mail não existe (contra o

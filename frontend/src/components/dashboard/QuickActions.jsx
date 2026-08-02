@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useMonthStore } from '../../store/monthStore';
-import { incomesApi, expensesApi, debtsApi, cardsApi, goalsApi, categoriesApi, paymentsApi, automationsApi, savingsApi } from '../../lib/services';
+import { incomesApi, expensesApi, debtsApi, cardsApi, goalsApi, categoriesApi, paymentsApi, automationsApi, savingsApi, monthsApi } from '../../lib/services';
 import { api, extractErrorMessage } from '../../lib/api';
 import { formatCurrency } from '../../lib/format';
 import { ledgerMonthDateInputValue, ledgerMonthDateRange } from '../../lib/date';
@@ -9,6 +9,7 @@ import { ChoiceCards, ToggleSwitch } from '../ui/Motion';
 import { Modal, FormGroup, Input, Select } from '../ui/Modal';
 import { CategorySelect } from '../ui/CategorySelect';
 import { useUIStore } from '../../store/uiStore';
+import { useWorkspaceStore } from '../../store/workspaceStore';
 import { IconIncome, IconExpense, IconCheck, IconCard, IconGoal, IconAlert } from '../icons';
 import {
   ACCOUNT_BALANCE_METHOD,
@@ -52,6 +53,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
   // clicáveis: o usuário preenchia o formulário inteiro e só descobria o
   // bloqueio no erro 409 do backend. Agora o impedimento é explicado antes.
   const isClosedMonth = monthStatus === 'closed';
+  const isSimulation = useWorkspaceStore((state) => state.activeId !== 'real');
   const closedMonthNotice = 'Este mês está encerrado. Selecione um mês aberto para registrar movimentações.';
   const selectedMonthId = useMonthStore((s) => s.selectedMonthId);
   const selectedMonth = useMonthStore((s) => s.months.find((month) => String(month.id) === String(s.selectedMonthId)) ?? null);
@@ -186,7 +188,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     Promise.allSettled(cards.map(async (card) => {
       const response = await cardsApi.listInvoices(card.id);
       return (response.data.invoices ?? [])
-        .filter((invoice) => invoice.status !== 'paid')
+        .filter((invoice) => Number(invoice.outstandingValue ?? invoice.totalValue ?? 0) > 0.009)
         .map((invoice) => ({ ...invoice, cardName: card.name }));
     }))
       .then((results) => {
@@ -434,6 +436,22 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     }
   }
 
+  async function reopenMonth() {
+    setClosing(true);
+    try {
+      const { data } = await monthsApi.reopen(selectedMonthId);
+      toast.success(data?.reopenedMonths > 1
+        ? `${data.reopenedMonths} meses simulados foram reabertos para recálculo.`
+        : 'Mês simulado reaberto.');
+      await refreshMonths();
+      onRefresh?.();
+    } catch (error) {
+      toast.error(extractErrorMessage(error, 'Erro ao reabrir mês simulado.'));
+    } finally {
+      setClosing(false);
+    }
+  }
+
   async function closeMonth() {
     setClosing(true);
     try {
@@ -659,13 +677,19 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     { Icon: IconCard, label: 'Fatura', iconBg: 'bg-warning-muted dark:bg-warning/20', iconColor: 'text-warning-dark dark:text-warning-light', onClick: guardClosedMonth(openFatura), disabled: isClosedMonth },
     { Icon: IconGoal, label: 'Meta', iconBg: 'bg-purple-100 dark:bg-accentpurple/20', iconColor: 'text-purple-700 dark:text-accentpurple-light', onClick: guardClosedMonth(() => { setGoalTarget(null); setContribForm({ value: '', date: ledgerMonthDateInputValue(selectedMonth) }); setModal('goal'); }), disabled: isClosedMonth },
     { Icon: IconCheck, label: 'Automações', iconBg: 'bg-primary-subtle dark:bg-primary/15', iconColor: 'text-primary-dark dark:text-primary-hover', onClick: openAutomations, disabled: false },
-    {
+    ...(isSimulation ? [{
       Icon: IconAlert,
-      label: monthStatus === 'open' ? 'Fechar mês' : 'Reparar mês',
+      label: monthStatus === 'open' ? 'Fechar mês' : 'Reabrir mês',
+      iconBg: 'bg-gray-100 dark:bg-white/10',
+      iconColor: 'text-gray-600 dark:text-zinc-300',
+      onClick: monthStatus === 'open' ? openClose : reopenMonth,
+    }] : isClosedMonth ? [{
+      Icon: IconAlert,
+      label: 'Reparar mês',
       iconBg: 'bg-gray-100 dark:bg-white/10',
       iconColor: 'text-gray-600 dark:text-zinc-300',
       onClick: openClose,
-    },
+    }] : []),
   ];
 
   const expenseSaveLabel = expenseKind === 'fixed'
@@ -682,7 +706,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
     <>
       {isClosedMonth && (
         <p className="mb-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-muted dark:border-white/[0.07] dark:bg-white/[0.03]">
-          {closedMonthNotice} Aqui você ainda pode <strong>reparar</strong> este mês.
+          {closedMonthNotice} {isSimulation ? <>Você pode <strong>reabrir</strong> este mês para editar e recalcular os seguintes.</> : <>Você ainda pode <strong>reparar</strong> lançamentos recorrentes faltantes.</>}
         </p>
       )}
       <div className="flex flex-wrap gap-2">
@@ -977,7 +1001,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
               <ToggleSwitch
                 checked={auto.payDuesOnClose}
                 onChange={(v) => saveAutomations({ payDuesOnClose: v })}
-                label="Pagar o que vencer ao fechar o mês"
+                label={isSimulation ? "Pagar o que vencer ao fechar o mês" : "Pagar o que vencer na virada do mês"}
                 description="Dívidas, contas e faturas do novo mês — na ordem de prioridade, só se houver saldo."
               />
               {auto.payDuesOnClose && (
@@ -1026,7 +1050,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
               <ToggleSwitch
                 checked={auto.saveLeftoverOnClose}
                 onChange={(v) => saveAutomations({ saveLeftoverOnClose: v })}
-                label="Guardar a sobra na reserva ao fechar o mês"
+                label={isSimulation ? "Guardar a sobra ao fechar o mês" : "Guardar a sobra na virada do mês"}
                 description="Depois de pagar as contas, separa parte do que sobrou numa caixinha."
               />
               {auto.saveLeftoverOnClose && (
@@ -1056,7 +1080,7 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
               <div className="mb-3 flex items-center justify-between gap-2">
                 <p className="text-sm font-bold text-slate-900 dark:text-zinc-50">Simulação</p>
                 <div className="flex gap-1 rounded-lg bg-subtle p-0.5 dark:bg-white/[0.06]">
-                  {[{ v: 'next', l: 'Ao fechar o mês' }, { v: 'current', l: 'Agora' }].map((o) => (
+                  {[{ v: 'next', l: isSimulation ? 'Ao fechar o mês' : 'Na virada do mês' }, { v: 'current', l: 'Agora' }].map((o) => (
                     <button key={o.v} type="button"
                       onClick={() => { setAutoScope(o.v); loadAutoPreview(o.v); }}
                       className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${autoScope === o.v ? 'bg-white text-primary-dark shadow-sm dark:bg-white/10 dark:text-primary-hover' : 'text-muted'}`}>
@@ -1387,17 +1411,22 @@ export function QuickActions({ onRefresh, pendingExpenses = [], cards = [], goal
                   <option value="">Selecione...</option>
                   {invoices.map((invoice) => (
                     <option key={invoice.id} value={invoice.id}>
-                      {invoice.cardName} — {String(invoice.referenceMonth).padStart(2, '0')}/{invoice.referenceYear} — {formatCurrency(invoice.totalValue)}
+                      {invoice.cardName} — {String(invoice.referenceMonth).padStart(2, '0')}/{invoice.referenceYear} — {formatCurrency(invoice.outstandingValue ?? invoice.totalValue)}
                     </option>
                   ))}
                 </Select>
               </FormGroup>
               {invoiceTarget && (
                 <div className="bg-subtle dark:bg-white/[0.04] rounded-2xl p-4">
-                  <p className="text-xs text-muted mb-1">Valor total da fatura</p>
-                  <p className="text-2xl font-bold font-mono text-slate-900 dark:text-zinc-50">{formatCurrency(invoiceTarget.totalValue)}</p>
+                  <p className="text-xs text-muted mb-1">Valor pendente da fatura</p>
+                  <p className="text-2xl font-bold font-mono text-slate-900 dark:text-zinc-50">{formatCurrency(invoiceTarget.outstandingValue ?? invoiceTarget.totalValue)}</p>
                   <p className="text-xs text-muted mt-1">{String(invoiceTarget.referenceMonth).padStart(2, '0')}/{invoiceTarget.referenceYear}</p>
                 </div>
+              )}
+              {invoiceTarget?.status === 'open' && (
+                <p className="text-xs text-info-dark bg-info-subtle p-3 rounded-xl border border-info/20">
+                  Pagamento antecipado: esta fatura continuará aberta até {formatShortDate(invoiceTarget.closingDate)} e poderá receber novas cobranças.
+                </p>
               )}
               <FormGroup label="Forma de pagamento">
                 <ChoiceCards compact columns={2} value={invMethod} onChange={setInvMethod} options={BALANCE_PAYMENT_OPTIONS} />

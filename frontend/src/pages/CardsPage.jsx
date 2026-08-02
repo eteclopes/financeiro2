@@ -376,9 +376,9 @@ export default function CardsPage() {
                           <td data-label="Fechamento" className="table-cell text-muted">{formatShortDate(inv.closingDate)}</td>
                           <td data-label="Vencimento" className="table-cell text-muted">{formatShortDate(inv.dueDate)}</td>
                           <td data-label="Total" className="table-cell font-mono tabular-nums font-bold text-slate-800 dark:text-zinc-200">{formatCurrency(inv.totalValue)}</td>
-                          <td data-label="Status" className="table-cell"><Badge variant={STATUS_V[inv.status]}>{STATUS_L[inv.status]}</Badge></td>
+                          <td data-label="Status" className="table-cell"><Badge variant={STATUS_V[inv.status]}>{inv.prepaid ? 'Aberta · paga até agora' : STATUS_L[inv.status]}</Badge></td>
                           <td data-label="Ações" className="table-cell">
-                            {inv.status !== 'paid' && (
+                            {Number(inv.outstandingValue ?? inv.totalValue ?? 0) > 0.009 && (
                               <Button size="sm" onClick={() => { setPayTarget(inv); setInvMethod('pix'); }}>Pagar</Button>
                             )}
                           </td>
@@ -553,10 +553,15 @@ export default function CardsPage() {
         {payTarget && (
           <div className="space-y-4">
             <div className="bg-subtle dark:bg-white/[0.04] rounded-2xl p-4">
-              <p className="text-xs text-muted mb-1">Valor total da fatura</p>
-              <p className="text-3xl font-bold font-mono text-slate-900 dark:text-zinc-50">{formatCurrency(payTarget.totalValue)}</p>
+              <p className="text-xs text-muted mb-1">Valor pendente da fatura</p>
+              <p className="text-3xl font-bold font-mono text-slate-900 dark:text-zinc-50">{formatCurrency(payTarget.outstandingValue ?? payTarget.totalValue)}</p>
               <p className="text-xs text-muted mt-1">{String(payTarget.referenceMonth).padStart(2,'0')}/{payTarget.referenceYear}</p>
             </div>
+            {payTarget.status === 'open' && (
+              <p className="text-xs text-info-dark bg-info-subtle p-3 rounded-xl border border-info/20">
+                Este é um pagamento antecipado. A fatura continuará aberta até {formatShortDate(payTarget.closingDate)} e novas cobranças poderão entrar neste mesmo ciclo.
+              </p>
+            )}
             <FormGroup label="Forma de pagamento">
               <ChoiceCards compact columns={2} value={invMethod} onChange={setInvMethod} options={BALANCE_PAYMENT_OPTIONS} />
             </FormGroup>

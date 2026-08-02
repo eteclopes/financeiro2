@@ -1,6 +1,6 @@
 const prisma = require('../../config/prisma');
 const AppError = require('../../utils/AppError');
-const { getDateParts } = require('../../utils/dateTime');
+const { getCalendarDateParts } = require('../../utils/dateTime');
 const { addMonths } = require('../../utils/monthMath');
 
 async function getOrCreateMonth(userId, month, year, client = prisma) {
@@ -21,7 +21,29 @@ async function getOrCreateMonth(userId, month, year, client = prisma) {
 }
 
 async function getCurrentMonth(userId, client = prisma) {
-  const { month, year } = getDateParts();
+  const { month, year } = getCalendarDateParts();
+  return getOrCreateMonth(userId, month, year, client);
+}
+
+/**
+ * A simulação não segue o calendário real. Seu "mês atual" é o primeiro mês
+ * aberto da linha do tempo manual. Isso evita criar agosto/2026 dentro de uma
+ * simulação que começou, por exemplo, em janeiro/2027.
+ */
+async function getSimulationCurrentMonth(userId, client = prisma) {
+  const firstOpen = await client.month.findFirst({
+    where: { userId, status: 'open' },
+    orderBy: [{ year: 'asc' }, { month: 'asc' }],
+  });
+  if (firstOpen) return firstOpen;
+
+  const latest = await client.month.findFirst({
+    where: { userId },
+    orderBy: [{ year: 'desc' }, { month: 'desc' }],
+  });
+  if (latest) return latest;
+
+  const { month, year } = getCalendarDateParts();
   return getOrCreateMonth(userId, month, year, client);
 }
 
@@ -30,20 +52,22 @@ function isAfterYm(a, b) {
   return a.year > b.year || (a.year === b.year && a.month > b.month);
 }
 
-async function listMonths(userId) {
+async function listMonths(userId, options = {}) {
   const months = await prisma.month.findMany({
     where: { userId },
     select: { id: true, userId: true, month: true, year: true, status: true, closedAt: true, createdAt: true },
     orderBy: [{ year: 'desc' }, { month: 'desc' }],
   });
 
-  // FRONTEIRA de exibição: o mais recente entre (mês do calendário de hoje) e
-  // (mês seguinte ao último mês FECHADO). Meses estritamente ALÉM da fronteira
-  // são ocultados da navegação — eles existem apenas porque uma fatura de
-  // cartão foi lançada lá (ex.: uma assinatura cuja cobrança cai na fatura do
-  // mês seguinte). A obrigação continua registrada (a fatura não some); apenas
-  // não polui a lista de meses até você realmente chegar lá.
-  const today = getDateParts();
+  // Em uma simulação todos os meses pertencem à linha do tempo escolhida pelo
+  // usuário. Não se aplica a fronteira da data real do computador.
+  if (options.includeFuture === true) return months;
+
+  // FRONTEIRA de exibição do modo real: o mais recente entre (mês do
+  // calendário de hoje) e (mês seguinte ao último mês FECHADO). Meses
+  // estritamente ALÉM da fronteira são ocultados da navegação — eles existem
+  // apenas porque uma fatura de cartão foi lançada lá.
+  const today = getCalendarDateParts();
   let frontier = { month: today.month, year: today.year };
 
   const closed = months.filter((m) => m.status === 'closed');
@@ -64,7 +88,6 @@ async function getMonthOrThrow(userId, monthId, client = prisma) {
   }
   return month;
 }
-
 
 async function assertTransactionDateIsOpen(userId, date, client = prisma) {
   const month = date.getUTCMonth() + 1;
@@ -95,6 +118,7 @@ function assertMonthIsOpen(month) {
 module.exports = {
   getOrCreateMonth,
   getCurrentMonth,
+  getSimulationCurrentMonth,
   listMonths,
   getMonthOrThrow,
   assertMonthIsOpen,

@@ -4,18 +4,67 @@ const { assertSufficientBalance, lockUserBalance } = require('../_shared/balance
 const { todayUtcDate } = require('../../utils/dateTime');
 const { round2 } = require('../../utils/math');
 
+const MONEY_TOLERANCE = 0.009;
+
+function isInvoiceCycleClosed(closingDate, today = todayUtcDate()) {
+  return new Date(closingDate).getTime() < new Date(today).getTime();
+}
+
+function invoiceStatusAfterSettlement(closingDate, today = todayUtcDate()) {
+  // Pagar antes do fechamento quita os lançamentos atuais, mas NÃO encerra o
+  // ciclo. A fatura continua aberta e pode receber novas compras até o dia de
+  // fechamento. Só uma fatura cujo ciclo já terminou pode ficar `paid`.
+  return isInvoiceCycleClosed(closingDate, today) ? 'paid' : 'open';
+}
+
+function invoiceStatusWithOutstanding(closingDate, today = todayUtcDate()) {
+  return isInvoiceCycleClosed(closingDate, today) ? 'closed' : 'open';
+}
+
 async function syncInvoiceStatuses(userId, cardId = null) {
+  const scope = { card: { userId, ...(cardId ? { id: cardId } : {}) } };
+  const today = todayUtcDate();
+  const pendingExpense = { deletedAt: null, status: { not: 'paid' } };
+
+  // 1) Ciclos que ainda não fecharam são SEMPRE abertos. Isto também repara
+  // faturas futuras marcadas como `paid` pela versão antiga após antecipação.
   await prisma.cardInvoice.updateMany({
     where: {
-      card: { userId, ...(cardId ? { id: cardId } : {}) },
-      status: 'open',
-      closingDate: { lt: todayUtcDate() },
+      ...scope,
+      closingDate: { gte: today },
+      status: { not: 'open' },
     },
-    data: { status: 'closed' },
+    data: { status: 'open' },
+  });
+
+  // 2) Depois do fechamento, saldo pendente significa fatura fechada.
+  await prisma.cardInvoice.updateMany({
+    where: {
+      ...scope,
+      closingDate: { lt: today },
+      expenses: { some: pendingExpense },
+      status: { not: 'closed' },
+    },
+    data: { status: 'closed', paidAt: null },
+  });
+
+  // 3) Depois do fechamento, sem nenhum lançamento pendente, a fatura está
+  // efetivamente paga. `paidAt` das despesas continua sendo a fonte exata da
+  // data de cada pagamento antecipado; não inventamos uma nova data aqui.
+  await prisma.cardInvoice.updateMany({
+    where: {
+      ...scope,
+      closingDate: { lt: today },
+      expenses: { none: pendingExpense },
+      status: { not: 'paid' },
+    },
+    data: { status: 'paid' },
   });
 }
 
 async function listInvoices(userId, cardId) {
+  const { repairPendingFixedChargeAssignments } = require('./cardPurchases.service');
+  await repairPendingFixedChargeAssignments(userId, cardId);
   await syncInvoiceStatuses(userId, cardId);
   const invoices = await prisma.cardInvoice.findMany({
     where: { card: { id: cardId, userId } },
@@ -30,16 +79,24 @@ async function listInvoices(userId, cardId) {
   });
 
   return invoices
-    // Fatura SEM nenhum lançamento é um artefato: ela é criada quando uma
-    // cobrança vai cair ali, mas pode acabar vazia se a despesa for excluída
-    // depois. Aparecia na tela como "fatura de R$ 0,00" que não dá para pagar
-    // (payInvoice recusa com EMPTY_INVOICE). Some da lista — nada é apagado,
-    // e se um lançamento voltar a cair nela, ela reaparece com o valor certo.
+    // Fatura sem nenhum lançamento é apenas um artefato técnico.
     .filter((invoice) => invoice.expenses.length > 0)
-    .map((invoice) => ({
-      ...invoice,
-      totalValue: round2(invoice.expenses.reduce((sum, expense) => sum + Number(expense.value), 0)),
-    }));
+    .map((invoice) => {
+      const totalValue = round2(
+        invoice.expenses.reduce((sum, expense) => sum + Number(expense.value), 0)
+      );
+      const outstandingValue = round2(invoice.expenses.reduce(
+        (sum, expense) => sum + Math.max(Number(expense.value) - Number(expense.paidAmount ?? 0), 0),
+        0
+      ));
+      return {
+        ...invoice,
+        totalValue,
+        paidValue: round2(Math.max(totalValue - outstandingValue, 0)),
+        outstandingValue,
+        prepaid: invoice.status === 'open' && outstandingValue <= MONEY_TOLERANCE,
+      };
+    });
 }
 
 async function getOwnedInvoiceOrThrow(userId, invoiceId, client = prisma) {
@@ -52,13 +109,11 @@ async function getOwnedInvoiceOrThrow(userId, invoiceId, client = prisma) {
 }
 
 /**
- * Pagamento INTEGRAL da fatura.
+ * Quita todos os lançamentos atualmente pendentes da fatura.
  *
- * Pagamento parcial NÃO está implementado de propósito — ver relatório:
- * exigiria decidir (regra de produto ainda não definida) como alocar um
- * valor parcial entre as parcelas da fatura e quanto de limite liberar.
- * Improvisar isso corromperia o limite do cartão. O caminho integral
- * permanece completo, transacional e idempotente.
+ * Se o ciclo ainda estiver aberto, isto é uma antecipação: os itens atuais
+ * ficam pagos, o limite é liberado, mas a fatura permanece `open` e continua
+ * aceitando cobranças até a data real de fechamento.
  */
 async function payInvoice(userId, invoiceId, paymentMethod) {
   if (paymentMethod === 'credit') {
@@ -68,10 +123,9 @@ async function payInvoice(userId, invoiceId, paymentMethod) {
   return prisma.$transaction(async (tx) => {
     await lockUserBalance(tx, userId);
 
-    // Trava a linha da fatura: duas requisições simultâneas (duplo clique ou
-    // duas abas) são serializadas aqui, e a segunda encontra status='paid'.
     const lockedRows = await tx.$queryRaw`
-      SELECT id, status FROM card_invoices
+      SELECT id, status, closing_date
+      FROM card_invoices
       WHERE id = ${invoiceId}
         AND card_id IN (SELECT id FROM cards WHERE user_id = ${userId})
       FOR UPDATE
@@ -79,13 +133,10 @@ async function payInvoice(userId, invoiceId, paymentMethod) {
     if (lockedRows.length === 0) {
       throw new AppError('Fatura não encontrada.', 404, 'INVOICE_NOT_FOUND');
     }
-    if (lockedRows[0].status === 'paid') {
-      throw new AppError('Esta fatura já está paga.', 409, 'INVOICE_ALREADY_PAID');
-    }
 
-    // Só as parcelas realmente em aberto entram no pagamento. Parcelas já
-    // pagas antes NÃO são tocadas: reescrever `paidAt` delas mudaria a data
-    // contábil de um pagamento que já aconteceu em outro mês.
+    // O status isolado não decide se existe algo a pagar. Uma fatura antiga
+    // pode ter sido marcada como `paid` cedo demais e depois recebido uma
+    // cobrança; a fonte da verdade é o saldo dos lançamentos.
     const pending = await tx.expense.findMany({
       where: { cardInvoiceId: invoiceId, deletedAt: null, status: { not: 'paid' } },
       select: { id: true, value: true, paidAmount: true },
@@ -94,8 +145,8 @@ async function payInvoice(userId, invoiceId, paymentMethod) {
     const amount = round2(
       pending.reduce((sum, item) => sum + (Number(item.value) - Number(item.paidAmount ?? 0)), 0)
     );
-    if (pending.length === 0 || amount <= 0) {
-      throw new AppError('Esta fatura não possui lançamentos pendentes.', 409, 'EMPTY_INVOICE');
+    if (pending.length === 0 || amount <= MONEY_TOLERANCE) {
+      throw new AppError('Esta fatura não possui lançamentos pendentes.', 409, 'INVOICE_ALREADY_PAID');
     }
     await assertSufficientBalance(userId, amount, tx);
 
@@ -106,18 +157,25 @@ async function payInvoice(userId, invoiceId, paymentMethod) {
       where: { id: { in: pendingIds } },
       data: { status: 'paid', paymentMethod, paidAt },
     });
-    // Prisma não expressa "coluna = coluna"; o SQL cru fica restrito aos ids
-    // já selecionados acima, nunca à fatura inteira.
     await tx.$executeRaw`
       UPDATE expenses SET paid_amount = value
       WHERE id = ANY(${pendingIds}::bigint[])
     `;
 
+    const status = invoiceStatusAfterSettlement(lockedRows[0].closing_date, paidAt);
     return tx.cardInvoice.update({
       where: { id: invoiceId },
-      data: { status: 'paid', paidAt },
+      data: { status, paidAt },
     });
   });
 }
 
-module.exports = { listInvoices, getOwnedInvoiceOrThrow, payInvoice, syncInvoiceStatuses };
+module.exports = {
+  listInvoices,
+  getOwnedInvoiceOrThrow,
+  payInvoice,
+  syncInvoiceStatuses,
+  isInvoiceCycleClosed,
+  invoiceStatusAfterSettlement,
+  invoiceStatusWithOutstanding,
+};

@@ -78,7 +78,13 @@ async function getClosingPreview(userId, monthId) {
       where: { userId, monthId, deletedAt: null, type: { not: 'card' }, status: { in: ['pending', 'partial', 'late'] } },
       _sum: { value: true },
     }),
-    prisma.cardInvoice.count({ where: { monthId, card: { userId }, status: { not: 'paid' } } }),
+    prisma.cardInvoice.count({
+      where: {
+        monthId,
+        card: { userId },
+        expenses: { some: { deletedAt: null, status: { not: 'paid' } } },
+      },
+    }),
     prisma.goal.count({ where: { userId, status: 'active' } }),
   ]);
 
@@ -224,6 +230,11 @@ async function generateNextMonthEntries(tx, userId, current, nextMonth, next) {
 }
 
 async function closeMonth(userId, monthId) {
+  // Corrige, antes do fechamento, cobranças fixas pendentes que versões
+  // antigas empurraram para o ciclo seguinte após pagamento antecipado.
+  const cardPurchasesService = require('../cards/cardPurchases.service');
+  await cardPurchasesService.repairPendingFixedChargeAssignments(userId);
+
   let result;
   try {
     result = await prisma.$transaction(async (tx) => {
@@ -335,9 +346,49 @@ async function closeMonth(userId, monthId) {
   return result;
 }
 
+
+async function reopenSimulationMonth(userId, monthId) {
+  const month = await prisma.month.findFirst({ where: { id: monthId, userId } });
+  if (!month) throw new AppError('Mês não encontrado.', 404, 'MONTH_NOT_FOUND');
+  if (month.status !== 'closed') return { reopenedMonths: 0, month };
+
+  const affected = await prisma.month.findMany({
+    where: {
+      userId,
+      OR: [
+        { year: { gt: Number(month.year) } },
+        { year: Number(month.year), month: { gte: Number(month.month) } },
+      ],
+    },
+    select: { id: true },
+  });
+  const ids = affected.map((item) => item.id);
+
+  await prisma.$transaction(async (tx) => {
+    if (ids.length > 0) {
+      await tx.monthSnapshotVersion.deleteMany({ where: { monthId: { in: ids } } });
+      await tx.month.updateMany({
+        where: { id: { in: ids }, userId },
+        data: {
+          status: 'open',
+          closedAt: null,
+          financialSnapshot: null,
+          snapshotVersion: null,
+        },
+      });
+    }
+  });
+
+  await recordAuditLog(userId, 'month', monthId, 'simulation_reopen', {
+    newValue: { reopenedMonths: ids.length },
+  });
+  return { reopenedMonths: ids.length, monthId };
+}
+
 module.exports = {
   getClosingPreview,
   closeMonth,
   generateNextMonthEntries,
+  reopenSimulationMonth,
   CLOSE_TRANSACTION_OPTIONS,
 };

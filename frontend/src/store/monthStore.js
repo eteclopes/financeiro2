@@ -1,13 +1,14 @@
 import { create } from 'zustand';
 import { monthsApi } from '../lib/services';
 import { useAuthStore } from './authStore';
+import { readActiveWorkspaceId } from '../lib/workspaceStorage';
 
 // Guarda qual mês o usuário estava vendo por último, no navegador —
 // escopado por usuário (getStorageKey) para não misturar a seleção de
 // pessoas diferentes usando o mesmo navegador/computador.
 function getStorageKey() {
   const userId = useAuthStore.getState().user?.id;
-  return userId ? `financeiro:lastMonthId:${userId}` : null;
+  return userId ? `financeiro:lastMonthId:${userId}:${readActiveWorkspaceId()}` : null;
 }
 
 function persistSelection(monthId) {
@@ -35,6 +36,8 @@ export const useMonthStore = create((set, get) => ({
   months: [],
   selectedMonthId: null,
   status: 'idle',
+
+  reset() { set({ months: [], selectedMonthId: null, status: 'idle' }); },
 
   // Antes, `initialize()` SEMPRE definia o mês selecionado como "o mês de
   // hoje" (GET /months/current, resolvido pela data real do computador/

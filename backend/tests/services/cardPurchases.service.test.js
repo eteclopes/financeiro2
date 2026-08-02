@@ -144,51 +144,54 @@ describe('createCardPurchase — startingInstallment (compra já em andamento) (
   });
 });
 
-// ── Regressão: cobrança não pode cair em uma fatura já paga ───────────
-// Antes, se a fatura do mês de referência já estivesse paga, a nova compra
-// era anexada a ela e ficava IMPAGÁVEL: a lista de contas a pagar ignora
-// faturas 'paid' e payInvoice recusa com INVOICE_ALREADY_PAID.
-describe('getOrCreateInvoice — fatura paga não recebe cobrança nova', () => {
-  const { getOrCreateInvoice } = require('../../src/modules/cards/cardPurchases.service');
+// ── Regressão: antecipação não fecha o ciclo da fatura ───────────────
+// Uma fatura futura pode ficar temporariamente sem saldo porque os itens
+// atuais foram pagos, mas continua sendo a fatura correta até o fechamento.
+describe('getOrCreateInvoice — pagamento antecipado não pula mês', () => {
+  const { getOrCreateInvoice, registerChargeOnInvoice } = require('../../src/modules/cards/cardPurchases.service');
 
-  test('rola a cobrança para a fatura do mês seguinte', async () => {
-    prismaMock.cardInvoice.findUnique.mockImplementation(({ where }) => {
-      const ref = where.cardId_referenceMonth_referenceYear;
-      // Fatura de setembro/2026 já está paga; a de outubro ainda não existe.
-      if (ref.referenceMonth === 9 && ref.referenceYear === 2026) {
-        return Promise.resolve({ id: 900n, status: 'paid', referenceMonth: 9, referenceYear: 2026 });
-      }
-      return Promise.resolve(null);
+  test('reutiliza a mesma fatura mesmo se o status antigo estiver paid', async () => {
+    prismaMock.cardInvoice.findUnique.mockResolvedValue({
+      id: 900n,
+      status: 'paid',
+      referenceMonth: 9,
+      referenceYear: 2099,
+      closingDate: new Date('2099-09-10'),
     });
-    prismaMock.cardInvoice.create.mockImplementation(({ data }) => Promise.resolve({ id: 901n, ...data }));
 
-    const invoice = await getOrCreateInvoice(CARD, 9, 2026, prismaMock);
-
-    // Não devolveu a fatura paga; criou/usou a de outubro.
-    expect(invoice.id).not.toBe(900n);
-    expect(invoice.referenceMonth).toBe(10);
-    expect(invoice.referenceYear).toBe(2026);
-  });
-
-  test('vira o ano corretamente quando dezembro já está pago', async () => {
-    prismaMock.cardInvoice.findUnique.mockImplementation(({ where }) => {
-      const ref = where.cardId_referenceMonth_referenceYear;
-      if (ref.referenceMonth === 12 && ref.referenceYear === 2026) {
-        return Promise.resolve({ id: 950n, status: 'paid', referenceMonth: 12, referenceYear: 2026 });
-      }
-      return Promise.resolve(null);
-    });
-    prismaMock.cardInvoice.create.mockImplementation(({ data }) => Promise.resolve({ id: 951n, ...data }));
-
-    const invoice = await getOrCreateInvoice(CARD, 12, 2026, prismaMock);
-    expect(invoice.referenceMonth).toBe(1);
-    expect(invoice.referenceYear).toBe(2027);
-  });
-
-  test('fatura em aberto (não paga) continua recebendo a cobrança normalmente', async () => {
-    prismaMock.cardInvoice.findUnique.mockResolvedValue({ id: 800n, status: 'open', referenceMonth: 9, referenceYear: 2026 });
-    const invoice = await getOrCreateInvoice(CARD, 9, 2026, prismaMock);
-    expect(invoice.id).toBe(800n);
+    const invoice = await getOrCreateInvoice(CARD, 9, 2099, prismaMock);
+    expect(invoice.id).toBe(900n);
+    expect(invoice.referenceMonth).toBe(9);
     expect(prismaMock.cardInvoice.create).not.toHaveBeenCalled();
+  });
+
+  test('uma cobrança nova reabre a fatura futura em vez de criar a seguinte', async () => {
+    const invoice = {
+      id: 900n,
+      status: 'paid',
+      referenceMonth: 9,
+      referenceYear: 2099,
+      closingDate: new Date('2099-09-10'),
+    };
+    await registerChargeOnInvoice(invoice, CARD, 100, prismaMock);
+    expect(prismaMock.cardInvoice.update).toHaveBeenCalledWith({
+      where: { id: 900n },
+      data: expect.objectContaining({ status: 'open', paidAt: null }),
+    });
+  });
+
+  test('cobrança gerada com ciclo já encerrado reabre como fechada, não muda a referência', async () => {
+    const invoice = {
+      id: 901n,
+      status: 'paid',
+      referenceMonth: 1,
+      referenceYear: 2000,
+      closingDate: new Date('2000-01-10'),
+    };
+    await registerChargeOnInvoice(invoice, CARD, 100, prismaMock);
+    expect(prismaMock.cardInvoice.update).toHaveBeenCalledWith({
+      where: { id: 901n },
+      data: expect.objectContaining({ status: 'closed', paidAt: null }),
+    });
   });
 });

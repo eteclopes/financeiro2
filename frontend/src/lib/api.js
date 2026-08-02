@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { getAccessToken, setAccessToken } from './tokenStore';
 import { getLocalePreferences } from '../store/localeStore';
+import { readActiveWorkspaceId } from './workspaceStorage';
 
 const DEFAULT_API_URL = import.meta.env.PROD
   ? 'https://financeiro2-8kgt.onrender.com/api'
@@ -47,6 +48,13 @@ api.interceptors.request.use(async (config) => {
   config.headers['Accept-Language'] = preferences.locale || preferences.language;
   config.headers['X-Time-Zone'] = preferences.timeZone;
   config.headers['X-Currency'] = preferences.currency;
+  config.headers['X-Workspace-ID'] = readActiveWorkspaceId();
+  const now = new Date();
+  config.headers['X-Client-Date'] = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-');
   return config;
 });
 

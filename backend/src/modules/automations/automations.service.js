@@ -225,7 +225,10 @@ async function getNextInvoicePreview(userId, nextRef, config) {
 
   const [allInvoices, creditTemplates] = await Promise.all([
     prisma.cardInvoice.findMany({
-      where: { card: { userId }, status: { not: 'paid' } },
+      // Não confia apenas no status: versões antigas podiam marcar uma
+      // fatura futura como `paid` cedo demais. O saldo dos lançamentos é a
+      // fonte da verdade e permite reparar esse estado sem perder cobranças.
+      where: { card: { userId } },
       include: {
         expenses: {
           where: { deletedAt: null, status: { not: 'paid' } },
@@ -245,18 +248,28 @@ async function getNextInvoicePreview(userId, nextRef, config) {
     }),
   ]);
 
-  const selectedInvoices = allInvoices.filter((invoice) => (
+  const invoicesWithBalance = allInvoices
+    .map((invoice) => {
+      const outstanding = invoiceOutstanding(invoice);
+      const effectiveStatus = new Date(invoice.closingDate).getTime() < todayUtcDate().getTime()
+        ? 'closed'
+        : 'open';
+      return { ...invoice, outstanding, effectiveStatus };
+    })
+    .filter((invoice) => invoice.outstanding > 0.009);
+
+  const selectedInvoices = invoicesWithBalance.filter((invoice) => (
     config.payOpenInvoices
-      || invoice.status === 'closed'
+      || invoice.effectiveStatus === 'closed'
       || new Date(invoice.dueDate) <= targetEnd
   ));
-  const excludedOpen = allInvoices.filter((invoice) => (
+  const excludedOpen = invoicesWithBalance.filter((invoice) => (
     !config.payOpenInvoices
-      && invoice.status === 'open'
+      && invoice.effectiveStatus === 'open'
       && new Date(invoice.dueDate) > targetEnd
   ));
 
-  const realTotal = round2(selectedInvoices.reduce((sum, invoice) => sum + invoiceOutstanding(invoice), 0));
+  const realTotal = round2(selectedInvoices.reduce((sum, invoice) => sum + invoice.outstanding, 0));
 
   const templateIds = creditTemplates.map((template) => template.id);
   const generated = templateIds.length > 0
@@ -297,7 +310,7 @@ async function getNextInvoicePreview(userId, nextRef, config) {
     projectedTotal,
     projectedCount,
     excludedOpenCount: excludedOpen.length,
-    excludedOpenTotal: round2(excludedOpen.reduce((sum, invoice) => sum + invoiceOutstanding(invoice), 0)),
+    excludedOpenTotal: round2(excludedOpen.reduce((sum, invoice) => sum + invoice.outstanding, 0)),
   };
 }
 

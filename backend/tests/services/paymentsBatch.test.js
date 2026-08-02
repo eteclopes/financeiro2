@@ -8,7 +8,7 @@ beforeEach(() => {
   installDefaults(prismaMock);
   // Saldo alto por padrão; casos específicos reduzem.
   prismaMock.income.aggregate.mockResolvedValue({ _sum: { value: 100000 } });
-  prismaMock.$queryRaw.mockResolvedValue([{ id: 900n, status: 'open' }]);
+  prismaMock.$queryRaw.mockResolvedValue([{ id: 900n, status: 'open', closing_date: new Date('2099-12-10') }]);
 });
 
 describe('payBillsBatch — pagamento de várias contas + fatura', () => {
@@ -39,7 +39,7 @@ describe('payBillsBatch — pagamento de várias contas + fatura', () => {
     // Duas contas atualizadas individualmente + as parcelas da fatura em bloco.
     expect(prismaMock.expense.update).toHaveBeenCalledTimes(2);
     expect(prismaMock.cardInvoice.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'paid' }) })
+      expect.objectContaining({ data: expect.objectContaining({ status: 'open' }) })
     );
   });
 
@@ -123,7 +123,7 @@ describe('payBillsBatch — pagamento de várias contas + fatura', () => {
   });
 
   test('fatura já paga (nada mais a pagar) informa que já está quitada', async () => {
-    prismaMock.$queryRaw.mockResolvedValue([{ id: 900n, status: 'paid' }]);
+    prismaMock.$queryRaw.mockResolvedValue([{ id: 900n, status: 'paid', closing_date: new Date('2099-12-10') }]);
     await expect(
       payBillsBatch(10n, { expenseIds: [], invoiceIds: ['900'], paymentMethod: 'debit' })
     ).rejects.toMatchObject({ code: 'NOTHING_TO_PAY' });

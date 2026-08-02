@@ -41,13 +41,48 @@ function firstLanguageHeader(value) {
   return validLocale(locale) ? Intl.getCanonicalLocales(locale)[0] : DEFAULT_LOCALE;
 }
 
+function parseIsoDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== month || date.getUTCDate() !== day) return null;
+  return { year, month, day, date };
+}
+
+function localServerDate(timeZone) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(new Date())
+    .filter((part) => part.type !== 'literal')
+    .map((part) => [part.type, Number(part.value)]));
+  return { ...parts, date: new Date(Date.UTC(parts.year, parts.month - 1, parts.day)) };
+}
+
+function trustedClientDate(value, timeZone) {
+  const parsed = parseIsoDate(value);
+  if (!parsed) return null;
+  // Relógio do navegador é usado normalmente, mas uma máquina configurada
+  // anos à frente não pode encerrar todo o histórico por acidente. Diferenças
+  // de até dois dias cobrem fusos e relógios ligeiramente desajustados.
+  const server = localServerDate(timeZone);
+  const days = Math.abs(parsed.date.getTime() - server.date.getTime()) / 86_400_000;
+  return days <= 2 ? { year: parsed.year, month: parsed.month, day: parsed.day } : null;
+}
+
 function localizationContext(req, res, next) {
   const requestedTimeZone = req.get('x-time-zone');
   const requestedCurrency = req.get('x-currency');
+  const timeZone = validTimeZone(requestedTimeZone) ? requestedTimeZone : DEFAULT_TIME_ZONE;
   const context = {
-    timeZone: validTimeZone(requestedTimeZone) ? requestedTimeZone : DEFAULT_TIME_ZONE,
+    timeZone,
     locale: firstLanguageHeader(req.get('accept-language')),
     currency: validCurrency(requestedCurrency) ? requestedCurrency.toUpperCase() : DEFAULT_CURRENCY,
+    clientDate: trustedClientDate(req.get('x-client-date'), timeZone),
   };
   storage.run(context, next);
 }
@@ -57,17 +92,20 @@ function currentContext() {
     timeZone: DEFAULT_TIME_ZONE,
     locale: DEFAULT_LOCALE,
     currency: DEFAULT_CURRENCY,
+    clientDate: null,
   };
 }
 
 function getRequestTimeZone() { return currentContext().timeZone; }
 function getRequestLocale() { return currentContext().locale; }
 function getRequestCurrency() { return currentContext().currency; }
+function getRequestClientDate() { return currentContext().clientDate; }
 
 module.exports = {
   localizationContext,
   getRequestTimeZone,
   getRequestLocale,
   getRequestCurrency,
+  getRequestClientDate,
   validTimeZone,
 };

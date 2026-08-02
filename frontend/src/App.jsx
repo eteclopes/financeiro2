@@ -31,6 +31,7 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
 const PlanPage = lazy(() => import('./pages/PlanPage.jsx'));
 const CalculatorsPage = lazy(() => import('./pages/CalculatorsPage.jsx'));
 const PlanningPage = lazy(() => import('./pages/PlanningPage.jsx'));
+const WorkspacesPage = lazy(() => import('./pages/WorkspacesPage.jsx'));
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -283,6 +284,7 @@ export default function App() {
 
         <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
           <Route path="/dashboard" element={<Page><DashboardPage /></Page>} />
+          <Route path="/workspaces" element={<Page><WorkspacesPage /></Page>} />
           <Route path="/incomes" element={<Page><IncomesPage /></Page>} />
           <Route path="/expenses" element={<Page><ExpensesPage /></Page>} />
           <Route path="/cards" element={<Page><CardsPage /></Page>} />

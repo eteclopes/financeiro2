@@ -53,8 +53,14 @@ const prisma = {
   month: { count: async () => 3 },
   auditLog: { count: async () => 0, findMany: async () => [] },
   refreshToken: { updateMany: async () => ({ count: 2 }) },
+  simulationWorkspace: {
+    findMany: async () => [],
+    deleteMany: async () => ({ count: 0 }),
+  },
   $queryRaw: async () => [{ '?column?': 1 }],
-  $transaction: async (operations) => Promise.all(operations),
+  $transaction: async (operations) => typeof operations === 'function'
+    ? operations(prisma)
+    : Promise.all(operations),
 };
 
 const originalLoad = Module._load;

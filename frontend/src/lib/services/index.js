@@ -7,6 +7,7 @@ export const monthsApi = {
   get: (id) => api.get(`/months/${id}`),
   closingPreview: (id) => api.get(`/months/${id}/closing-preview`),
   close: (id) => api.post(`/months/${id}/close`),
+  reopen: (id) => api.post(`/months/${id}/reopen`),
 };
 
 // ---- Categories ----
@@ -169,4 +170,13 @@ export const calculatorsApi = {
 
 export const planningApi = {
   get: (monthId) => api.get('/planning', { params: { monthId } }),
+};
+
+
+// ---- Ambientes real e de simulação ----
+export const workspacesApi = {
+  list: () => api.get('/workspaces'),
+  create: (data) => api.post('/workspaces', data),
+  rename: (id, name) => api.patch(`/workspaces/${id}`, { name }),
+  delete: (id) => api.delete(`/workspaces/${id}`),
 };

@@ -8,8 +8,8 @@ const { payInvoice } = require('../../src/modules/cards/cardInvoices.service');
 
 // A fatura passou a ser travada com SELECT ... FOR UPDATE (duplo clique /
 // duas abas). O mock precisa devolver a linha travada.
-function lockInvoice(status = 'open') {
-  prismaMock.$queryRaw.mockResolvedValue([{ id: 3n, status }]);
+function lockInvoice(status = 'open', closingDate = new Date('2099-12-10')) {
+  prismaMock.$queryRaw.mockResolvedValue([{ id: 3n, status, closing_date: closingDate }]);
 }
 
 beforeEach(() => {
@@ -30,16 +30,28 @@ describe('payInvoice — bloqueio de saldo (REGRESSÃO)', () => {
     expect(prismaMock.cardInvoice.update).not.toHaveBeenCalled();
   });
 
-  test('paga normalmente quando o saldo cobre o total da fatura', async () => {
+  test('pagamento antecipado quita os itens mas mantém a fatura aberta', async () => {
     prismaMock.income.aggregate.mockResolvedValue({ _sum: { value: 5000 } });
 
     await expect(payInvoice(10n, 3n, 'debit')).resolves.toBeDefined();
-    expect(prismaMock.cardInvoice.update).toHaveBeenCalled();
+    expect(prismaMock.cardInvoice.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'open' }) })
+    );
   });
 
-  test('fatura já paga é rejeitada antes de checar saldo', async () => {
+  test('fatura já fechada vira paga depois da quitação', async () => {
+    lockInvoice('closed', new Date('2000-01-10'));
+    prismaMock.income.aggregate.mockResolvedValue({ _sum: { value: 5000 } });
+    await payInvoice(10n, 3n, 'debit');
+    expect(prismaMock.cardInvoice.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'paid' }) })
+    );
+  });
+
+  test('status antigo paid não bloqueia uma cobrança pendente adicionada depois', async () => {
     lockInvoice('paid');
-    await expect(payInvoice(10n, 3n, 'debit')).rejects.toMatchObject({ code: 'INVOICE_ALREADY_PAID' });
+    prismaMock.income.aggregate.mockResolvedValue({ _sum: { value: 5000 } });
+    await expect(payInvoice(10n, 3n, 'debit')).resolves.toBeDefined();
   });
 
   test('fatura de outro usuário não é encontrada', async () => {

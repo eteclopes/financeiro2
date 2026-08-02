@@ -5,6 +5,7 @@ import { Topbar } from './Topbar';
 import { MobileNav } from './MobileNav';
 import { ToastContainer } from '../ui/Toast';
 import { useMonthStore } from '../../store/monthStore';
+import { useWorkspaceStore } from '../../store/workspaceStore';
 import { useUIStore } from '../../store/uiStore';
 import { useTutorialStore } from '../../store/tutorialStore';
 import { waitForTutorialPage } from '../../lib/tutorialDom';
@@ -16,6 +17,7 @@ const TutorialRunner = lazy(() => import('../tutorial/TutorialRunner').then((mod
 
 const ROUTE_TITLES = {
   '/dashboard': 'Visão geral',
+  '/workspaces': 'Real e Simulações',
   '/incomes': 'Receitas',
   '/expenses': 'Despesas',
   '/cards': 'Cartões de crédito',
@@ -36,6 +38,8 @@ const ROUTE_TITLES = {
 
 export function AppLayout() {
   const initialize = useMonthStore((s) => s.initialize);
+  const initializeWorkspaces = useWorkspaceStore((s) => s.initialize);
+  const activeWorkspace = useWorkspaceStore((s) => s.getActiveWorkspace());
   const monthStatus = useMonthStore((s) => s.status);
   const open = useUIStore((s) => s.sidebarOpen);
   const setSidebar = useUIStore((s) => s.setSidebar);
@@ -49,7 +53,14 @@ export function AppLayout() {
   const shellRef = useRef(null);
   const tutorialLaunchAttemptedRef = useRef(false);
 
-  useEffect(() => { initialize(); }, [initialize]);
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      await initializeWorkspaces();
+      if (active) await initialize();
+    })();
+    return () => { active = false; };
+  }, [initialize, initializeWorkspaces]);
 
   useEffect(() => {
     if (tutorialRequested) tutorialLaunchAttemptedRef.current = false;
@@ -103,6 +114,40 @@ export function AppLayout() {
     return () => controller.abort();
   }, [monthStatus, tutorialRequested, startTutorial, cancelTutorial, location.pathname]);
 
+
+  // Se o aplicativo permanecer aberto durante a virada do mês, a mudança de
+  // data local dispara uma nova consulta. No modo Real essa consulta fecha
+  // automaticamente todos os meses anteriores; no Simulador a linha do
+  // tempo continua inteiramente manual.
+  useEffect(() => {
+    if (activeWorkspace?.type === 'simulation') return undefined;
+
+    const dateKey = () => {
+      const now = new Date();
+      return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+    };
+    let lastDate = dateKey();
+
+    const syncOnCalendarChange = () => {
+      const currentDate = dateKey();
+      if (currentDate === lastDate) return;
+      lastDate = currentDate;
+      useMonthStore.getState().refreshMonths();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') syncOnCalendarChange();
+    };
+
+    const interval = window.setInterval(syncOnCalendarChange, 60_000);
+    window.addEventListener('focus', syncOnCalendarChange);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', syncOnCalendarChange);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [activeWorkspace?.type]);
+
   useEffect(() => {
     const shell = shellRef.current;
     if (!shell || window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return undefined;
@@ -128,8 +173,13 @@ export function AppLayout() {
       <Sidebar />
       <div className={`min-h-[100dvh] transition-[margin] duration-300 ease-smooth ${open ? 'lg:ml-[272px]' : 'lg:ml-[84px]'}`}>
         <Topbar title={title} />
+        {activeWorkspace?.type === 'simulation' && (
+          <div className="border-b border-primary/20 bg-primary-subtle px-4 py-2 text-center text-xs font-semibold text-primary-dark dark:bg-primary/10 dark:text-primary-hover sm:px-6 lg:px-8">
+            MODO SIMULAÇÃO · {activeWorkspace.name} — nenhuma alteração afeta o financeiro real.
+          </div>
+        )}
         <main className="page-content px-4 pb-28 pt-5 sm:px-6 sm:pb-28 sm:pt-7 lg:px-8 lg:py-8">
-          <div key={location.pathname} className="route-stage">
+          <div key={`${activeWorkspace?.id || 'real'}:${location.pathname}`} className="route-stage">
             <Outlet />
           </div>
         </main>
