@@ -15,7 +15,7 @@ services:
       - key: DIRECT_URL
         sync: false
       - key: CORS_ORIGIN
-        value: https://financeiro2-six.vercel.app
+        value: https://financeiro2-six.vercel.app,https://admin-frontend-kzu7.vercel.app
       - key: CORS_VERCEL_PROJECT
         value: financeiro2
       - key: CORS_VERCEL_TEAM
@@ -23,7 +23,7 @@ services:
       - key: FRONTEND_URL
         value: https://financeiro2-six.vercel.app
       - key: ADMIN_FRONTEND_URL
-        sync: false
+        value: https://admin-frontend-kzu7.vercel.app
       - key: APP_TIME_ZONE
         value: America/Sao_Paulo
       - key: JWT_ACCESS_SECRET

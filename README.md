@@ -165,3 +165,8 @@ O Plano Básico permite até dois cartões ativos. O Plano Pro libera os recurso
 cd backend
 npm run seed:pro-test
 ```
+
+
+## CORS do painel administrativo
+
+A origem de produção `https://admin-frontend-kzu7.vercel.app` está configurada no `render.yaml` e também é usada como fallback seguro pelo backend em produção. Ao iniciar, a API registra no log a lista exata de origens permitidas.

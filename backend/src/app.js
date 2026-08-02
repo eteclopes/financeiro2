@@ -36,9 +36,14 @@ app.use(helmet({
 }));
 app.use(privateApiHeaders);
 
+const adminFrontendOrigin = env.ADMIN_FRONTEND_URL
+  || (env.NODE_ENV === 'production'
+    ? 'https://admin-frontend-kzu7.vercel.app'
+    : 'http://localhost:5174');
+
 const corsPolicy = createOriginPolicy({
   configuredOrigins: parseConfiguredOrigins(
-    [env.CORS_ORIGIN, env.FRONTEND_URL, env.ADMIN_FRONTEND_URL].filter(Boolean).join(',')
+    [env.CORS_ORIGIN, env.FRONTEND_URL, adminFrontendOrigin].filter(Boolean).join(',')
   ),
   vercelProject: env.CORS_VERCEL_PROJECT,
   vercelTeam: env.CORS_VERCEL_TEAM,
@@ -47,6 +52,10 @@ const corsPolicy = createOriginPolicy({
   // nesse ambiente — nunca no de produção.
   allowPreviews: env.NODE_ENV !== 'production' || env.CORS_ALLOW_PREVIEWS === true,
 });
+
+if (env.NODE_ENV !== 'test') {
+  console.log(`[CORS] Origens permitidas: ${corsPolicy.exactOrigins.join(', ')}`);
+}
 
 app.use(cors({
   origin(origin, callback) {

@@ -20,7 +20,8 @@
     "check:v19-history": "node scripts/check-v19-immutable-history.js",
     "check:v20-invoices": "node scripts/check-v20-invoices-automation.js",
     "seed:admin": "node prisma/seed-admin.js",
-    "check:admin": "node scripts/check-admin-panel.js && node scripts/check-admin-behavior.js"
+    "check:admin": "node scripts/check-admin-panel.js && node scripts/check-admin-behavior.js",
+    "check:cors": "node scripts/check-cors-production.js"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
